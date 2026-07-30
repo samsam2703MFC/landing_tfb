@@ -102,21 +102,50 @@ model Module {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   screenshots ModuleScreenshot[]
+  features    ModuleFeature[]
 
   @@map("tfb_modules")
+}
+
+/// One documented function of a module — what the app actually does, one row per
+/// feature. The copy (name, description) is in tfb_translations under
+/// entity_type = 'feature'; `key` is what the repo's .tfb/module.json calls it,
+/// so a sync run matches on (module_id, key) and never duplicates.
+model ModuleFeature {
+  id        Int      @id @default(autoincrement())
+  moduleId  Int      @map("module_id")
+  key       String   @db.VarChar(80)
+  /// Icon file stem in public/icons.
+  icon      String?  @db.VarChar(60)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  module      Module             @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  screenshots ModuleScreenshot[]
+
+  @@unique([moduleId, key], map: "uq_module_feature_key")
+  @@index([moduleId])
+  @@map("tfb_module_features")
 }
 
 /// §2.6 — one row per carousel frame. `file_path` is a relative server path.
 model ModuleScreenshot {
   id        Int      @id @default(autoincrement())
   moduleId  Int      @map("module_id")
+  /// The function this frame illustrates. NULL = a general shot of the module,
+  /// which is what the hero carousel shows.
+  featureId Int?     @map("feature_id")
   filePath  String   @map("file_path") @db.VarChar(255)
   sortOrder Int      @default(0) @map("sort_order")
   createdAt DateTime @default(now()) @map("created_at")
 
-  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  module  Module         @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  feature ModuleFeature? @relation(fields: [featureId], references: [id], onDelete: SetNull)
 
   @@index([moduleId])
+  @@index([featureId])
   @@map("tfb_module_screenshots")
 }
 

@@ -22,6 +22,18 @@ export interface LandingScreenshot {
   alt: string;
 }
 
+export interface LandingFeature {
+  id: number;
+  key: string;
+  icon: string;
+  /** Translated tfb_translations 'feature' name. */
+  name: string;
+  /** What this function does, in prose. Empty until a translator fills it in. */
+  description: string;
+  /** Frames illustrating this function, in sort_order. */
+  screenshots: LandingScreenshot[];
+}
+
 export interface LandingModule {
   id: number;
   key: string;
@@ -33,10 +45,15 @@ export interface LandingModule {
   groupKey: string;
   name: string;
   description: string;
+  /** The long-form "what this module is" paragraph (translations field 'overview'). */
+  overview: string;
   isNew: boolean;
   redirectUrl: string | null;
   repo: string | null;
+  /** General frames — the ones not attached to a function. */
   screenshots: LandingScreenshot[];
+  /** Documented functions, in sort_order, each with its own frames. */
+  features: LandingFeature[];
   /** Explanation bullets (tfb_translations field 'bullets', pipe-joined). */
   bullets: string[];
   /** Headline gain: ["12 min", "par inventaire"]. */

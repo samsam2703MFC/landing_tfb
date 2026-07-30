@@ -1,0 +1,57 @@
+# Keeps the landing in step with the module repositories.
+#
+# Every run validates each repo's .tfb/module.json and reports what it would
+# write. When the DATABASE_URL secret is set, the same run then writes it to the
+# landing database — modules, functions, screenshots and translations.
+#
+# A module repo can trigger this immediately instead of waiting for the nightly
+# run, by dispatching to this repository (see README, "Rester à jour"):
+#   curl -X POST -H "Authorization: Bearer $TOKEN" \
+#     https://api.github.com/repos/samsam2703MFC/landing_tfb/dispatches \
+#     -d '{"event_type":"module-manifest-updated"}'
+name: sync-modules
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+  repository_dispatch:
+    types: [module-manifest-updated]
+  push:
+    paths:
+      - 'content/modules.repos.json'
+      - 'scripts/sync-modules.ts'
+      - 'src/lib/sync/**'
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    # Job level, so the write step's `if:` can read it — a step cannot test env it
+    # defines itself.
+    env:
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx prisma generate
+
+      # Reads every manifest and reports. Fails the run when one is malformed or
+      # missing, which is the point: a broken fiche should be visible, not silently
+      # skipped at 6 in the morning.
+      - name: Valider les manifestes
+        env:
+          GITHUB_TOKEN: ${{ secrets.MODULE_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: npm run sync:modules -- --dry-run
+
+      - name: Synchroniser la base
+        if: ${{ env.DATABASE_URL != '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.MODULE_READ_TOKEN || secrets.GITHUB_TOKEN }}
+          STORAGE_PATH: ${{ secrets.STORAGE_PATH }}
+        run: npm run sync:modules

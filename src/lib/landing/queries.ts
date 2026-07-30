@@ -18,7 +18,10 @@ export async function getLanding(locale: string): Promise<LandingPayload> {
     prisma.module.findMany({
       where: { isActive: true },
       orderBy: { sortOrder: 'asc' },
-      include: { screenshots: { orderBy: { sortOrder: 'asc' } } },
+      include: {
+        screenshots: { orderBy: { sortOrder: 'asc' } },
+        features: { where: { isActive: true }, orderBy: { sortOrder: 'asc' } },
+      },
     }),
     prisma.plan.findMany({ where: { isActive: true }, orderBy: { sortOrder: 'asc' } }),
     prisma.translation.findMany({
@@ -34,15 +37,21 @@ export async function getLanding(locale: string): Promise<LandingPayload> {
 
   const moduleIds = modules.map((m) => m.id);
   const screenshotIds = modules.flatMap((m) => m.screenshots.map((s) => s.id));
-  const [moduleT, planT, brandT, shotT] = await Promise.all([
+  const featureIds = modules.flatMap((m) => m.features.map((f) => f.id));
+  const [moduleT, planT, brandT, shotT, featureT] = await Promise.all([
     loadEntityTranslations('module', moduleIds, locale),
     loadEntityTranslations('plan', plans.map((p) => p.id), locale),
     loadEntityTranslations('brand', brands.map((b) => b.id), locale),
     loadEntityTranslations('screenshot', screenshotIds, locale),
+    loadEntityTranslations('feature', featureIds, locale),
   ]);
 
   const landingModules: LandingModule[] = modules.map((m) => {
     const groupKey = m.moduleGroup ?? '';
+    const shotOf = (s: (typeof m.screenshots)[number], i: number) => ({
+      src: storageUrl(s.filePath),
+      alt: field(shotT, s.id, 'alt') || `${strings['shot.alt'] ?? 'Capture'} — ${m.key} ${i + 1}`,
+    });
     return {
       id: m.id,
       key: m.key,
@@ -53,12 +62,20 @@ export async function getLanding(locale: string): Promise<LandingPayload> {
       group: strings[`group.${groupKey.toLowerCase()}`] ?? groupKey,
       name: field(moduleT, m.id, 'name', m.key),
       description: field(moduleT, m.id, 'description'),
+      overview: field(moduleT, m.id, 'overview'),
       isNew: m.isNew,
       redirectUrl: m.redirectUrl,
       repo: m.repo,
-      screenshots: m.screenshots.map((s, i) => ({
-        src: storageUrl(s.filePath),
-        alt: field(shotT, s.id, 'alt') || `${strings['shot.alt'] ?? 'Capture'} — ${m.key} ${i + 1}`,
+      // A frame attached to a function belongs to that function, not to the
+      // module carousel — otherwise every shot would show up twice.
+      screenshots: m.screenshots.filter((s) => s.featureId === null).map(shotOf),
+      features: m.features.map((f) => ({
+        id: f.id,
+        key: f.key,
+        icon: f.icon ?? 'circle-check',
+        name: field(featureT, f.id, 'name', f.key),
+        description: field(featureT, f.id, 'description'),
+        screenshots: m.screenshots.filter((s) => s.featureId === f.id).map(shotOf),
       })),
       bullets: fieldList(moduleT, m.id, 'bullets'),
       metric: [field(moduleT, m.id, 'metric_value', '—'), field(moduleT, m.id, 'metric_label')],

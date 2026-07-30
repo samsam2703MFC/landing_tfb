@@ -70,6 +70,63 @@ the DB keeps the relative path (`/storage/screenshots/scan-a1b2c3.png`). They ar
 back through `GET /api/storage/[...path]`, which refuses anything escaping the storage
 root and sends uploaded SVGs under a restrictive CSP.
 
+## Rester à jour — les modules viennent des dépôts
+
+La landing n'écrit pas la fiche de ses modules : **chaque dépôt module publie la
+sienne**, dans `.tfb/module.json`, et la landing la récupère.
+
+```bash
+npm run sync:modules                              # lit les manifestes sur GitHub, écrit en base
+npm run sync:modules -- --dry-run                 # valide et rapporte, sans rien écrire
+npm run sync:modules -- --from-disk /chemin       # lit des clones locaux au lieu de GitHub
+npm run sync:modules -- --only signage,delivery   # se limite à quelques dépôts
+npm run sync:modules -- --retire-unlisted         # désactive les modules sans manifeste
+```
+
+Le manifeste décrit le module, ses **fonctions** et les **captures** qui les
+illustrent — le contrat complet est dans `src/lib/sync/manifest.ts` :
+
+```json
+{
+  "key": "signage", "slug": "signage", "group": "Marketing", "icon": "panels-top-left",
+  "name":        { "fr": "Régie d'affichage", "en": "Digital signage" },
+  "description": { "fr": "Les écrans du magasin pilotés depuis un seul back office." },
+  "overview":    { "fr": "Un magasin affiche des prix, des promos et des menus…" },
+  "metric": { "value": "0", "label": { "fr": "clé USB en magasin" } },
+  "screenshots": [{ "file": "docs/landing/signage-accueil.png", "alt": { "fr": "Accueil de la régie" } }],
+  "features": [
+    { "key": "compositeur", "icon": "layers",
+      "name": { "fr": "Compositeur de film" },
+      "description": { "fr": "La bibliothèque d'éléments et la playlist qui en fait un film…" },
+      "screenshots": [{ "file": "docs/landing/signage-compositeur.png" }] }
+  ]
+}
+```
+
+Ce que la sync écrit : `tfb_modules` (upsert sur `key`), `tfb_module_features`
+(upsert sur `module_id` + `key`), `tfb_module_screenshots` (réécrites, fichiers
+copiés sous `STORAGE_PATH`) et les `tfb_translations` correspondantes. `fr` est
+obligatoire dans chaque bloc de copie — c'est la locale de repli.
+
+Trois garde-fous : une fonction retirée d'un manifeste est **désactivée**, jamais
+supprimée, donc ses traductions survivent à un mauvais manifeste ; un module sans
+manifeste n'est touché que si vous passez `--retire-unlisted`, et seulement quand
+tous les dépôts ont répondu ; un groupe sans traduction `group.<valeur>` est
+signalé dans le rapport.
+
+La liste des dépôts interrogés est `content/modules.repos.json`. Le workflow
+`.github/workflows/sync-modules.yml` valide les manifestes à chaque nuit (et écrit
+en base si le secret `DATABASE_URL` existe). Pour qu'un dépôt module déclenche la
+mise à jour sans attendre la nuit, ajoutez-y ce pas :
+
+```yaml
+- name: Prévenir la landing
+  run: |
+    curl -sf -X POST -H "Authorization: Bearer ${{ secrets.LANDING_SYNC_TOKEN }}" \
+      https://api.github.com/repos/samsam2703MFC/landing_tfb/dispatches \
+      -d '{"event_type":"module-manifest-updated"}'
+```
+
 ### Fallback
 
 FR is `tfb_languages.is_default`. A missing or empty translation resolves to FR — so all
@@ -136,6 +193,10 @@ the env var and the same screens hit the real endpoints — expected shapes are 
 prisma/
   schema.prisma            every tfb_ table
   seed.ts, seed-content.ts the seed and its FR/EN/AR copy
+content/
+  modules.repos.json       the module repositories sync:modules polls
+scripts/
+  sync-modules.ts          pulls every .tfb/module.json into the database
 src/
   design-system/           the handoff, ported
     tokens/*.css           colours, type, spacing, radius, elevation, motion, fonts, base
@@ -183,6 +244,19 @@ no database calls. **The app has not been run against a live MySQL** — no data
 reachable from the machine it was built on, so the migration, the seed and the rendered
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
+
+The same caveat covers `npm run sync:modules`: its **read** path is verified — the eight
+manifests parse and resolve against local clones (`--dry-run --from-disk`) — but its
+**write** path has never touched a database. Run it once with `--dry-run`, then for real,
+and check `/[locale]/modules/<slug>` before pointing the workflow at production.
+
+The 28 screenshots shipped with the modules are real captures of the running apps
+(`signage`, `pwa_delivery`, `back_office_ws_franchisor`, `back_office_ws_franchisee`),
+taken with Playwright against each app's own seed data. `webshop`, `supplier_atl`,
+`pwa_kitchen` and `pwa_consultant` could not be captured: the first loads React from a
+CDN and the other three are thin clients over a remote API, neither reachable from the
+build machine. Their manifests carry no `screenshots`, so their carousels show the
+labelled placeholder until someone runs the same capture on a connected machine.
 
 ## Known gaps
 

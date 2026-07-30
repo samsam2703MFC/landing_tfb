@@ -12,7 +12,7 @@ import { isLocale } from '@/lib/i18n/config';
  *      → { entityType, entityId, values: { '<field>': { '<lang>': '<value>' } } }
  */
 
-const ENTITY_TYPES = ['ui', 'module', 'plan', 'brand', 'section', 'screenshot'] as const;
+const ENTITY_TYPES = ['ui', 'module', 'plan', 'brand', 'section', 'screenshot', 'feature'] as const;
 
 export async function GET(request: Request) {
   return withAdmin(async () => {

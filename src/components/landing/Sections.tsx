@@ -355,6 +355,29 @@ export function ModuleDetail({
         </div>
       </section>
 
+      {m.overview && (
+        <section style={{ background: 'var(--surface-page)', padding: 'var(--space-14) 0' }}>
+          <div style={{ ...SECTION, maxWidth: 760 }}>
+            <span className="fb-eyebrow">{t('detail.overview')}</span>
+            <p style={{ marginTop: 'var(--space-4)', font: 'var(--type-body-lg)', color: 'var(--text-secondary)' }}>{m.overview}</p>
+          </div>
+        </section>
+      )}
+
+      {m.features.length > 0 && (
+        <section style={{ background: 'var(--surface-card)', padding: 'var(--space-16) 0' }}>
+          <div style={SECTION}>
+            <span className="fb-eyebrow">{t('detail.functions')}</span>
+            <h2 style={{ marginTop: 'var(--space-3)', font: 'var(--type-heading-1)', color: 'var(--text-primary)' }}>{t('detail.functions.title')}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-12)', marginTop: 'var(--space-10)' }}>
+              {m.features.map((f, i) => (
+                <FeatureRow key={f.key} payload={payload} feature={f} flipped={i % 2 === 1} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section style={{ background: 'var(--surface-card)', padding: 'var(--space-16) 0' }}>
         <div style={{ ...SECTION, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 'var(--space-12)', alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -364,6 +387,16 @@ export function ModuleDetail({
                 {m.bullets.map((b) => (
                   <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', font: 'var(--type-body)' }}>
                     <Icon name="circle-check" size={17} color="var(--status-success)" style={{ marginTop: 2 }} />{b}
+                  </li>
+                ))}
+              </ul>
+            ) : m.features.length > 0 ? (
+              // The functions section above already carries the explanation; the
+              // bullets are the older, shorter form of the same thing.
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                {m.features.map((f) => (
+                  <li key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', font: 'var(--type-body)' }}>
+                    <Icon name="circle-check" size={17} color="var(--status-success)" style={{ marginTop: 2 }} />{f.name}
                   </li>
                 ))}
               </ul>
@@ -391,6 +424,64 @@ export function ModuleDetail({
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * One documented function: what it does on the left, the screens that prove it
+ * on the right. Rows alternate sides, and the alternation is written with
+ * `direction` rather than left/right so Arabic mirrors with the rest of the page.
+ */
+function FeatureRow({
+  payload,
+  feature,
+  flipped,
+}: {
+  payload: LandingPayload;
+  feature: LandingPayload['modules'][number]['features'][number];
+  flipped: boolean;
+}) {
+  const t = useT(payload);
+  const shots = feature.screenshots.map((s) => ({ src: s.src ?? undefined, alt: s.alt }));
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '0.9fr 1.1fr',
+        gap: 'var(--space-10)',
+        alignItems: 'center',
+        direction: flipped ? (payload.dir === 'rtl' ? 'ltr' : 'rtl') : undefined,
+      }}
+    >
+      <div style={{ direction: payload.dir, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <span
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44,
+            borderRadius: 'var(--radius-lg)', background: 'var(--plum-50)', color: 'var(--plum-600)',
+          }}
+        >
+          <Icon name={feature.icon} size={22} />
+        </span>
+        <h3 style={{ font: 'var(--type-heading-3)', color: 'var(--text-primary)' }}>{feature.name}</h3>
+        {feature.description ? (
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-secondary)', maxWidth: '46ch' }}>{feature.description}</p>
+        ) : (
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-tertiary)' }}>
+            <span className="fb-num">tfb_translations · feature · description</span>
+          </p>
+        )}
+      </div>
+      <div style={{ direction: payload.dir }}>
+        <Carousel
+          items={shots.length > 0 ? shots : [{ src: undefined, alt: t('shot.alt') }]}
+          rtl={payload.dir === 'rtl'}
+          autoplay={shots.length > 1}
+          aspect="16 / 10"
+          placeholderPath={`/storage/screenshots/${feature.key}-…`}
+        />
+      </div>
+    </div>
   );
 }
 
