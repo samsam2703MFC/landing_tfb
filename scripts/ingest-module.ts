@@ -49,10 +49,29 @@ interface Args {
   dryRun: boolean;
   activate: boolean;
   insecure: boolean;
+  cookies: { name: string; value: string }[];
+}
+
+/**
+ * `nom=valeur`, séparés par des points-virgules — la forme d'un en-tête Cookie,
+ * pour qu'on puisse copier celui du navigateur tel quel.
+ */
+function parseCookies(raw: string): { name: string; value: string }[] {
+  return raw.split(';').map((pair) => {
+    const eq = pair.indexOf('=');
+    if (eq < 1) return null;
+    return { name: pair.slice(0, eq).trim(), value: pair.slice(eq + 1).trim() };
+  }).filter((c): c is { name: string; value: string } => c !== null && c.name.length > 0);
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { dryRun: false, activate: true, insecure: false };
+  // Un jeton de session passé en argument est lisible dans `ps` par n'importe
+  // quel utilisateur de la machine. La variable d'environnement ne l'est pas :
+  // c'est la voie recommandée, le drapeau reste là pour le dépannage.
+  const args: Args = {
+    dryRun: false, activate: true, insecure: false,
+    cookies: process.env.TFB_CAPTURE_COOKIE ? parseCookies(process.env.TFB_CAPTURE_COOKIE) : [],
+  };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -66,6 +85,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--dry-run') args.dryRun = true;
     else if (a === '--no-activate') args.activate = false;
     else if (a === '--insecure') args.insecure = true;
+    else if (a === '--cookie') args.cookies = parseCookies(next() ?? '');
   }
   return args;
 }
@@ -134,7 +154,8 @@ async function main() {
 
   if (!args.repo && !args.path) {
     console.error('Usage : npm run ingest -- --repo <owner/nom|url> | --path <répertoire>');
-    console.error('        [--url <app>] [--routes /,/login] [--key k] [--group G] [--icon i] [--insecure] [--dry-run]');
+    console.error('        [--url <app>] [--routes /,/login] [--key k] [--group G] [--icon i]');
+    console.error('        [--insecure] [--cookie "nom=valeur"] [--dry-run]');
     process.exit(2);
   }
 
@@ -210,12 +231,13 @@ async function main() {
 
   say('Captures');
   if (args.insecure) warn('--insecure : certificat TLS non vérifié. Réservé aux captures internes.');
+  if (args.cookies.length) ok(`session : ${args.cookies.map((c) => c.name).join(', ')}`);
   const outDir = path.resolve(STORAGE_ROOT, 'screenshots');
   let results;
   try {
     results = await captureRoutes({
       baseUrl: args.url, routes, moduleKey: key, outDir,
-      ignoreHttpsErrors: args.insecure,
+      ignoreHttpsErrors: args.insecure, cookies: args.cookies,
     });
     // PLAYWRIGHT_CHROMIUM_PATH est lu par captureRoutes si défini.
   } catch (error) {
@@ -228,8 +250,11 @@ async function main() {
   }
 
   for (const r of results) {
-    if (r.storagePath) ok(`${r.route} → ${r.storagePath}`);
-    else warn(`${r.route} — échec : ${r.error}`);
+    if (!r.storagePath) { warn(`${r.route} — échec : ${r.error}`); continue; }
+    ok(`${r.route} → ${r.storagePath}`);
+    // Redirigé veut presque toujours dire « pas de session » : la capture est
+    // techniquement réussie et montre un écran de connexion.
+    if (r.redirectedTo) warn(`  redirigé vers ${r.redirectedTo} — session absente ou expirée ?`);
   }
 
   const captured = results.filter((r) => r.storagePath);

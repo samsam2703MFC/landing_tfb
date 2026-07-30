@@ -139,6 +139,25 @@ npm run ingest -- --path /var/www/app/mon_module --url https://185.180.206.46/mo
 À réserver aux captures internes, et à retirer dès que l'application a un vrai
 certificat — c'est le drapeau qu'on oublie en place.
 
+### Photographier une application derrière une session
+
+La plupart des applications métier n'ont aucune page publique : sans session,
+chaque route redirige vers l'écran de connexion, qui répond 200. La capture
+réussit et montre un formulaire de login. Le rapport le signale — « redirigé vers
+… » — mais mieux vaut fournir une session :
+
+```bash
+TFB_CAPTURE_COOKIE='consultant_access_token=eyJhbGciOi…' \
+  npm run ingest -- --path /var/www/app/mon_module --url https://… --insecure
+```
+
+Copiez le cookie depuis les outils du navigateur, sur une session déjà ouverte.
+La syntaxe est celle de l'en-tête `Cookie` : `nom=valeur; autre=valeur`.
+
+Passez-le par l'**environnement**, pas par `--cookie` : un jeton de session en
+argument est lisible dans `ps` par n'importe quel utilisateur de la machine. Le
+drapeau existe pour le dépannage interactif, pas pour un cron.
+
 ## Dépôts privés
 
 `git clone` s'exécute sur le serveur, avec l'identité de l'utilisateur qui lance

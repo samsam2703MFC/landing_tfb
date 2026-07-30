@@ -38,6 +38,12 @@ export interface CaptureRequest {
    * son IP. Sans ce drapeau, Playwright refuse la page et la capture échoue.
    */
   ignoreHttpsErrors?: boolean;
+  /**
+   * Cookies à poser avant navigation. La plupart des applications métier n'ont
+   * aucune page publique : sans session, chaque route redirige vers l'écran de
+   * connexion et le carrousel finirait par montrer un formulaire de login.
+   */
+  cookies?: { name: string; value: string }[];
 }
 
 export interface CaptureResult {
@@ -45,6 +51,12 @@ export interface CaptureResult {
   /** Chemin relatif à stocker en base, ou null si la capture a échoué. */
   storagePath: string | null;
   error?: string;
+  /**
+   * URL réellement photographiée, renseignée seulement si elle diffère de la
+   * route demandée. Une redirection silencieuse vers /login est le seul moyen
+   * pour une capture d'être techniquement réussie et complètement fausse.
+   */
+  redirectedTo?: string;
 }
 
 export class PlaywrightMissing extends Error {
@@ -90,6 +102,11 @@ export async function captureRoutes(req: CaptureRequest): Promise<CaptureResult[
       ignoreHTTPSErrors: req.ignoreHttpsErrors ?? false,
     });
 
+    if (req.cookies?.length) {
+      const { hostname } = new URL(req.baseUrl);
+      await context.addCookies(req.cookies.map((c) => ({ ...c, domain: hostname, path: '/' })));
+    }
+
     for (const [i, route] of req.routes.entries()) {
       const target = new URL(route, req.baseUrl).toString();
       const page = await context.newPage();
@@ -107,11 +124,19 @@ export async function captureRoutes(req: CaptureRequest): Promise<CaptureResult[
 
         await page.waitForTimeout(settleMs);
 
+        // Une session absente ou expirée ne produit pas d'erreur : l'application
+        // redirige vers sa page de connexion, qui répond 200. On photographie
+        // quand même — mais on le dit, plutôt que de laisser passer un
+        // formulaire de login pour une capture produit.
+        const landed = new URL(page.url());
+        const asked = new URL(target);
+        const redirectedTo = landed.pathname !== asked.pathname ? page.url() : undefined;
+
         const filename = screenshotName(req.moduleKey, i + 1);
         const buffer = await page.screenshot({ type: 'png' });
         await writeFile(path.join(req.outDir, filename), buffer);
 
-        results.push({ route, storagePath: `/storage/screenshots/${filename}` });
+        results.push({ route, storagePath: `/storage/screenshots/${filename}`, redirectedTo });
       } catch (error) {
         results.push({ route, storagePath: null, error: error instanceof Error ? error.message : String(error) });
       } finally {
