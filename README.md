@@ -114,6 +114,10 @@ manifeste n'est touché que si vous passez `--retire-unlisted`, et seulement qua
 tous les dépôts ont répondu ; un groupe sans traduction `group.<valeur>` est
 signalé dans le rapport.
 
+Un dépôt qui n'a **pas encore** publié sa fiche est signalé et ignoré, sans faire
+échouer la commande — c'est un état connu, pas une panne. Une fiche **malformée ou
+injoignable**, elle, sort en code 1 : c'est ce qui doit réveiller quelqu'un.
+
 La liste des dépôts interrogés est `content/modules.repos.json`. Le workflow
 `.github/workflows/sync-modules.yml` valide les manifestes à chaque nuit (et écrit
 en base si le secret `DATABASE_URL` existe). Pour qu'un dépôt module déclenche la

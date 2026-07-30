@@ -282,6 +282,10 @@ async function main(): Promise<void> {
 
   const groups = new Set<string>();
   const synced: string[] = [];
+  // A repo that has not published a fiche yet is a known state, not a break — it is
+  // reported and the run stays green. A fiche that is malformed or unreachable is a
+  // break, and fails the run.
+  let missing = 0;
   let failures = 0;
 
   for (const entry of entries) {
@@ -289,8 +293,8 @@ async function main(): Promise<void> {
     try {
       const bytes = await readRepoFile(entry.repo, ref, MANIFEST_PATH, opts);
       if (!bytes) {
-        console.warn(`  ! ${entry.repo} : pas de ${MANIFEST_PATH} sur ${ref} — ignoré`);
-        failures += 1;
+        console.warn(`  – ${entry.repo} : pas encore de ${MANIFEST_PATH} sur ${ref} — ignoré`);
+        missing += 1;
         continue;
       }
       const manifest = parseManifest(JSON.parse(bytes.toString('utf8')), entry.repo);
@@ -308,8 +312,8 @@ async function main(): Promise<void> {
   // them off the landing — deactivated, not deleted, and only when every listed repo
   // answered, so one unreachable manifest can never empty the page.
   if (opts.retireUnlisted && !opts.dryRun && !opts.only) {
-    if (failures > 0) {
-      console.warn('  ! --retire-unlisted ignoré : un dépôt au moins est en échec');
+    if (failures > 0 || missing > 0) {
+      console.warn('  ! --retire-unlisted ignoré : un dépôt au moins n’a pas livré sa fiche');
     } else {
       const retired = await prisma.module.updateMany({
         where: { key: { notIn: synced }, isActive: true },
@@ -333,10 +337,12 @@ async function main(): Promise<void> {
     }
   }
 
-  if (failures > 0) {
-    console.error(`sync:modules — ${failures} dépôt(s) en échec.`);
-    process.exitCode = 1;
-  }
+  console.log(
+    `sync:modules — ${synced.length} module(s) traité(s)` +
+      (missing > 0 ? `, ${missing} sans fiche` : '') +
+      (failures > 0 ? `, ${failures} en échec` : ''),
+  );
+  if (failures > 0) process.exitCode = 1;
 }
 
 main()
