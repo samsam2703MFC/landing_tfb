@@ -121,7 +121,29 @@ case "$VIA" in
     ;;
   *)
     warn "Apache ne renvoie pas encore la réponse de l'app."
-    echo "   Journal dédié :  tail -n 30 /var/log/apache2/landing_tfb-error.log"
-    echo "   Vhost retenu  :  apache2ctl -S | grep -A1 '${IP}'"
+
+    # Une seule question tranche : notre vhost a-t-il vu la requête ? Il a son
+    # propre journal d'accès, donc la réponse est binaire.
+    say "Notre vhost a-t-il traité la requête ?"
+    if [ -s /var/log/apache2/landing_tfb-access.log ]; then
+      echo "   OUI — le vhost est retenu, c'est le ProxyPass qui ne s'applique pas :"
+      tail -n 5 /var/log/apache2/landing_tfb-access.log | sed 's/^/     /'
+      echo
+      echo "   Cherchez une RewriteRule globale qui passe devant :"
+      echo "     grep -rn 'RewriteRule\|RewriteEngine' /etc/apache2/conf-enabled/ /etc/apache2/apache2.conf"
+    else
+      echo "   NON — journal d'accès vide : un autre vhost capte les requêtes vers ${IP}."
+      echo
+      echo "   Vhosts en écoute sur 443 :"
+      apache2ctl -S 2>/dev/null | grep -i "443\|namevhost\|default server" | sed "s/^/     /"
+      echo
+      echo "   Un vhost dont le ServerName ou le ServerAlias vaut déjà ${IP} passerait"
+      echo "   devant s'il est chargé en premier :"
+      echo "     grep -rn '${IP}' /etc/apache2/sites-enabled/"
+    fi
+
+    say "Journal d'erreurs dédié"
+    tail -n 20 /var/log/apache2/landing_tfb-error.log 2>/dev/null | sed 's/^/   /' \
+      || echo "   (vide — aucune erreur enregistrée par ce vhost)"
     ;;
 esac
