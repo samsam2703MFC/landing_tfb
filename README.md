@@ -40,6 +40,7 @@ npm run dev
 
 - Landing: http://localhost:3000 (redirects to your best matching locale)
 - Back office: http://localhost:3000/admin
+- Health check: http://localhost:3000/api/health — `{"ok":true,"db":"up","seeded":true}`
 - Seeded account: `admin@franchisebuddy.eu` / `changeme` — **change it.** Override with
   `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` before seeding.
 
@@ -183,6 +184,12 @@ no database calls. **The app has not been run against a live MySQL** — no data
 reachable from the machine it was built on, so the migration, the seed and the rendered
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
+
+## Deploying
+
+See **[DEPLOY.md](DEPLOY.md)**. The app runs on the same host as MySQL, because the
+database only listens on `localhost` — a serverless host could not reach it without
+exposing MySQL to the internet. `deploy/` carries a systemd unit and an nginx config.
 
 ## Known gaps
 
