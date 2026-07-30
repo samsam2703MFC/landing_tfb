@@ -165,13 +165,19 @@ Apache répond déjà sur le 443. Il lui manque seulement la règle qui envoie
 `/landing_tfb` vers l'app :
 
 ```bash
+sudo cp deploy/apache-landing_tfb.conf /etc/apache2/conf-available/landing_tfb.conf
 sudo a2enmod proxy proxy_http headers
-# collez le bloc de deploy/apache.conf.example dans le <VirtualHost *:443> existant
+sudo a2enconf landing_tfb
 sudo apache2ctl configtest && sudo systemctl reload apache2
 ```
 
-Le bloc va **dans le vhost 443 existant**, pas dans un nouveau — deux vhosts sur
-le même port se disputeraient les requêtes.
+Ce sont des **directives Apache** : elles vont dans un fichier de configuration,
+jamais tapées dans le shell — `ProxyPass` n'est pas une commande.
+
+Le fichier atterrit dans `conf-available/`, donc **votre vhost existant n'est pas
+touché** : les directives s'appliquent à tous les vhosts, et seul le chemin
+`/landing_tfb` est concerné. Pour revenir en arrière :
+`sudo a2disconf landing_tfb && sudo systemctl reload apache2`.
 
 Pour un vrai domaine plus tard : `sudo certbot --apache -d votre-domaine.eu`.
 
@@ -188,7 +194,7 @@ Toujours **depuis le serveur d'abord** — ça sépare un problème d'app d'un p
 de proxy :
 
 ```bash
-curl -s http://127.0.0.1:3000/landing_tfb/api/health
+curl -sS http://127.0.0.1:3000/landing_tfb/api/health
 ```
 
 | Réponse | Diagnostic |

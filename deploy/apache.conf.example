@@ -54,7 +54,7 @@
 # Le 404 vient d'Apache, pas de l'app. Deux causes possibles, à distinguer
 # DEPUIS LE SERVEUR :
 #
-#   curl -s http://127.0.0.1:3000/landing_tfb/api/health
+#   curl -sS http://127.0.0.1:3000/landing_tfb/api/health
 #
 #   • Réponse {"ok":true,...}  → l'app tourne, c'est Apache qui ne proxifie pas.
 #                                 Appliquez le bloc ci-dessus.
