@@ -37,6 +37,35 @@ ok()   { printf '   \033[32m✓\033[0m %s\n' "$*"; }
 warn() { printf '   \033[33m!\033[0m %s\n' "$*"; }
 die()  { printf '\n\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 
+# Coller un bloc de commandes envoie les lignes suivantes dans la première
+# invite rencontrée : elles deviennent la réponse. On vide ce qui traîne avant
+# de demander quoi que ce soit.
+drain() { local junk; while IFS= read -r -t 0.05 junk 2>/dev/null; do :; done; }
+
+# Un identifiant MySQL ne contient ni espace ni métacaractère de shell. Si c'en
+# est un, c'est une ligne collée par erreur, pas une réponse.
+valid_ident() { [ -n "$1" ] && ! printf '%s' "$1" | grep -qE '[[:space:]&;|<>$`]'; }
+
+ask() {  # ask VAR "invite" [valeur par défaut]
+  local __var="$1" __prompt="$2" __default="${3:-}" __in
+  while :; do
+    drain
+    read -rp "$__prompt" __in || die "Saisie interrompue."
+    [ -z "$__in" ] && __in="$__default"
+    if valid_ident "$__in"; then printf -v "$__var" '%s' "$__in"; return 0; fi
+    warn "« $__in » n'est pas un identifiant valide — ligne collée par erreur ?"
+  done
+}
+
+ask_secret() {  # ask_secret VAR "invite"
+  local __var="$1" __prompt="$2" __in
+  drain
+  read -rsp "$__prompt" __in || die "Saisie interrompue."
+  echo
+  [ -n "$__in" ] || die "Mot de passe vide."
+  printf -v "$__var" '%s' "$__in"
+}
+
 [ "$(id -u)" -eq 0 ] || die "À lancer en root (sudo bash $0)."
 
 # --- 1. Préalables ----------------------------------------------------------
@@ -70,9 +99,8 @@ if mysql -N -B -e 'SELECT 1' >/dev/null 2>&1; then
   ok "connexion administrateur sans mot de passe (auth socket)"
 else
   warn "MySQL demande une authentification."
-  read -rp  "   Utilisateur administrateur MySQL [root] : " MYSQL_ADMIN_USER
-  MYSQL_ADMIN_USER="${MYSQL_ADMIN_USER:-root}"
-  read -rsp "   Mot de passe de '$MYSQL_ADMIN_USER' : " MYSQL_ADMIN_PASS; echo
+  ask MYSQL_ADMIN_USER "   Utilisateur administrateur MySQL [root] : " root
+  ask_secret MYSQL_ADMIN_PASS "   Mot de passe de '$MYSQL_ADMIN_USER' : "
 
   # Fichier d'options plutôt que --password= : un mot de passe en argument est
   # lisible par tout le monde dans `ps`.
@@ -151,12 +179,9 @@ else
 
   # Jamais en argument : un mot de passe dans argv est visible dans `ps` et
   # reste dans l'historique du shell.
-  read -rsp "   Mot de passe à créer pour l'utilisateur MySQL '$DB_USER' : " DB_PASSWORD; echo
-  [ -n "$DB_PASSWORD" ] || die "Mot de passe vide."
-  read -rsp "   Mot de passe du compte back office à créer : " ADMIN_PASSWORD; echo
-  [ -n "$ADMIN_PASSWORD" ] || die "Mot de passe vide."
-  read -rp  "   E-mail du compte back office : " ADMIN_EMAIL
-  [ -n "$ADMIN_EMAIL" ] || die "E-mail vide."
+  ask_secret DB_PASSWORD "   Mot de passe à créer pour l'utilisateur MySQL '$DB_USER' : "
+  ask_secret ADMIN_PASSWORD "   Mot de passe du compte back office à créer : "
+  ask ADMIN_EMAIL "   E-mail du compte back office : "
 
   # Le compte d'abord : si cette étape échoue, aucun fichier n'est écrit et le
   # relancer repart d'un état propre.
@@ -220,9 +245,8 @@ else
   warn "Le compte '${APP_DB_USER}' ne peut pas ouvrir ${DB_NAME}."
   echo "   Indiquez un compte MySQL qui a déjà les droits sur ${DB_NAME}"
   echo "   (celui de phpMyAdmin convient). DATABASE_URL sera réécrite."
-  read -rp  "   Utilisateur [${MYSQL_ADMIN_USER:-$APP_DB_USER}] : " NEW_DB_USER
-  NEW_DB_USER="${NEW_DB_USER:-${MYSQL_ADMIN_USER:-$APP_DB_USER}}"
-  read -rsp "   Mot de passe de '$NEW_DB_USER' : " NEW_DB_PASS; echo
+  ask NEW_DB_USER "   Utilisateur [${MYSQL_ADMIN_USER:-$APP_DB_USER}] : " "${MYSQL_ADMIN_USER:-$APP_DB_USER}"
+  ask_secret NEW_DB_PASS "   Mot de passe de '$NEW_DB_USER' : "
 
   db_can_connect "$NEW_DB_USER" "$NEW_DB_PASS" \
     || die "'${NEW_DB_USER}' ne peut pas ouvrir ${DB_NAME} non plus. Vérifiez les droits dans phpMyAdmin."
