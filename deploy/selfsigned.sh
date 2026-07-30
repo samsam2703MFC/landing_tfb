@@ -11,6 +11,19 @@
 set -euo pipefail
 HOST="${1:?usage: selfsigned.sh <ip-ou-hote>}"
 DIR=/etc/ssl/tfb
+
+# Ce script écrit une configuration nginx. Sur une machine Apache il déposerait
+# un fichier que personne ne lit, en laissant croire que c'est réglé.
+if ! command -v nginx >/dev/null 2>&1; then
+  if command -v apache2 >/dev/null 2>&1 || command -v httpd >/dev/null 2>&1; then
+    echo "Apache détecté, pas nginx." >&2
+    echo "Apache sert déjà le 443 : vous avez donc déjà du TLS, ce script est inutile." >&2
+    echo "Il vous manque seulement la règle de proxy — voir deploy/apache.conf.example." >&2
+    exit 1
+  fi
+  echo "Ni nginx ni Apache trouvé." >&2
+  exit 1
+fi
 mkdir -p "$DIR"
 
 openssl req -x509 -nodes -newkey rsa:2048 -days 365 \

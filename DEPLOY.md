@@ -6,7 +6,8 @@ port 3306 est bien fermé depuis l'extérieur). Un hébergeur serverless — Ver
 ne pourrait l'atteindre qu'en exposant MySQL sur Internet. En restant sur le VPS,
 `DATABASE_URL` pointe sur `localhost` et la base ne sort jamais de la machine.
 
-Cible : Node ≥ 20, MySQL 8, nginx en frontal, systemd pour le service.
+Cible : Node ≥ 20, MySQL 8, **Apache 2.4** en frontal (c'est ce qui tourne sur le
+serveur — il sert déjà phpMyAdmin sur le 443), systemd pour le service.
 
 ## En une commande
 
@@ -158,15 +159,23 @@ connexion au back office échoue sans message. Dans ce cas seulement, ajoutez
 `ALLOW_INSECURE_COOKIES=true` à `/etc/tfb-landing.env` — et retirez-la dès que HTTPS est
 en place, sinon le cookie de session circule en clair.
 
-## 7. Le frontal et le certificat
+## 7. Le frontal (Apache)
+
+Apache répond déjà sur le 443. Il lui manque seulement la règle qui envoie
+`/landing_tfb` vers l'app :
 
 ```bash
-sudo cp deploy/nginx.conf.example /etc/nginx/sites-available/tfb-landing
-# éditez server_name
-sudo ln -s /etc/nginx/sites-available/tfb-landing /etc/nginx/sites-enabled/
-sudo nginx -t && sudo systemctl reload nginx
-sudo certbot --nginx -d votre-domaine.eu -d www.votre-domaine.eu
+sudo a2enmod proxy proxy_http headers
+# collez le bloc de deploy/apache.conf.example dans le <VirtualHost *:443> existant
+sudo apache2ctl configtest && sudo systemctl reload apache2
 ```
+
+Le bloc va **dans le vhost 443 existant**, pas dans un nouveau — deux vhosts sur
+le même port se disputeraient les requêtes.
+
+Pour un vrai domaine plus tard : `sudo certbot --apache -d votre-domaine.eu`.
+
+`deploy/nginx.conf.example` reste fourni si vous migrez un jour vers nginx.
 
 **Il faut un nom de domaine.** On ne peut pas obtenir de certificat pour une adresse IP
 nue — c'est exactement pourquoi `https://185.180.206.46/` affiche une erreur de nom. Et
@@ -175,13 +184,22 @@ ce que le code exige en production.
 
 ## 8. Vérifier
 
+Toujours **depuis le serveur d'abord** — ça sépare un problème d'app d'un problème
+de proxy :
+
 ```bash
-curl -s https://votre-domaine.eu/api/health
-# {"ok":true,"db":"up","seeded":true}
+curl -s http://127.0.0.1:3000/landing_tfb/api/health
 ```
 
-- `db: "down"` → `DATABASE_URL`, le compte MySQL, ou les droits.
-- `seeded: false` → la base répond mais le seed n'a pas tourné (étape 5).
+| Réponse | Diagnostic |
+| --- | --- |
+| `{"ok":true,"db":"up","seeded":true}` | L'app va bien. Un 404 depuis l'extérieur = Apache ne proxifie pas (étape 7). |
+| Connexion refusée | L'app ne tourne pas. `systemctl status tfb-landing`, `journalctl -u tfb-landing -n 50`. |
+| 404 sur le port 3000 | Buildée sans le sous-chemin. `sudo BASE_PATH_CFG=/landing_tfb bash bootstrap.sh`. |
+| `db: "down"` | `DATABASE_URL`, le compte MySQL, ou les droits. |
+| `seeded: false` | La base répond mais le seed n'a pas tourné (étape 5). |
+
+Puis depuis l'extérieur : `curl -sk https://185.180.206.46/landing_tfb/api/health`.
 
 Puis à la main :
 
