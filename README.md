@@ -185,6 +185,25 @@ reachable from the machine it was built on, so the migration, the seed and the r
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
 
+## The morning routine
+
+`prompt_technique_tfb.md` §6: a repository becomes a module on the landing without
+anyone typing its copy into a form.
+
+```bash
+npm run ingest -- --repo owner/name --url https://the-app.example.com
+```
+
+It reads `tfb-module.json` from the repository root, upserts `tfb_modules`, writes
+`tfb_translations` for every locale the file declares, screenshots the declared
+routes with Playwright into `<STORAGE_PATH>/screenshots/`, and fills
+`tfb_module_screenshots`. Idempotent — a second run updates rather than duplicates,
+and replaces the carousel instead of appending to it.
+
+A module with no French name is created **inactive**: absent from the landing
+rather than showing a technical key. Playwright is optional and only needed for
+`--url`. The contract is documented in [docs/tfb-module.schema.md](docs/tfb-module.schema.md).
+
 ## Deploying
 
 See **[DEPLOY.md](DEPLOY.md)**. The app runs on the same host as MySQL, because the

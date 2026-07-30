@@ -1,0 +1,20 @@
+{
+  "key": "scan",
+  "group": "Logistique",
+  "icon": "qr-code",
+  "routes": ["/", "/receptions", "/inventaire"],
+  "content": {
+    "fr": {
+      "name": "Scan",
+      "description": "Réceptions et inventaires au QR code, depuis un téléphone.",
+      "bullets": [
+        "Réception fournisseur au QR code",
+        "Inventaire tournant depuis un téléphone",
+        "Écarts remontés au responsable réseau",
+        "Fonctionne hors ligne"
+      ],
+      "metricValue": "12 min",
+      "metricLabel": "par inventaire"
+    }
+  }
+}
