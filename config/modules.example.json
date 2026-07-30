@@ -1,0 +1,46 @@
+{
+  "_": [
+    "La liste des dépôts que la routine matinale ingère. Copiez ce fichier en",
+    "config/modules.json — il est ignoré par git, parce qu'il décrit votre",
+    "infrastructure et pas le produit.",
+    "",
+    "Aucun secret ici. Un cookie de session se déclare par le NOM de la variable",
+    "d'environnement qui le porte (cookieEnv), jamais par sa valeur : ce fichier",
+    "est lisible par tout le monde sur le serveur, un jeton ne l'est pas.",
+    "",
+    "Lancer : npm run ingest:all -- --dry-run"
+  ],
+
+  "defaults": {
+    "insecure": false
+  },
+
+  "modules": [
+    {
+      "repo": "samsam2703MFC/pwa_consultant",
+      "path": "/var/www/app/pwa_consultant",
+      "url": "https://185.180.206.46/pwa_consultant",
+      "insecure": true,
+      "cookieEnv": "TFB_COOKIE_CONSULTANT"
+    },
+
+    {
+      "_comment": "Sans path : la routine clone le dépôt. Il faut alors que l'utilisateur qui lance la routine puisse le cloner.",
+      "repo": "samsam2703MFC/tfb-scan",
+      "url": "https://185.180.206.46/scan",
+      "insecure": true,
+      "routes": ["/", "/receptions"]
+    },
+
+    {
+      "_comment": "Contenu seul, sans captures : pas d'url.",
+      "repo": "samsam2703MFC/tfb-invoicing"
+    },
+
+    {
+      "_comment": "enabled: false le sort de la tournée sans le supprimer de la liste.",
+      "repo": "samsam2703MFC/tfb-ceobot",
+      "enabled": false
+    }
+  ]
+}

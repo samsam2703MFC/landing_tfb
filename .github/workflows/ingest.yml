@@ -1,0 +1,121 @@
+name: Ingest modules
+
+# La routine matinale de prompt_technique_tfb.md §6, déclenchée de trois façons.
+on:
+  schedule:
+    # 6 h 15 UTC. La tournée complète, tous les dépôts de config/modules.json.
+    - cron: '15 6 * * *'
+
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Un seul dépôt (owner/nom). Vide = la tournée complète.'
+        required: false
+        type: string
+      dry_run:
+        description: 'Simuler — affiche ce qui serait écrit, sans rien écrire.'
+        required: false
+        default: false
+        type: boolean
+
+  # Déclenché par les dépôts de modules eux-mêmes, à chaque fois que leur
+  # tfb-module.json change. Voir deploy/module-repo-workflow.yml : c'est ce qui
+  # permet à quinze dépôts de se publier sans attendre 6 h 15.
+  repository_dispatch:
+    types: [module-updated]
+
+concurrency:
+  # Deux tournées simultanées écriraient les mêmes lignes et se voleraient le
+  # navigateur. On sérialise sans annuler : une ingestion en cours va au bout.
+  group: ingest-modules
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    name: Tournée
+    runs-on: ubuntu-latest
+    environment: production
+
+    steps:
+      - name: Vérifier les secrets
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          missing=()
+          [ -n "$HOST" ] || missing+=(SSH_HOST)
+          [ -n "$USER" ] || missing+=(SSH_USER)
+          [ -n "$KEY" ]  || missing+=(SSH_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Secrets manquants : ${missing[*]} — Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: Préparer SSH
+        env:
+          KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          HOST: ${{ secrets.SSH_HOST }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            echo "::warning::SSH_KNOWN_HOSTS absent — l'identité du serveur n'est pas vérifiée."
+            ssh-keyscan -p "${PORT:-22}" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Choisir la portée
+        id: scope
+        env:
+          # Sur repository_dispatch, le dépôt émetteur se nomme dans sa charge utile.
+          DISPATCH_REPO: ${{ github.event.client_payload.repo }}
+          INPUT_ONLY: ${{ inputs.only }}
+          INPUT_DRY: ${{ inputs.dry_run }}
+        run: |
+          only="${INPUT_ONLY:-$DISPATCH_REPO}"
+          # Un nom de dépôt vient de l'extérieur : on ne laisse passer que la
+          # forme attendue, sinon il finirait dans une ligne de commande distante.
+          if [ -n "$only" ] && ! printf '%s' "$only" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
+            echo "::error::Nom de dépôt refusé : « $only » — attendu owner/nom."
+            exit 1
+          fi
+          echo "only=$only" >> "$GITHUB_OUTPUT"
+          [ "$INPUT_DRY" = "true" ] && echo "dry=--dry-run" >> "$GITHUB_OUTPUT" || echo "dry=" >> "$GITHUB_OUTPUT"
+          echo "::notice::Portée : ${only:-tournée complète}${INPUT_DRY:+ (simulation)}"
+
+      - name: Ingérer
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+          APP_DIR: ${{ vars.APP_DIR || '/srv/tfb-landing' }}
+          APP_USER: ${{ vars.APP_USER || 'tfb' }}
+          ONLY: ${{ steps.scope.outputs.only }}
+          DRY: ${{ steps.scope.outputs.dry }}
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" \
+              APP_DIR="$APP_DIR" APP_USER="$APP_USER" ONLY="$ONLY" DRY="$DRY" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          # Les secrets — base de données, cookies de capture — vivent dans ce
+          # fichier sur le serveur. Le runner GitHub ne les voit jamais.
+          set -a; . /etc/tfb-landing.env; set +a
+
+          args=()
+          [ -n "${ONLY:-}" ] && args+=(--only "$ONLY")
+          [ -n "${DRY:-}" ] && args+=("$DRY")
+
+          sudo -u "$APP_USER" --preserve-env \
+            npm run ingest:all -- "${args[@]}"
+          REMOTE
+
+      - name: Nettoyer
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

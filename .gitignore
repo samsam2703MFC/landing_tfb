@@ -10,3 +10,7 @@ next-env.d.ts
 storage/
 .DS_Store
 npm-debug.log*
+
+# La liste des dépôts de la tournée : elle décrit votre infrastructure,
+# pas le produit. Partez de config/modules.example.json.
+/config/modules.json

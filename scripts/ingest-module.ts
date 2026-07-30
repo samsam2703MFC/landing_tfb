@@ -19,7 +19,7 @@
  * d'y afficher une clé technique.
  */
 import { PrismaClient } from '@prisma/client';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -93,31 +93,63 @@ function parseArgs(argv: string[]): Args {
 const say = (m: string) => console.log(`\n\x1b[1m== ${m}\x1b[0m`);
 const ok = (m: string) => console.log(`   \x1b[32m✓\x1b[0m ${m}`);
 const warn = (m: string) => console.log(`   \x1b[33m!\x1b[0m ${m}`);
+const bad = (m: string) => console.log(`   \x1b[31m\u2717\x1b[0m ${m}`);
 
 /**
  * Lit tfb-module.json : depuis un répertoire local s'il y en a un, sinon depuis
  * un clone superficiel. Le clone est supprimé dans tous les cas ; un répertoire
  * local n'est jamais touché.
  */
-async function readManifest(repo: RepoRef): Promise<{ manifest: ModuleManifest; found: boolean }> {
+type SourceStatus = 'ok' | 'no-manifest' | 'unreadable';
+
+async function readManifest(repo: RepoRef): Promise<{ manifest: ModuleManifest; status: SourceStatus }> {
   let dir = repo.localPath;
   let temporary: string | null = null;
 
   try {
-    if (!dir) {
+    // 1. Atteindre la source. Un échec ici est une panne — dépôt renommé,
+    //    droits perdus, répertoire disparu — jamais un état publiable.
+    if (dir) {
+      const info = await stat(dir).catch(() => null);
+      if (!info?.isDirectory()) {
+        bad(`Répertoire introuvable : ${dir}`);
+        return { manifest: {}, status: 'unreadable' };
+      }
+    } else {
       temporary = await mkdtemp(path.join(tmpdir(), 'tfb-ingest-'));
       dir = temporary;
-      await run('git', ['clone', '--depth', '1', '--quiet', repo.cloneUrl, dir], { timeout: 120_000 });
+      try {
+        await run('git', ['clone', '--depth', '1', '--quiet', repo.cloneUrl, dir], { timeout: 120_000 });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        bad(`Dépôt injoignable : ${message.split('\n')[0]}`);
+        return { manifest: {}, status: 'unreadable' };
+      }
     }
-    const raw = await readFile(path.join(dir, 'tfb-module.json'), 'utf8');
-    const { manifest, issues } = validateManifest(JSON.parse(raw));
+
+    // 2. Lire le manifeste. Son absence est légitime : le dépôt existe, il n'a
+    //    simplement pas encore déclaré sa fiche.
+    let raw: string;
+    try {
+      raw = await readFile(path.join(dir, 'tfb-module.json'), 'utf8');
+    } catch {
+      warn(`Pas de tfb-module.json dans ${repo.localPath ?? 'le dépôt'}.`);
+      return { manifest: {}, status: 'no-manifest' };
+    }
+
+    // 3. Un manifeste présent mais illisible est une faute à corriger, pas un
+    //    brouillon à publier.
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      bad(`tfb-module.json illisible : ${error instanceof Error ? error.message : String(error)}`);
+      return { manifest: {}, status: 'unreadable' };
+    }
+
+    const { manifest, issues } = validateManifest(parsed);
     for (const issue of issues) warn(`tfb-module.json — ${issue.message}`);
-    return { manifest, found: true };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (/ENOENT/.test(message)) warn(`Pas de tfb-module.json dans ${repo.localPath ?? 'le dépôt'}.`);
-    else warn(`Source illisible : ${message.split('\n')[0]}`);
-    return { manifest: {}, found: false };
+    return { manifest, status: 'ok' };
   } finally {
     if (temporary) await rm(temporary, { recursive: true, force: true });
   }
@@ -175,8 +207,15 @@ async function main() {
   ok(repo.localPath ? `${repo.localPath} (répertoire local)` : repo.slugPath);
 
   say('Manifeste');
-  const { manifest, found } = await readManifest(repo);
-  if (found) ok('tfb-module.json lu');
+  const { manifest, status } = await readManifest(repo);
+  if (status === 'ok') ok('tfb-module.json lu');
+  // Rien n'est écrit sur une source qu'on n'a pas pu lire. Sur une tournée de
+  // quinze dépôts, l'inverse créerait une ligne fantôme par dépôt renommé — et
+  // le rapport annoncerait tout vert.
+  if (status === 'unreadable') {
+    console.error('\nAucune écriture : la source n\'a pas pu être lue.');
+    process.exit(1);
+  }
 
   const key = args.key || manifest.key || toModuleKey(repo.name);
   const slug = manifest.slug || key;

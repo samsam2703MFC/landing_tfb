@@ -207,6 +207,25 @@ A module with no French name is created **inactive**: absent from the landing
 rather than showing a technical key. Playwright is optional and only needed for
 `--url`. The contract is documented in [docs/tfb-module.schema.md](docs/tfb-module.schema.md).
 
+### At fifteen repositories
+
+One repository at a time is a convenience; fifteen is the only way the site stays
+accurate. List them in `config/modules.json` (start from the `.example`) and run
+the whole tour:
+
+```bash
+npm run ingest:all -- --dry-run     # shows everything, writes nothing
+npm run ingest:all                  # the whole tour
+npm run ingest:all -- --only owner/name
+```
+
+Each repository runs in its own process, sequentially, so one bad manifest cannot
+take the other fourteen down — and an unreachable repository is a **failure**, not
+a silently-created draft row. `.github/workflows/ingest.yml` runs the tour at
+06:15 UTC and on demand; `deploy/module-repo-workflow.yml` drops into each module
+repository so it publishes the moment its manifest changes. Full setup in
+[docs/modules-automation.md](docs/modules-automation.md).
+
 ## Deploying
 
 See **[DEPLOY.md](DEPLOY.md)**. The app runs on the same host as MySQL, because the

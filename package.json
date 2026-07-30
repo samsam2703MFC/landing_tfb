@@ -14,7 +14,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "seed": "tsx prisma/seed.ts",
     "ingest": "tsx scripts/ingest-module.ts",
-    "test:scripts": "tsx scripts/__tests__/module-meta.test.ts && tsx scripts/__tests__/manifest-clone.test.ts"
+    "ingest:all": "tsx scripts/ingest-all.ts",
+    "test:scripts": "tsx scripts/__tests__/module-meta.test.ts && tsx scripts/__tests__/manifest-clone.test.ts && tsx scripts/__tests__/module-list.test.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
