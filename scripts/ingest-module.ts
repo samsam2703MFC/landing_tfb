@@ -25,8 +25,8 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
-  parseRepo, toModuleKey, validateManifest, DEFAULT_ICON,
-  type ModuleManifest,
+  parseRepo, localRepo, toModuleKey, validateManifest, DEFAULT_ICON,
+  type ModuleManifest, type RepoRef,
 } from './lib/module-meta';
 import { captureRoutes, PlaywrightMissing } from './lib/capture';
 import { deleteUpload } from '../src/lib/storage';
@@ -40,6 +40,7 @@ const LIST_SEPARATOR = '|';
 
 interface Args {
   repo?: string;
+  path?: string;
   url?: string;
   routes?: string;
   key?: string;
@@ -55,6 +56,7 @@ function parseArgs(argv: string[]): Args {
     const a = argv[i];
     const next = () => argv[++i];
     if (a === '--repo') args.repo = next();
+    else if (a === '--path') args.path = next();
     else if (a === '--url') args.url = next();
     else if (a === '--routes') args.routes = next();
     else if (a === '--key') args.key = next();
@@ -70,23 +72,32 @@ const say = (m: string) => console.log(`\n\x1b[1m== ${m}\x1b[0m`);
 const ok = (m: string) => console.log(`   \x1b[32m✓\x1b[0m ${m}`);
 const warn = (m: string) => console.log(`   \x1b[33m!\x1b[0m ${m}`);
 
-/** Lit tfb-module.json dans un clone superficiel du dépôt. */
-async function readManifest(cloneUrl: string): Promise<{ manifest: ModuleManifest; found: boolean }> {
-  const dir = await mkdtemp(path.join(tmpdir(), 'tfb-ingest-'));
+/**
+ * Lit tfb-module.json : depuis un répertoire local s'il y en a un, sinon depuis
+ * un clone superficiel. Le clone est supprimé dans tous les cas ; un répertoire
+ * local n'est jamais touché.
+ */
+async function readManifest(repo: RepoRef): Promise<{ manifest: ModuleManifest; found: boolean }> {
+  let dir = repo.localPath;
+  let temporary: string | null = null;
+
   try {
-    // --depth 1 --filter=blob:none : on ne veut qu'un fichier, pas l'historique.
-    await run('git', ['clone', '--depth', '1', '--quiet', cloneUrl, dir], { timeout: 120_000 });
+    if (!dir) {
+      temporary = await mkdtemp(path.join(tmpdir(), 'tfb-ingest-'));
+      dir = temporary;
+      await run('git', ['clone', '--depth', '1', '--quiet', repo.cloneUrl, dir], { timeout: 120_000 });
+    }
     const raw = await readFile(path.join(dir, 'tfb-module.json'), 'utf8');
     const { manifest, issues } = validateManifest(JSON.parse(raw));
     for (const issue of issues) warn(`tfb-module.json — ${issue.message}`);
     return { manifest, found: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (/ENOENT/.test(message)) warn('Pas de tfb-module.json à la racine du dépôt.');
-    else warn(`Dépôt illisible : ${message.split('\n')[0]}`);
+    if (/ENOENT/.test(message)) warn(`Pas de tfb-module.json dans ${repo.localPath ?? 'le dépôt'}.`);
+    else warn(`Source illisible : ${message.split('\n')[0]}`);
     return { manifest: {}, found: false };
   } finally {
-    await rm(dir, { recursive: true, force: true });
+    if (temporary) await rm(temporary, { recursive: true, force: true });
   }
 }
 
@@ -119,22 +130,29 @@ async function writeTranslations(moduleId: number, manifest: ModuleManifest): Pr
 async function main() {
   const args = parseArgs(process.argv.slice(2));
 
-  if (!args.repo) {
-    console.error('Usage : npm run ingest -- --repo <owner/nom|url> [--url <app>] [--routes /,/login] [--dry-run]');
+  if (!args.repo && !args.path) {
+    console.error('Usage : npm run ingest -- --repo <owner/nom|url> | --path <répertoire>');
+    console.error('        [--url <app>] [--routes /,/login] [--key k] [--group G] [--icon i] [--dry-run]');
     process.exit(2);
   }
 
-  const repo = parseRepo(args.repo);
-  if (!repo) {
-    console.error(`Dépôt non reconnu : « ${args.repo} ». Attendu : owner/nom, une URL https, ou git@host:owner/nom.`);
-    process.exit(2);
+  let repo: RepoRef | null;
+  if (args.path) {
+    // Le code est déjà sur la machine : pas de clone, pas d'identifiants.
+    repo = localRepo(args.path, args.repo);
+  } else {
+    repo = parseRepo(args.repo!);
+    if (!repo) {
+      console.error(`Dépôt non reconnu : « ${args.repo} ». Attendu : owner/nom, une URL https, ou git@host:owner/nom.`);
+      process.exit(2);
+    }
   }
 
-  say('Dépôt');
-  ok(`${repo.slugPath}`);
+  say('Source');
+  ok(repo.localPath ? `${repo.localPath} (répertoire local)` : repo.slugPath);
 
   say('Manifeste');
-  const { manifest, found } = await readManifest(repo.cloneUrl);
+  const { manifest, found } = await readManifest(repo);
   if (found) ok('tfb-module.json lu');
 
   const key = args.key || manifest.key || toModuleKey(repo.name);

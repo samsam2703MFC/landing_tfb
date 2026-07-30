@@ -192,6 +192,9 @@ anyone typing its copy into a form.
 
 ```bash
 npm run ingest -- --repo owner/name --url https://the-app.example.com
+
+# Or, when the module's code is already on the server — no clone, no credentials
+npm run ingest -- --path /var/www/app/the-module --repo owner/name
 ```
 
 It reads `tfb-module.json` from the repository root, upserts `tfb_modules`, writes

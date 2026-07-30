@@ -84,9 +84,26 @@ npm run ingest -- --repo owner/nom --url https://atelier.tfbuddy.com
 # Routes explicites, sans toucher au manifeste
 npm run ingest -- --repo owner/nom --url http://localhost:3001 --routes /,/login
 
+# Depuis un répertoire déjà sur la machine — ni clone, ni identifiants
+npm run ingest -- --path /var/www/app/mon_module --repo owner/nom
+
 # Voir ce qui serait écrit, sans rien écrire
 npm run ingest -- --repo owner/nom --dry-run
 ```
+
+`--path` lit le manifeste dans un répertoire local au lieu de cloner. Le code
+d'un module tourne le plus souvent déjà sur le serveur : exiger un accès distant
+pour lire un fichier qui est là serait absurde, et c'est la seule voie pour un
+dépôt privé auquel la machine n'a pas accès. Le répertoire n'est **jamais**
+modifié ni supprimé — il est ouvert en lecture seule.
+
+`--repo` reste utile à côté de `--path` : c'est ce qui est écrit dans
+`tfb_modules.repo`, la trace de la provenance. Sans lui, la colonne prend le nom
+du répertoire.
+
+**Toujours commencer par `--dry-run`.** Il affiche la clé déduite, le groupe,
+l'icône et le contenu par locale sans écrire une ligne. La clé étant immuable
+après publication, c'est le moment de la corriger avec `--key`.
 
 Idempotent : relancée sur le même dépôt, la routine met à jour au lieu de
 dupliquer, et **remplace** les captures au lieu de les empiler.
@@ -122,7 +139,14 @@ cloner — clé de déploiement dans son `~/.ssh`, ou jeton dans un
 sudo -u tfb git clone --depth 1 <url> /tmp/essai && rm -rf /tmp/essai
 ```
 
-Si ça échoue, la routine signalera « Dépôt illisible » et n'écrira rien.
+Si ça échoue, la routine signalera « Source illisible » et n'écrira rien.
+
+Plus simple quand le code est déjà déployé : ne clonez pas du tout, pointez le
+répertoire.
+
+```bash
+npm run ingest -- --path /var/www/app/mon_module --repo owner/nom
+```
 
 ## En cron
 

@@ -19,6 +19,25 @@ export interface RepoRef {
   name: string;
   owner: string;
   cloneUrl: string;
+  /**
+   * Répertoire déjà présent sur la machine, à lire au lieu de cloner. Le code
+   * d'un module tourne souvent déjà sur le serveur : inutile d'exiger un accès
+   * distant et des identifiants pour lire un fichier qui est là.
+   */
+  localPath?: string;
+}
+
+/** Source locale : le dépôt est un répertoire, pas une URL. */
+export function localRepo(dir: string, repoLabel?: string): RepoRef {
+  const name = dir.replace(/\/+$/, '').split('/').pop() || 'module';
+  const label = repoLabel || name;
+  return {
+    owner: label.includes('/') ? label.split('/')[0]! : 'local',
+    name,
+    slugPath: label,
+    cloneUrl: dir,
+    localPath: dir,
+  };
 }
 
 /**

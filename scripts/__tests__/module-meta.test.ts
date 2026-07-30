@@ -1,4 +1,4 @@
-import { parseRepo, toModuleKey, validateManifest, screenshotName } from '../lib/module-meta';
+import { parseRepo, localRepo, toModuleKey, validateManifest, screenshotName } from '../lib/module-meta';
 let fail = 0;
 const eq = (label: string, got: unknown, want: unknown) => {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -13,6 +13,16 @@ eq('ssh',         parseRepo('git@github.com:o/n.git')?.slugPath, 'o/n');
 eq('court',       parseRepo('o/n')?.cloneUrl, 'https://github.com/o/n.git');
 eq('vide',        parseRepo('   '), null);
 eq('incomplet',   parseRepo('https://github.com/seul'), null);
+
+console.log('localRepo');
+eq('nom déduit',    localRepo('/var/www/app/pwa_consultant').name, 'pwa_consultant');
+eq('slash final',   localRepo('/var/www/app/pwa_consultant/').name, 'pwa_consultant');
+eq('sans étiquette', localRepo('/srv/x').slugPath, 'x');
+eq('propriétaire par défaut', localRepo('/srv/x').owner, 'local');
+eq('étiquette owner/nom', localRepo('/srv/x', 'o/n').slugPath, 'o/n');
+eq('owner extrait',  localRepo('/srv/x', 'o/n').owner, 'o');
+eq('chemin conservé', localRepo('/srv/x').localPath, '/srv/x');
+eq('clé depuis le nom', toModuleKey(localRepo('/var/www/app/pwa_consultant').name), 'pwa-consultant');
 
 console.log('toModuleKey');
 eq('simple',      toModuleKey('scan'), 'scan');
