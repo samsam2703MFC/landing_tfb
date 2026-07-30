@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Badge, Button, Card, Carousel, Icon, ModuleCard, PlanCard, StatTile, Tag } from '@/design-system';
 import type { LandingPayload } from '@/lib/landing/types';
 import { SECTION } from './layout';
+import { BASE_PATH } from '@/lib/base-path';
 
 type T = (key: string) => string;
 
@@ -61,7 +62,7 @@ function HeroMock({ payload }: { payload: LandingPayload }) {
       <div style={{ position: 'relative', borderRadius: 'var(--radius-panel)', background: 'var(--surface-card)', boxShadow: 'var(--shadow-xl)', border: '1px solid var(--border-inverse)', overflow: 'hidden' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--slate-25)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-mark.png" alt="" width={18} height={18} />
+          <img src={`${BASE_PATH}/brand/logo-mark.png`} alt="" width={18} height={18} />
           <span style={{ font: 'var(--weight-semibold) var(--text-xs)/1 var(--font-sans)', color: 'var(--text-secondary)' }}>{t('mock.brand')}</span>
           <span className="fb-num" style={{ marginInlineStart: 'auto', font: 'var(--type-caption)', color: 'var(--text-tertiary)' }}>{t('mock.stores')}</span>
         </div>
@@ -157,7 +158,9 @@ export function ModulesGrid({ payload }: { payload: LandingPayload }) {
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--space-4)' }}>
           {modules.map((m) => {
-            const href = `/${payload.locale}/modules/${m.slug}`;
+            // router.push() applique basePath ; le <a> que rend ModuleCard, non.
+            const route = `/${payload.locale}/modules/${m.slug}`;
+            const href = `${BASE_PATH}${route}`;
             return (
               <ModuleCard
                 key={m.key}
@@ -176,7 +179,7 @@ export function ModulesGrid({ payload }: { payload: LandingPayload }) {
                   // The whole card is the target; the inner link still works on
                   // its own for middle-click and keyboard.
                   if ((e.target as HTMLElement).closest('a,button')) return;
-                  router.push(href);
+                  router.push(route);
                 }}
                 style={{ cursor: 'pointer' }}
               />
@@ -408,7 +411,7 @@ function ModuleFrame({
     <div style={{ borderRadius: 'var(--radius-panel)', overflow: 'hidden', border: '1px solid var(--border-inverse)', background: 'var(--surface-card)', boxShadow: 'var(--shadow-xl)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-subtle)', background: 'var(--slate-25)' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/brand/logo-mark.png" alt="" width={16} height={16} />
+        <img src={`${BASE_PATH}/brand/logo-mark.png`} alt="" width={16} height={16} />
         <span className="fb-num" style={{ font: 'var(--type-caption)', color: 'var(--text-secondary)' }}>tfb / {moduleKey}</span>
         <span className="fb-num" style={{ marginInlineStart: 'auto', font: 'var(--type-caption)', color: 'var(--text-tertiary)' }}>{shots.length}</span>
       </div>

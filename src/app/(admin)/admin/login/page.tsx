@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSession } from '@/lib/auth/session';
 import { LoginForm } from '@/components/admin/LoginForm';
+import { BASE_PATH } from '@/lib/base-path';
 
 /** The back office sign-in screen. Split panel: form on white, pitch on ink. */
 export const dynamic = 'force-dynamic';
@@ -14,7 +15,7 @@ export default async function AdminLoginPage() {
       <div style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 'var(--space-6)', padding: '0 var(--space-16)', maxWidth: 540 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-mark.png" alt="" width={34} height={34} />
+          <img src={`${BASE_PATH}/brand/logo-mark.png`} alt="" width={34} height={34} />
           <span style={{ font: 'var(--weight-bold) var(--text-lg)/1.05 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>TFB Admin</span>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2)' }}>

@@ -16,6 +16,20 @@ server {
     listen [::]:80;
     server_name franchisebuddy.eu www.franchisebuddy.eu;
 
+    # Sous-chemin. Si l'app est servie sous /landing_tfb, elle doit avoir été
+    # BUILDÉE avec NEXT_PUBLIC_BASE_PATH=/landing_tfb — la valeur est inlinée
+    # dans le bundle client, nginx seul ne suffit pas. Pas de rewrite ici : Next
+    # attend le chemin complet, basePath compris.
+    # location /landing_tfb/ {
+    #     proxy_pass http://127.0.0.1:3000;
+    #     proxy_http_version 1.1;
+    #     proxy_set_header Host              $host;
+    #     proxy_set_header X-Real-IP         $remote_addr;
+    #     proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    #     proxy_set_header X-Forwarded-Proto $scheme;
+    #     client_max_body_size 25m;
+    # }
+
     # certbot replaces this block with a redirect to 443 once it runs.
     location / {
         proxy_pass http://127.0.0.1:3000;

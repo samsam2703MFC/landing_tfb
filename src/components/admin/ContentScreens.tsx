@@ -7,6 +7,7 @@ import {
   type DataTableSort,
 } from '@/design-system';
 import { formatMoney } from '@/lib/i18n/config';
+import { BASE_PATH } from '@/lib/base-path';
 
 type ToastState = { tone: 'info' | 'success' | 'warning' | 'danger'; title: string; message: string } | null;
 
@@ -46,7 +47,7 @@ export function SectionsList({ sections }: { sections: SectionRow[] }) {
   const toggle = async (row: SectionRow, isActive: boolean) => {
     // Optimistic: the switch is an instant-effect control, so it must not lag.
     setRows((current) => current.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
-    const response = await fetch(`/api/admin/sections/${row.id}`, {
+    const response = await fetch(BASE_PATH + `/api/admin/sections/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive }),
@@ -116,7 +117,7 @@ export function ModulesTable({ modules }: { modules: ModuleRow[] }) {
 
   const toggle = async (row: ModuleRow, isActive: boolean) => {
     setRows((current) => current.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
-    const response = await fetch(`/api/admin/modules/${row.id}`, {
+    const response = await fetch(BASE_PATH + `/api/admin/modules/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive }),
@@ -206,7 +207,7 @@ export function BrandsTable({ brands }: { brands: BrandRow[] }) {
 
   const toggle = async (row: BrandRow, isActive: boolean) => {
     setRows((current) => current.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
-    const response = await fetch(`/api/admin/brands/${row.id}`, {
+    const response = await fetch(BASE_PATH + `/api/admin/brands/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive }),
@@ -224,13 +225,13 @@ export function BrandsTable({ brands }: { brands: BrandRow[] }) {
     const body = new FormData();
     body.append('file', file);
     body.append('category', 'brands');
-    const uploaded = await fetch('/api/admin/upload', { method: 'POST', body });
+    const uploaded = await fetch(BASE_PATH + '/api/admin/upload', { method: 'POST', body });
     const result = (await uploaded.json().catch(() => ({}))) as { path?: string; error?: string };
     if (!uploaded.ok || !result.path) {
       flash({ tone: 'danger', title: 'Upload impossible', message: result.error ?? 'Le fichier a été refusé.' });
       return;
     }
-    const patched = await fetch(`/api/admin/brands/${uploadFor}`, {
+    const patched = await fetch(BASE_PATH + `/api/admin/brands/${uploadFor}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ logoPath: result.path }),
@@ -254,7 +255,7 @@ export function BrandsTable({ brands }: { brands: BrandRow[] }) {
               <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
                 {r.logoPath ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={`/api/storage${r.logoPath.replace(/^\/storage/, '')}`} alt="" height={26} style={{ height: 26, width: 'auto' }} />
+                  <img src={`${BASE_PATH}/api/storage${r.logoPath.replace(/^\/storage/, '')}`} alt="" height={26} style={{ height: 26, width: 'auto' }} />
                 ) : (
                   <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 34, height: 26, flex: 'none', borderRadius: 'var(--radius-xs)', border: '1px dashed var(--border-strong)', color: 'var(--text-tertiary)' }}>
                     <Icon name="image" size={13} />
@@ -328,7 +329,7 @@ export function PlansTable({ plans }: { plans: PlanRow[] }) {
 
   const toggle = async (row: PlanRow, isActive: boolean) => {
     setRows((current) => current.map((r) => (r.id === row.id ? { ...r, isActive } : r)));
-    const response = await fetch(`/api/admin/plans/${row.id}`, {
+    const response = await fetch(BASE_PATH + `/api/admin/plans/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ isActive }),
@@ -411,7 +412,7 @@ export function MessagesInbox({ messages }: { messages: MessageRow[] }) {
   const selected = rows.find((m) => m.id === selectedId) ?? null;
 
   const setStatus = async (row: MessageRow, status: string) => {
-    const response = await fetch(`/api/admin/contact-messages/${row.id}`, {
+    const response = await fetch(BASE_PATH + `/api/admin/contact-messages/${row.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status }),

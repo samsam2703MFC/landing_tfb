@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Badge, Button, Card, Textarea, Toast } from '@/design-system';
+import { BASE_PATH } from '@/lib/base-path';
 
 export interface EditorLanguage {
   code: string;
@@ -58,7 +59,7 @@ export function TranslationEditor({
       const values: Record<string, Record<string, string>> = {};
       for (const r of rows) values[r.field] = r.values;
 
-      const response = await fetch('/api/admin/translations', {
+      const response = await fetch(BASE_PATH + '/api/admin/translations', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ entityType, entityId, values }),

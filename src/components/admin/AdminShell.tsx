@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Icon, IconButton, Badge, SidebarNav, type SidebarSection } from '@/design-system';
+import { BASE_PATH } from '@/lib/base-path';
 
 /**
  * The console chrome: the ink rail (248px, 68px collapsed) and the 60px topbar.
@@ -113,7 +114,7 @@ export function AdminShell({
   }, [pathname, sections]);
 
   const signOut = async () => {
-    await fetch('/api/admin/auth/login', { method: 'DELETE' });
+    await fetch(BASE_PATH + '/api/admin/auth/login', { method: 'DELETE' });
     router.replace('/admin/login');
   };
 
@@ -128,7 +129,7 @@ export function AdminShell({
         header={
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 8px 14px' }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-mark-inverse.png" alt="" width={28} height={28} />
+            <img src={`${BASE_PATH}/brand/logo-mark-inverse.png`} alt="" width={28} height={28} />
             <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
               <span style={{ font: 'var(--weight-bold) var(--text-base)/1.05 var(--font-display)', color: '#fff' }}>TFB Admin</span>
               <span style={{ font: 'var(--type-caption)', color: 'rgba(255,255,255,0.5)' }}>Back office</span>

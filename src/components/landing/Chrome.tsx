@@ -5,6 +5,7 @@ import { Button } from '@/design-system';
 import type { LandingPayload } from '@/lib/landing/types';
 import { LocaleSwitcher } from './LocaleSwitcher';
 import { SECTION } from './layout';
+import { BASE_PATH } from '@/lib/base-path';
 
 type Strings = LandingPayload['strings'];
 
@@ -26,15 +27,15 @@ export function LandingHeader({
       <div style={{ ...SECTION, display: 'flex', alignItems: 'center', gap: 'var(--space-8)', height: 68 }}>
         <Link href={base} style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none', color: 'var(--navy-900)' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/brand/logo-mark.png" alt="TFB" width={30} height={30} />
+          <img src={`${BASE_PATH}/brand/logo-mark.png`} alt="TFB" width={30} height={30} />
           <span style={{ font: 'var(--weight-bold) var(--text-md)/1.05 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>
             {t('brand.name')}
           </span>
         </Link>
         <nav style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-6)' }}>
-          <a href={`${base}#modules`} style={navLink}>{t('nav.modules')}</a>
-          <a href={`${base}#pricing`} style={navLink}>{t('nav.pricing')}</a>
-          <a href={`${base}#contact`} style={navLink}>{t('nav.contact')}</a>
+          <Link href={`${base}#modules`} style={navLink}>{t('nav.modules')}</Link>
+          <Link href={`${base}#pricing`} style={navLink}>{t('nav.pricing')}</Link>
+          <Link href={`${base}#contact`} style={navLink}>{t('nav.contact')}</Link>
         </nav>
         <div style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
           <LocaleSwitcher locale={payload.locale} languages={payload.languages} />
@@ -74,7 +75,7 @@ export function LandingFooter({ payload }: { payload: LandingPayload }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 300 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/brand/logo-mark-inverse.png" alt="" width={28} height={28} />
+            <img src={`${BASE_PATH}/brand/logo-mark-inverse.png`} alt="" width={28} height={28} />
             <span style={{ font: 'var(--weight-bold) var(--text-base)/1.05 var(--font-display)' }}>{t('brand.name')}</span>
           </div>
           <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-inverse-secondary)' }}>{t('footer.tagline')}</p>

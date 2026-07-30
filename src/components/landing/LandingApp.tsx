@@ -6,6 +6,7 @@ import type { LandingPayload } from '@/lib/landing/types';
 import { LandingHeader, LandingFooter } from './Chrome';
 import { Hero, BrandStrip, ModulesGrid, Steps, Differentiators, Pricing, ModuleDetail } from './Sections';
 import { ContactSection, type ContactResult } from './ContactSection';
+import { BASE_PATH } from '@/lib/base-path';
 
 type ToastState = { tone: 'info' | 'success' | 'warning' | 'danger'; title: string; message: string } | null;
 
@@ -40,7 +41,7 @@ export function LandingApp({
 
   const checkout = async (planKey: string) => {
     try {
-      const response = await fetch('/api/checkout', {
+      const response = await fetch(BASE_PATH + '/api/checkout', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ planKey }),

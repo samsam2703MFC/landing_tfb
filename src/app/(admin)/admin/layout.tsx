@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import type { Metadata } from 'next';
 import '../../globals.css';
+import { BASE_PATH } from '@/lib/base-path';
 
 /**
  * Root layout for the back office — a second root layout, in its own route group,
@@ -12,7 +13,7 @@ import '../../globals.css';
 export const metadata: Metadata = {
   title: 'TFB Admin — Back office',
   robots: { index: false, follow: false },
-  icons: { icon: '/brand/logo-mark.png' },
+  icons: { icon: `${BASE_PATH}/brand/logo-mark.png` },
 };
 
 export default function AdminRootLayout({ children }: { children: ReactNode }) {

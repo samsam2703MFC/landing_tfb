@@ -1,6 +1,7 @@
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomBytes } from 'node:crypto';
+import { BASE_PATH } from '@/lib/base-path';
 
 /**
  * Server-side file storage. Binaries live in folders under STORAGE_PATH; the DB
@@ -35,7 +36,7 @@ export function storageUrl(relativePath: string | null | undefined): string | nu
   const clean = relativePath.startsWith('/') ? relativePath : `/${relativePath}`;
   // "/storage/screenshots/x.png" → "/api/storage/screenshots/x.png"
   const withoutPrefix = clean.startsWith(`${PUBLIC_PREFIX}/`) ? clean.slice(PUBLIC_PREFIX.length) : clean;
-  return `/api/storage${withoutPrefix}`;
+  return `${BASE_PATH}/api/storage${withoutPrefix}`;
 }
 
 /**

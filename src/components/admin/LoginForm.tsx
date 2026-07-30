@@ -3,6 +3,7 @@
 import React from 'react';
 import { useRouter } from 'next/navigation';
 import { Button, Input } from '@/design-system';
+import { BASE_PATH } from '@/lib/base-path';
 
 /** Sign-in against tfb_admin_users. Roles: superadmin | admin. */
 export function LoginForm() {
@@ -17,7 +18,7 @@ export function LoginForm() {
     setBusy(true);
     setError(null);
     try {
-      const response = await fetch('/api/admin/auth/login', {
+      const response = await fetch(BASE_PATH + '/api/admin/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),

@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import '../../globals.css';
 import { LOCALES, dirFor, isLocale } from '@/lib/i18n/config';
+import { BASE_PATH } from '@/lib/base-path';
 
 /**
  * Root layout for the public landing. Arabic is a full mirror driven by one
@@ -27,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
       canonical: `/${locale}`,
       languages: Object.fromEntries(LOCALES.map((l) => [l, `/${l}`])),
     },
-    icons: { icon: '/brand/logo-mark.png' },
+    icons: { icon: `${BASE_PATH}/brand/logo-mark.png` },
   };
 }
 

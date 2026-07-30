@@ -22,6 +22,8 @@ WorkingDirectory=/srv/tfb-landing
 EnvironmentFile=/etc/tfb-landing.env
 Environment=NODE_ENV=production
 Environment=PORT=3000
+# NEXT_PUBLIC_BASE_PATH vient de EnvironmentFile : le serveur en a besoin au
+# runtime, et le build en a eu besoin pour l'inliner côté client.
 
 ExecStart=/usr/bin/node node_modules/next/dist/bin/next start --port 3000
 Restart=always

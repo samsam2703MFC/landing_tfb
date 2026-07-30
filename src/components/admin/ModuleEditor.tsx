@@ -6,6 +6,7 @@ import {
   Button, Card, FileDrop, Icon, IconButton, Input, Select, Switch, Tabs, Toast,
 } from '@/design-system';
 import { TranslationEditor, type EditorField, type EditorLanguage } from './TranslationEditor';
+import { BASE_PATH } from '@/lib/base-path';
 
 export interface EditableModule {
   id: number;
@@ -60,7 +61,7 @@ export function ModuleEditor({
   const save = async () => {
     setSaving(true);
     try {
-      const response = await fetch(`/api/admin/modules/${module.id}`, {
+      const response = await fetch(BASE_PATH + `/api/admin/modules/${module.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -89,7 +90,7 @@ export function ModuleEditor({
     if (files.length === 0) return;
     const body = new FormData();
     for (const f of files) body.append('files', f);
-    const response = await fetch(`/api/admin/modules/${module.id}/screenshots`, { method: 'POST', body });
+    const response = await fetch(BASE_PATH + `/api/admin/modules/${module.id}/screenshots`, { method: 'POST', body });
     const result = (await response.json().catch(() => ({}))) as { screenshots?: EditableScreenshot[]; error?: string };
     if (!response.ok) {
       flash({ tone: 'danger', title: 'Upload refusé', message: result.error ?? 'Le fichier a été refusé.' });
@@ -103,7 +104,7 @@ export function ModuleEditor({
   };
 
   const remove = async (shot: EditableScreenshot) => {
-    const response = await fetch(`/api/admin/modules/${module.id}/screenshots/${shot.id}`, { method: 'DELETE' });
+    const response = await fetch(BASE_PATH + `/api/admin/modules/${module.id}/screenshots/${shot.id}`, { method: 'DELETE' });
     if (!response.ok) {
       flash({ tone: 'danger', title: 'Suppression impossible', message: shot.filePath });
       return;
@@ -121,7 +122,7 @@ export function ModuleEditor({
     const renumbered = next.map((s, i) => ({ ...s, sortOrder: i + 1 }));
     setShots(renumbered);
 
-    const response = await fetch(`/api/admin/modules/${module.id}/screenshots`, {
+    const response = await fetch(BASE_PATH + `/api/admin/modules/${module.id}/screenshots`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ order: renumbered.map((s) => ({ id: s.id, sortOrder: s.sortOrder })) }),

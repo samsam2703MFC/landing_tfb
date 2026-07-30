@@ -1,7 +1,12 @@
 import type { CSSProperties } from 'react';
 
-/** Icon directory. The 75 vendored Lucide glyphs live in public/icons. */
-export const ICON_BASE = '/icons';
+/**
+ * Icon directory. The 75 vendored Lucide glyphs live in public/icons.
+ *
+ * The glyph is applied as a CSS mask built here, so Next's basePath never sees
+ * it — the prefix has to be applied by hand or every icon 404s under a subpath.
+ */
+export const ICON_BASE = `${process.env.NEXT_PUBLIC_BASE_PATH ?? ''}/icons`;
 
 /**
  * Lucide glyph rendered as a recolorable mask. Icon names match the files in public/icons.

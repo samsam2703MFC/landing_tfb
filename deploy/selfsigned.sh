@@ -42,4 +42,4 @@ NGINX
 ln -sf /etc/nginx/sites-available/tfb-test /etc/nginx/sites-enabled/
 nginx -t && systemctl reload nginx
 echo
-echo "Testez :  https://$HOST/api/health   (acceptez l'avertissement du navigateur)"
+echo "Testez :  https://$HOST${NEXT_PUBLIC_BASE_PATH:-}/api/health   (acceptez l'avertissement)"

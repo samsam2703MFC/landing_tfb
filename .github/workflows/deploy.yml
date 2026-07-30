@@ -85,7 +85,8 @@ jobs:
           # jamais l'URL de la base.
           set -a; . /etc/tfb-landing.env; set +a
           sudo -u "$APP_USER" DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy
-          sudo -u "$APP_USER" npm run build
+          # Inlinée au build : sudo purge l'environnement, on la repasse.
+          sudo -u "$APP_USER" NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH:-}" npm run build
 
           sudo systemctl restart tfb-landing
           REMOTE

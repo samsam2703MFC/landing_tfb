@@ -23,6 +23,27 @@ refuse de continuer plutôt que d'écraser une base ou une configuration existan
 
 Les étapes détaillées ci-dessous sont l'équivalent manuel, si vous préférez piloter.
 
+## Servir sous un sous-chemin
+
+Pour `https://185.180.206.46/landing_tfb` plutôt que la racine :
+
+```bash
+sudo BASE_PATH_CFG=/landing_tfb bash bootstrap.sh
+```
+
+`NEXT_PUBLIC_BASE_PATH` est **inlinée au build**, pas lue au démarrage. Trois
+conséquences :
+
+- la changer impose un `npm run build`, pas seulement un redémarrage ;
+- elle doit être dans l'environnement du **build** — `sudo` purge l'environnement,
+  d'où le passage explicite dans les scripts ;
+- nginx seul ne suffit pas : sans build correspondant, les assets, les `fetch` et
+  les masques d'icônes pointeraient sur la racine du domaine et renverraient 404.
+
+`basePath` ne réécrit que `<Link>`, `next/image` et le routeur. Tout le reste —
+`fetch()`, les `<img src>`, le masque CSS des icônes, les URLs de `/api/storage` —
+passe par `BASE_PATH` (`src/lib/base-path.ts`).
+
 ## 1. Un utilisateur dédié et l'arborescence
 
 ```bash

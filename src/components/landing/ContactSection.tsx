@@ -4,6 +4,7 @@ import React from 'react';
 import { Button, Icon, Input, Textarea } from '@/design-system';
 import type { LandingPayload } from '@/lib/landing/types';
 import { SECTION } from './layout';
+import { BASE_PATH } from '@/lib/base-path';
 
 export interface ContactResult {
   tone: 'success' | 'danger';
@@ -32,7 +33,7 @@ export function ContactSection({
     setSending(true);
     setErrors({});
     try {
-      const response = await fetch('/api/contact', {
+      const response = await fetch(BASE_PATH + '/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...form, languageCode: payload.locale }),

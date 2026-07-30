@@ -11,6 +11,7 @@ import {
   type BillingSnapshot, type License, type Tenant,
 } from '@/lib/billing/types';
 import { LicenseStatusBadge, InvoiceStatusBadge, SourceNote } from './shared';
+import { BASE_PATH } from '@/lib/base-path';
 
 type ToastState = { tone: 'info' | 'success' | 'warning' | 'danger'; title: string; message: string } | null;
 
@@ -114,7 +115,7 @@ export function LicensesTable({ licenses, fixture }: { licenses: License[]; fixt
     if (!blocking) return;
     const target = blocking;
     setBlocking(null);
-    const response = await fetch(`/api/admin/billing/licenses/${encodeURIComponent(target.id)}/block`, { method: 'POST' });
+    const response = await fetch(BASE_PATH + `/api/admin/billing/licenses/${encodeURIComponent(target.id)}/block`, { method: 'POST' });
     const body = (await response.json().catch(() => ({}))) as { ok?: boolean; reason?: string };
     if (response.ok && body.ok) {
       flash({ tone: 'danger', title: 'Licence bloquée', message: 'license_events + sync_queue mis à jour.' });
@@ -396,7 +397,7 @@ export function SyncQueueTable({ rows, fixture }: { rows: BillingSnapshot['sync'
   const { flash, slot } = useToast();
 
   const replay = async (queueId?: number) => {
-    const response = await fetch('/api/admin/billing/sync/replay', {
+    const response = await fetch(BASE_PATH + '/api/admin/billing/sync/replay', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(queueId != null ? { queueId } : {}),

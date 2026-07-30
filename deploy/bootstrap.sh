@@ -24,6 +24,8 @@ APP_USER="${APP_USER:-tfb}"
 DB_NAME="${DB_NAME:-tfb_landing}"
 DB_USER="${DB_USER:-tfb_app}"
 PORT="${PORT:-3000}"
+# Sous-chemin de service. Vide = racine.  BASE_PATH_CFG=/landing_tfb pour un sous-chemin.
+BASE_PATH_CFG="${BASE_PATH_CFG:-}"
 
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
 ok()   { printf '   \033[32m✓\033[0m %s\n' "$*"; }
@@ -78,6 +80,7 @@ DATABASE_URL=mysql://${DB_USER}:${DB_PASSWORD_ENC}@localhost:3306/${DB_NAME}
 ADMIN_SESSION_SECRET=${SESSION_SECRET}
 DEFAULT_LOCALE=fr
 STORAGE_PATH=${STORAGE_DIR}
+NEXT_PUBLIC_BASE_PATH=${BASE_PATH_CFG}
 PORT=${PORT}
 
 # Stripe — vide = /api/checkout répond "stub" et le webhook refuse tout appel.
@@ -181,7 +184,7 @@ unset ADMIN_PASSWORD
 
 # --- 7. Build ---------------------------------------------------------------
 say "Build"
-sudo -u "$APP_USER" npm run build
+sudo -u "$APP_USER" NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH:-}" npm run build
 ok "build de production"
 
 # --- 8. Service -------------------------------------------------------------
@@ -196,7 +199,7 @@ ok "tfb-landing démarré"
 say "Contrôle"
 for i in $(seq 1 20); do
   sleep 1
-  HEALTH="$(curl -fsS "http://127.0.0.1:${PORT}/api/health" 2>/dev/null || true)"
+  HEALTH="$(curl -fsS "http://127.0.0.1:${PORT}${NEXT_PUBLIC_BASE_PATH:-}/api/health" 2>/dev/null || true)"
   [ -n "$HEALTH" ] && break
   [ "$i" -eq 20 ] && die "L'app ne répond pas. Journal :  journalctl -u tfb-landing -n 50"
 done
