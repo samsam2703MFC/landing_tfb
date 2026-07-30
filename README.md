@@ -254,7 +254,7 @@ manifests parse and resolve against local clones (`--dry-run --from-disk`) — b
 **write** path has never touched a database. Run it once with `--dry-run`, then for real,
 and check `/[locale]/modules/<slug>` before pointing the workflow at production.
 
-The 28 screenshots shipped with the modules are real captures of the running apps
+The 27 screenshots shipped with the modules are real captures of the running apps
 (`signage`, `pwa_delivery`, `back_office_ws_franchisor`, `back_office_ws_franchisee`),
 taken with Playwright against each app's own seed data. `webshop`, `supplier_atl`,
 `pwa_kitchen` and `pwa_consultant` could not be captured: the first loads React from a
