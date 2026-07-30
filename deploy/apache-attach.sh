@@ -51,9 +51,18 @@ if [ -e /etc/apache2/sites-enabled/landing_tfb-ip.conf ]; then
   ok "vhost concurrent landing_tfb-ip désactivé"
 fi
 
+# sites-enabled/ ne contient que des liens symboliques vers sites-available/.
+# `cp -a` préserve les liens plutôt que le contenu : il faut résoudre la cible,
+# sinon la sauvegarde pointe sur le fichier qu'on s'apprête à modifier.
+REAL="$(readlink -f "$TARGET")"
+[ -f "$REAL" ] || die "Cible introuvable : $REAL"
+[ "$REAL" = "$TARGET" ] || ok "lien symbolique → $REAL"
+TARGET="$REAL"
+
 BACKUP="${TARGET}.bak.$(date +%Y%m%d%H%M%S)"
-cp -a "$TARGET" "$BACKUP"
+cp "$TARGET" "$BACKUP"
 ok "sauvegarde : $BACKUP"
+cmp -s "$TARGET" "$BACKUP" || die "La sauvegarde diffère de l'original — on s'arrête."
 
 say "Insertion"
 BASE="$BASE" PORT="$PORT" REMOVE="$REMOVE" python3 - "$TARGET" <<'PY'
@@ -123,12 +132,13 @@ print("   bloc inséré avant </VirtualHost>")
 PY
 
 say "Validation"
-if ! apache2ctl configtest 2>&1 | tail -2; then
-  cp -a "$BACKUP" "$TARGET"
-  die "Configuration invalide — $TARGET restauré depuis la sauvegarde."
-fi
-if ! apache2ctl configtest >/dev/null 2>&1; then
-  cp -a "$BACKUP" "$TARGET"
+# Pas de pipe ici : le code de retour d'un pipeline est celui du dernier
+# maillon, donc `configtest | tail` renvoie toujours 0 et ne teste rien.
+if CONFIGTEST="$(apache2ctl configtest 2>&1)"; then
+  echo "$CONFIGTEST" | tail -2 | sed 's/^/   /'
+else
+  echo "$CONFIGTEST" | sed 's/^/   /'
+  cp "$BACKUP" "$TARGET"
   die "Configuration invalide — $TARGET restauré depuis la sauvegarde."
 fi
 systemctl reload apache2
@@ -151,6 +161,6 @@ case "$VIA" in
     warn "Toujours pas. Le vhost modifié est $TARGET."
     echo "   Cherchez une RewriteRule qui passe devant le proxy :"
     echo "     grep -n 'Rewrite' $TARGET"
-    echo "   Restauration :  sudo cp -a $BACKUP $TARGET && sudo systemctl reload apache2"
+    echo "   Restauration :  sudo cp $BACKUP $TARGET && sudo systemctl reload apache2"
     ;;
 esac

@@ -174,19 +174,23 @@ Apache répond déjà sur le 443. Il lui manque seulement la règle qui envoie
 `/landing_tfb` vers l'app :
 
 ```bash
-sudo cp deploy/apache-landing_tfb.conf /etc/apache2/conf-available/landing_tfb.conf
-sudo a2enmod proxy proxy_http headers
-sudo a2enconf landing_tfb
-sudo apache2ctl configtest && sudo systemctl reload apache2
+sudo bash deploy/apache-attach.sh
 ```
 
-Ce sont des **directives Apache** : elles vont dans un fichier de configuration,
-jamais tapées dans le shell — `ProxyPass` n'est pas une commande.
+Le script demande à Apache **quel vhost sert réellement l'IP sur 443**, puis y
+insère le proxy. Sur cette machine c'est `000-ip-catchall-ssl.conf`.
 
-Le fichier atterrit dans `conf-available/`, donc **votre vhost existant n'est pas
-touché** : les directives s'appliquent à tous les vhosts, et seul le chemin
-`/landing_tfb` est concerné. Pour revenir en arrière :
-`sudo a2disconf landing_tfb && sudo systemctl reload apache2`.
+Pourquoi pas un vhost séparé : ce fichier déclare déjà `ServerName <IP>`. Apache
+retient le **premier** vhost chargé pour un nom donné, et `sites-enabled/*.conf`
+se lit par ordre alphabétique — le préfixe `000-` gagne toujours. Un second vhost
+avec le même `ServerName` n'est jamais consulté. C'est la raison pour laquelle
+un drop-in dans `conf-available/` ne suffisait pas non plus : le vhost par défaut
+est une application PHP dont le routage attrape-tout renvoyait le 404.
+
+Le script sauvegarde le fichier, insère un bloc délimité (remplacé et non empilé
+si vous relancez), valide avec `configtest`, et restaure automatiquement si la
+configuration devient invalide. `sudo bash deploy/apache-attach.sh --remove`
+retire le bloc.
 
 Pour un vrai domaine plus tard : `sudo certbot --apache -d votre-domaine.eu`.
 
