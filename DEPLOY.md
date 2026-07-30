@@ -12,10 +12,19 @@ serveur — il sert déjà phpMyAdmin sur le 443), systemd pour le service.
 ## En une commande
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/samsam2703MFC/landing_tfb/main/deploy/bootstrap.sh -o bootstrap.sh
-less bootstrap.sh          # lisez-le avant de l'exécuter
-sudo bash bootstrap.sh
+git clone https://github.com/samsam2703MFC/landing_tfb.git /tmp/tfb-src
+sudo bash /tmp/tfb-src/deploy/bootstrap.sh
 ```
+
+Lisez-le d'abord — il tourne en root contre votre base :
+`less /tmp/tfb-src/deploy/bootstrap.sh` (dans un terminal à part : `less` dans un
+bloc collé avale les lignes suivantes, qui ne s'exécutent alors jamais).
+
+**Ne le téléchargez pas par URL brute si la branche contient un `/`.**
+`raw.githubusercontent.com/OWNER/REPO/feat/xxx/...` est ambigu : GitHub lit `feat`
+comme branche et renvoie 404. Avec `curl -fsSL`, l'échec est muet et laisse en
+place le fichier précédent — vous exécutez alors autre chose que ce script.
+Vérification : `grep -q TFB_BOOTSTRAP_MARKER bootstrap.sh && echo ok`.
 
 `deploy/bootstrap.sh` enchaîne les étapes 1 à 6 ci-dessous, puis démarre le service et
 vérifie `/api/health`. Il est idempotent : relancez-le pour déployer une mise à jour. Il

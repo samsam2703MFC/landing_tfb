@@ -14,6 +14,11 @@
 #
 set -euo pipefail
 
+# Marqueur d'identité : TFB_BOOTSTRAP_MARKER
+# Un `curl -fsSL -o bootstrap.sh` qui échoue n'écrit rien et laisse le fichier
+# précédent en place — on croit lancer ce script et on en lance un autre.
+# Vérifiez avant d'exécuter :  grep -q TFB_BOOTSTRAP_MARKER bootstrap.sh && echo ok
+
 # --- Réglages ---------------------------------------------------------------
 REPO="${REPO:-https://github.com/samsam2703MFC/landing_tfb.git}"
 BRANCH="${BRANCH:-main}"
