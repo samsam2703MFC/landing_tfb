@@ -383,22 +383,26 @@ cat <<EOF
 
 $(printf '\033[1m== Il reste à faire à la main ==\033[0m')
 
-  1. nginx en frontal, puis un certificat :
-       cp $APP_DIR/deploy/nginx.conf.example /etc/nginx/sites-available/tfb-landing
-       # remplacez server_name par votre domaine
-       ln -s /etc/nginx/sites-available/tfb-landing /etc/nginx/sites-enabled/
-       nginx -t && systemctl reload nginx
-       certbot --nginx -d VOTRE-DOMAINE
+  1. Apache — la règle qui envoie ${NEXT_PUBLIC_BASE_PATH:-/} vers l'app :
 
-     Un certificat ne peut pas être émis pour une IP nue. Sans HTTPS valide,
-     le cookie de session du back office ne peut pas être Secure.
+       sudo cp $APP_DIR/deploy/apache-landing_tfb.conf \\
+              /etc/apache2/conf-available/landing_tfb.conf
+       sudo a2enmod proxy proxy_http headers
+       sudo a2enconf landing_tfb
+       sudo apache2ctl configtest && sudo systemctl reload apache2
 
-  2. Restreindre phpMyAdmin : il est actuellement joignable depuis Internet.
+     Ce sont des directives Apache : elles vont dans un fichier, elles ne se
+     tapent pas dans le shell. Le fichier atterrit dans conf-available/, donc
+     votre vhost existant n'est pas modifié.
+
+  2. Restreindre phpMyAdmin : il est actuellement joignable depuis Internet,
+     et c'est un accès complet à la base.
 
   3. Sauvegardes : mysqldump ${DB_NAME} ET ${STORAGE_DIR}. La base ne contient
      que les chemins des fichiers, pas les fichiers.
 
   Journal en direct :  journalctl -u tfb-landing -f
-  Redéployer        :  sudo bash $APP_DIR/deploy/bootstrap.sh
+  Redéployer        :  sudo BRANCH=$BRANCH BASE_PATH_CFG=${NEXT_PUBLIC_BASE_PATH:-} \\
+                            bash $APP_DIR/deploy/bootstrap.sh
 
 EOF
