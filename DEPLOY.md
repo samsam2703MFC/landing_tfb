@@ -121,6 +121,22 @@ sudo systemctl enable --now tfb-landing
 sudo journalctl -u tfb-landing -f
 ```
 
+## 7bis. Recette sans nom de domaine
+
+Pour tester tout de suite sur l'IP, un certificat auto-signé suffit :
+
+```bash
+sudo bash deploy/selfsigned.sh 185.180.206.46
+```
+
+Le navigateur avertit une fois, vous acceptez, et tout fonctionne — **y compris la
+connexion au back office**. `Secure` exige du TLS, pas un certificat reconnu.
+
+Si vous testez en **HTTP nu** en revanche, le cookie de session n'est jamais envoyé et la
+connexion au back office échoue sans message. Dans ce cas seulement, ajoutez
+`ALLOW_INSECURE_COOKIES=true` à `/etc/tfb-landing.env` — et retirez-la dès que HTTPS est
+en place, sinon le cookie de session circule en clair.
+
 ## 7. Le frontal et le certificat
 
 ```bash

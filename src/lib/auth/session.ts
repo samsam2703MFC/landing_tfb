@@ -25,6 +25,28 @@ function secret(): Uint8Array {
   return new TextEncoder().encode(raw);
 }
 
+/**
+ * Le cookie de session est `Secure` en production, donc le navigateur ne
+ * l'enverra jamais sur du HTTP en clair : la connexion au back office échoue
+ * en silence.
+ *
+ * Un certificat auto-signé suffit — `Secure` exige du TLS, pas un certificat
+ * reconnu. Cette échappatoire n'existe que pour une recette servie en HTTP nu,
+ * le temps qu'un domaine soit en place. Elle est délibérément verbeuse à
+ * activer, et ne doit jamais l'être sur une instance accessible au public :
+ * le cookie de session circulerait en clair.
+ */
+function cookieIsSecure(): boolean {
+  if (process.env.ALLOW_INSECURE_COOKIES === 'true') {
+    console.warn(
+      '[auth] ALLOW_INSECURE_COOKIES=true — le cookie de session est envoyé sans TLS. ' +
+      'Recette uniquement. Retirez cette variable dès que HTTPS est en place.',
+    );
+    return false;
+  }
+  return process.env.NODE_ENV === 'production';
+}
+
 export async function createSession(session: AdminSession): Promise<void> {
   const token = await new SignJWT({ email: session.email, role: session.role })
     .setProtectedHeader({ alg: 'HS256' })
@@ -36,7 +58,7 @@ export async function createSession(session: AdminSession): Promise<void> {
   (await cookies()).set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: cookieIsSecure(),
     path: '/',
     maxAge: MAX_AGE_SECONDS,
   });
