@@ -321,7 +321,10 @@ fi
 [ -f "$APP_DIR/package-lock.json" ] \
   || die "package-lock.json absent sur « $BRANCH » — npm ci ne peut pas fonctionner."
 
-sudo -u "$APP_USER" npm ci
+# Plusieurs minutes sur une petite machine, avec un curseur qui tourne sans
+# rien afficher. Le dire évite un Ctrl+C sur une étape qui se déroulait bien.
+echo "   Installation des dépendances — 1 à 5 min, ne pas interrompre…"
+sudo -u "$APP_USER" npm ci --no-audit --no-fund
 ok "dépendances installées"
 
 # --- 6. Migration et seed ---------------------------------------------------
