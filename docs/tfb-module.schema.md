@@ -111,6 +111,19 @@ ce contrôle, une page 404 finirait publiée comme capture produit. Une route en
 échec n'interrompt pas les autres — un module avec trois captures sur quatre
 reste publiable, et le rapport dit laquelle manque.
 
+## Dépôts privés
+
+`git clone` s'exécute sur le serveur, avec l'identité de l'utilisateur qui lance
+la routine. Pour un dépôt privé, il faut donc que cet utilisateur puisse le
+cloner — clé de déploiement dans son `~/.ssh`, ou jeton dans un
+`~/.git-credentials` en 0600. Testez d'abord à la main :
+
+```bash
+sudo -u tfb git clone --depth 1 <url> /tmp/essai && rm -rf /tmp/essai
+```
+
+Si ça échoue, la routine signalera « Dépôt illisible » et n'écrira rien.
+
 ## En cron
 
 ```cron
