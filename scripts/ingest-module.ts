@@ -48,10 +48,11 @@ interface Args {
   icon?: string;
   dryRun: boolean;
   activate: boolean;
+  insecure: boolean;
 }
 
 function parseArgs(argv: string[]): Args {
-  const args: Args = { dryRun: false, activate: true };
+  const args: Args = { dryRun: false, activate: true, insecure: false };
   for (let i = 0; i < argv.length; i += 1) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -64,6 +65,7 @@ function parseArgs(argv: string[]): Args {
     else if (a === '--icon') args.icon = next();
     else if (a === '--dry-run') args.dryRun = true;
     else if (a === '--no-activate') args.activate = false;
+    else if (a === '--insecure') args.insecure = true;
   }
   return args;
 }
@@ -132,7 +134,7 @@ async function main() {
 
   if (!args.repo && !args.path) {
     console.error('Usage : npm run ingest -- --repo <owner/nom|url> | --path <répertoire>');
-    console.error('        [--url <app>] [--routes /,/login] [--key k] [--group G] [--icon i] [--dry-run]');
+    console.error('        [--url <app>] [--routes /,/login] [--key k] [--group G] [--icon i] [--insecure] [--dry-run]');
     process.exit(2);
   }
 
@@ -207,10 +209,14 @@ async function main() {
   }
 
   say('Captures');
+  if (args.insecure) warn('--insecure : certificat TLS non vérifié. Réservé aux captures internes.');
   const outDir = path.resolve(STORAGE_ROOT, 'screenshots');
   let results;
   try {
-    results = await captureRoutes({ baseUrl: args.url, routes, moduleKey: key, outDir });
+    results = await captureRoutes({
+      baseUrl: args.url, routes, moduleKey: key, outDir,
+      ignoreHttpsErrors: args.insecure,
+    });
     // PLAYWRIGHT_CHROMIUM_PATH est lu par captureRoutes si défini.
   } catch (error) {
     if (error instanceof PlaywrightMissing) {

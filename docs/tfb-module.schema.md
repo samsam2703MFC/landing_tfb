@@ -128,6 +128,17 @@ ce contrôle, une page 404 finirait publiée comme capture produit. Une route en
 échec n'interrompt pas les autres — un module avec trois captures sur quatre
 reste publiable, et le rapport dit laquelle manque.
 
+Une application encore servie sous certificat auto-signé, ou photographiée par
+son IP, fait échouer la navigation sur `ERR_CERT_AUTHORITY_INVALID`. `--insecure`
+lève la vérification :
+
+```bash
+npm run ingest -- --path /var/www/app/mon_module --url https://185.180.206.46/mon_module --insecure
+```
+
+À réserver aux captures internes, et à retirer dès que l'application a un vrai
+certificat — c'est le drapeau qu'on oublie en place.
+
 ## Dépôts privés
 
 `git clone` s'exécute sur le serveur, avec l'identité de l'utilisateur qui lance

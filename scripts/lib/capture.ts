@@ -32,6 +32,12 @@ export interface CaptureRequest {
    * machine et éviter les 300 Mo de téléchargement.
    */
   executablePath?: string;
+  /**
+   * Accepter un certificat TLS invalide. Réservé aux captures internes : une
+   * application encore servie sous certificat auto-signé, ou photographiée par
+   * son IP. Sans ce drapeau, Playwright refuse la page et la capture échoue.
+   */
+  ignoreHttpsErrors?: boolean;
 }
 
 export interface CaptureResult {
@@ -81,6 +87,7 @@ export async function captureRoutes(req: CaptureRequest): Promise<CaptureResult[
       deviceScaleFactor: 2, // les captures sont affichées en 16:10 dans le carrousel
       locale: 'fr-FR',
       reducedMotion: 'reduce',
+      ignoreHTTPSErrors: req.ignoreHttpsErrors ?? false,
     });
 
     for (const [i, route] of req.routes.entries()) {
