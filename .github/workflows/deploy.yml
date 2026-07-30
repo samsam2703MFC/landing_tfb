@@ -1,0 +1,114 @@
+name: Deploy
+
+# Se déclenche sur main une fois la CI verte, ou à la main depuis l'onglet Actions.
+on:
+  workflow_run:
+    workflows: [CI]
+    branches: [main]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  # Deux déploiements simultanés sur le même serveur se marcheraient dessus
+  # (npm ci, migration, redémarrage). On sérialise, sans annuler celui en cours.
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: VPS
+    runs-on: ubuntu-latest
+    # Sur workflow_run, ne déploie que si la CI a réussi.
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    environment: production
+
+    steps:
+      - name: Vérifier que les secrets sont présents
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          KEY: ${{ secrets.SSH_KEY }}
+        run: |
+          missing=()
+          [ -n "$HOST" ] || missing+=(SSH_HOST)
+          [ -n "$USER" ] || missing+=(SSH_USER)
+          [ -n "$KEY" ]  || missing+=(SSH_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Secrets manquants : ${missing[*]} — Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+
+      - name: Préparer SSH
+        env:
+          KEY: ${{ secrets.SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          HOST: ${{ secrets.SSH_HOST }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            # Sans empreinte épinglée, on fait confiance à la première réponse —
+            # ce qui laisse la porte ouverte à un intercepteur. Épinglez-la :
+            #   ssh-keyscan -p 22 VOTRE-HOTE
+            # puis collez le résultat dans le secret SSH_KNOWN_HOSTS.
+            echo "::warning::SSH_KNOWN_HOSTS absent — l'identité du serveur n'est pas vérifiée."
+            ssh-keyscan -p "${PORT:-22}" "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Déployer
+        env:
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+          APP_DIR: ${{ vars.APP_DIR || '/srv/tfb-landing' }}
+          APP_USER: ${{ vars.APP_USER || 'tfb' }}
+        run: |
+          # bash -s : le script tourne côté serveur, rien n'est écrit sur le runner.
+          # set -euo pipefail à l'intérieur, pour qu'une étape ratée arrête la suite
+          # au lieu de redémarrer le service sur un build incomplet.
+          ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" \
+              APP_DIR="$APP_DIR" APP_USER="$APP_USER" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          sudo -u "$APP_USER" git fetch origin main
+          sudo -u "$APP_USER" git reset --hard origin/main
+          sudo -u "$APP_USER" npm ci
+
+          # Les secrets vivent sur le serveur, pas dans GitHub : le runner ne voit
+          # jamais l'URL de la base.
+          set -a; . /etc/tfb-landing.env; set +a
+          sudo -u "$APP_USER" DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy
+          sudo -u "$APP_USER" npm run build
+
+          sudo systemctl restart tfb-landing
+          REMOTE
+
+      - name: Contrôler la santé
+        env:
+          HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:3000/api/health' }}
+          HOST: ${{ secrets.SSH_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+          PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          # Interrogé depuis le serveur : /api/health n'a pas besoin d'être public.
+          for i in $(seq 1 20); do
+            body=$(ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" \
+                   "curl -fsS '$HEALTH_URL'" 2>/dev/null || true)
+            case "$body" in
+              *'"db":"up"'*) echo "$body"; echo "::notice::Déploiement vérifié — l'app lit la base."; exit 0 ;;
+            esac
+            sleep 3
+          done
+          echo "::error::L'app ne répond pas ou ne joint pas la base. journalctl -u tfb-landing -n 50"
+          exit 1
+
+      - name: Nettoyer
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

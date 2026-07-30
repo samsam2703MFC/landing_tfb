@@ -172,6 +172,33 @@ sudo -u tfb npm run build
 sudo systemctl restart tfb-landing
 ```
 
+## Déploiement automatique (GitHub Actions)
+
+Les runners GitHub ne sont pas bridés réseau : ils atteignent le VPS en SSH. Une fois le
+premier déploiement fait à la main (bootstrap ci-dessus), `.github/workflows/deploy.yml`
+prend le relais à chaque `main` vert.
+
+À créer dans **Settings → Secrets and variables → Actions** :
+
+| Secret | Contenu |
+| --- | --- |
+| `SSH_HOST` | `185.180.206.46` |
+| `SSH_USER` | un compte de déploiement, pas root |
+| `SSH_KEY` | la clé privée de ce compte, en entier |
+| `SSH_KNOWN_HOSTS` | sortie de `ssh-keyscan VOTRE-HOTE` — optionnel mais recommandé |
+| `SSH_PORT` | seulement si ce n'est pas 22 |
+
+Le compte de déploiement a besoin de `sudo` sans mot de passe sur trois commandes
+seulement :
+
+```
+deploy ALL=(tfb) NOPASSWD: /usr/bin/git, /usr/bin/npm, /usr/bin/npx
+deploy ALL=(root) NOPASSWD: /bin/systemctl restart tfb-landing
+```
+
+**Aucun secret applicatif ne va sur GitHub.** Le workflow lit `/etc/tfb-landing.env` sur
+le serveur : le runner ne voit jamais l'URL de la base ni les clés Stripe.
+
 ## Ce qui restera à faire après cette mise en ligne
 
 - **Stripe.** Tant que les clés sont vides, `/api/checkout` répond `status: "stub"` et le
