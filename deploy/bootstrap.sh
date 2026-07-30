@@ -308,6 +308,19 @@ else
 fi
 
 cd "$APP_DIR"
+
+# Une branche sans le code (par ex. un `main` encore vide) produit un checkout
+# vide, et `npm ci` échoue alors sur un message qui parle de lockfile — on
+# cherche le problème au mauvais endroit. On le nomme ici.
+if [ ! -f "$APP_DIR/package.json" ]; then
+  die "La branche « $BRANCH » ne contient pas l'application ($APP_DIR/package.json absent).
+   Si la pull request n'est pas encore fusionnée, main est vide. Relancez en
+   désignant la branche de travail :
+     sudo BRANCH=deploy-test BASE_PATH_CFG=${BASE_PATH_CFG:-/landing_tfb} bash $0"
+fi
+[ -f "$APP_DIR/package-lock.json" ] \
+  || die "package-lock.json absent sur « $BRANCH » — npm ci ne peut pas fonctionner."
+
 sudo -u "$APP_USER" npm ci
 ok "dépendances installées"
 
