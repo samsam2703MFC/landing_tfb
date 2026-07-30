@@ -8,6 +8,21 @@ ne pourrait l'atteindre qu'en exposant MySQL sur Internet. En restant sur le VPS
 
 Cible : Node ≥ 20, MySQL 8, nginx en frontal, systemd pour le service.
 
+## En une commande
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/samsam2703MFC/landing_tfb/main/deploy/bootstrap.sh -o bootstrap.sh
+less bootstrap.sh          # lisez-le avant de l'exécuter
+sudo bash bootstrap.sh
+```
+
+`deploy/bootstrap.sh` enchaîne les étapes 1 à 6 ci-dessous, puis démarre le service et
+vérifie `/api/health`. Il est idempotent : relancez-le pour déployer une mise à jour. Il
+refuse de continuer plutôt que d'écraser une base ou une configuration existante. Restent
+à votre main : nginx et le certificat (étape 7).
+
+Les étapes détaillées ci-dessous sont l'équivalent manuel, si vous préférez piloter.
+
 ## 1. Un utilisateur dédié et l'arborescence
 
 ```bash
