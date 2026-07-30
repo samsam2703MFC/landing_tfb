@@ -45,7 +45,11 @@ else
   mkdir -p "$CERT_DIR"
   openssl req -x509 -nodes -newkey rsa:2048 -days 825 \
     -keyout "$CERT_DIR/tfb.key" -out "$CERT_DIR/tfb.crt" \
-    -subj "/CN=$IP" -addext "subjectAltName=IP:$IP" 2>/dev/null
+    -subj "/CN=$IP" \
+    -addext "subjectAltName=IP:$IP" \
+    -addext "basicConstraints=critical,CA:FALSE" \
+    -addext "keyUsage=critical,digitalSignature,keyEncipherment" \
+    -addext "extendedKeyUsage=serverAuth" 2>/dev/null
   chmod 600 "$CERT_DIR/tfb.key"
   ok "certificat auto-signé généré (825 jours)"
 fi
