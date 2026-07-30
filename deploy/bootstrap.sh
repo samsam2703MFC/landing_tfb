@@ -109,6 +109,8 @@ fi
 # --- 4. Secrets et compte applicatif ----------------------------------------
 say "Secrets"
 
+# Renvoie non-zéro au lieu d'abandonner : le compte administrateur d'un
+# hébergement mutualisé n'a généralement pas GRANT OPTION.
 ensure_db_user() {
   local user="$1" pass="$2"
   local u p
@@ -136,8 +138,13 @@ if [ -f "$ENV_FILE" ]; then
   # l'incohérence en place.
   URL_USER="$(DATABASE_URL="$DATABASE_URL" node -e 'process.stdout.write(decodeURIComponent(new URL(process.env.DATABASE_URL).username))')"
   URL_PASS="$(DATABASE_URL="$DATABASE_URL" node -e 'process.stdout.write(decodeURIComponent(new URL(process.env.DATABASE_URL).password))')"
-  ensure_db_user "$URL_USER" "$URL_PASS"
-  ok "compte '${URL_USER}'@'localhost' aligné sur $ENV_FILE"
+  if ensure_db_user "$URL_USER" "$URL_PASS" 2>/tmp/.tfbgrant; then
+    ok "compte '${URL_USER}'@'localhost' aligné sur $ENV_FILE"
+  else
+    warn "création/modification du compte impossible : $(tail -1 /tmp/.tfbgrant)"
+    warn "On vérifie plus bas si un compte utilisable existe déjà."
+  fi
+  rm -f /tmp/.tfbgrant
   unset URL_PASS
 else
   warn "$ENV_FILE est absent, on le crée."
@@ -153,8 +160,15 @@ else
 
   # Le compte d'abord : si cette étape échoue, aucun fichier n'est écrit et le
   # relancer repart d'un état propre.
-  ensure_db_user "$DB_USER" "$DB_PASSWORD"
-  ok "compte '${DB_USER}'@'localhost' créé, limité à ${DB_NAME}"
+  if ensure_db_user "$DB_USER" "$DB_PASSWORD" 2>/tmp/.tfbgrant; then
+    ok "compte '${DB_USER}'@'localhost' créé, limité à ${DB_NAME}"
+  else
+    rm -f /tmp/.tfbgrant
+    die "Impossible de créer '${DB_USER}' — le compte administrateur n'a pas ce droit.
+   Créez l'utilisateur dans phpMyAdmin avec tous les droits sur ${DB_NAME},
+   puis relancez en le désignant :  DB_USER=le_compte bash bootstrap.sh"
+  fi
+  rm -f /tmp/.tfbgrant
 
   SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   # Encodage pourcent : un mot de passe contenant @ : / # ? casserait l'URL.
@@ -184,23 +198,51 @@ fi
 
 # Vérifie que l'app peut réellement se connecter, avant de construire quoi que ce soit.
 set -a; . "$ENV_FILE"; set +a
-if ! DATABASE_URL="$DATABASE_URL" node -e '
-  const u = new URL(process.env.DATABASE_URL);
-  process.stdout.write(`${decodeURIComponent(u.username)}\n${decodeURIComponent(u.password)}\n`);
-' > /tmp/.tfbcheck 2>/dev/null; then
-  die "DATABASE_URL est mal formée dans $ENV_FILE."
-fi
-APP_USER_DB="$(sed -n 1p /tmp/.tfbcheck)"; APP_PASS_DB="$(sed -n 2p /tmp/.tfbcheck)"; rm -f /tmp/.tfbcheck
-APP_DEFAULTS="$(mktemp)"; chmod 600 "$APP_DEFAULTS"
-printf '[client]\nuser=%s\npassword=%s\n' "$APP_USER_DB" "$APP_PASS_DB" > "$APP_DEFAULTS"
-unset APP_PASS_DB
-if mysql --defaults-file="$APP_DEFAULTS" -N -B -e "USE \`${DB_NAME}\`; SELECT 1" >/dev/null 2>&1; then
-  ok "l'application peut se connecter en tant que '${APP_USER_DB}'"
+
+db_can_connect() {
+  local f; f="$(mktemp)"; chmod 600 "$f"
+  printf '[client]\nuser=%s\npassword=%s\n' "$1" "$2" > "$f"
+  local rc=0
+  mysql --defaults-file="$f" -N -B -e "USE \`${DB_NAME}\`; SELECT 1" >/dev/null 2>&1 || rc=1
+  rm -f "$f"
+  return $rc
+}
+
+read_url_part() {
+  DATABASE_URL="$DATABASE_URL" node -e "process.stdout.write(decodeURIComponent(new URL(process.env.DATABASE_URL).$1))" 2>/dev/null
+}
+APP_DB_USER="$(read_url_part username)" || die "DATABASE_URL est mal formée dans $ENV_FILE."
+APP_DB_PASS="$(read_url_part password)"
+
+if db_can_connect "$APP_DB_USER" "$APP_DB_PASS"; then
+  ok "l'application peut se connecter en tant que '${APP_DB_USER}'"
 else
-  rm -f "$APP_DEFAULTS"
-  die "Le compte '${APP_USER_DB}' ne peut pas ouvrir ${DB_NAME}. Vérifiez DATABASE_URL dans $ENV_FILE."
+  warn "Le compte '${APP_DB_USER}' ne peut pas ouvrir ${DB_NAME}."
+  echo "   Indiquez un compte MySQL qui a déjà les droits sur ${DB_NAME}"
+  echo "   (celui de phpMyAdmin convient). DATABASE_URL sera réécrite."
+  read -rp  "   Utilisateur [${MYSQL_ADMIN_USER:-$APP_DB_USER}] : " NEW_DB_USER
+  NEW_DB_USER="${NEW_DB_USER:-${MYSQL_ADMIN_USER:-$APP_DB_USER}}"
+  read -rsp "   Mot de passe de '$NEW_DB_USER' : " NEW_DB_PASS; echo
+
+  db_can_connect "$NEW_DB_USER" "$NEW_DB_PASS" \
+    || die "'${NEW_DB_USER}' ne peut pas ouvrir ${DB_NAME} non plus. Vérifiez les droits dans phpMyAdmin."
+
+  NEW_ENC="$(NEW_DB_PASS="$NEW_DB_PASS" node -e 'process.stdout.write(encodeURIComponent(process.env.NEW_DB_PASS))')"
+  NEW_URL="mysql://${NEW_DB_USER}:${NEW_ENC}@localhost:3306/${DB_NAME}"
+  # Réécriture ciblée de la seule ligne DATABASE_URL, le reste du fichier est
+  # conservé (secret de session, clés Stripe déjà saisies...).
+  NEW_URL="$NEW_URL" python3 - "$ENV_FILE" <<'PYENV'
+import os, sys, pathlib
+p = pathlib.Path(sys.argv[1])
+lines = p.read_text().splitlines(keepends=True)
+out = [("DATABASE_URL=" + os.environ["NEW_URL"] + "\n") if l.startswith("DATABASE_URL=") else l for l in lines]
+p.write_text("".join(out))
+PYENV
+  set -a; . "$ENV_FILE"; set +a
+  ok "DATABASE_URL réécrite pour '${NEW_DB_USER}'"
+  unset NEW_DB_PASS NEW_ENC
 fi
-rm -f "$APP_DEFAULTS"
+unset APP_DB_PASS
 
 # Une table tfb_ déjà là sans historique de migration = schéma posé autrement.
 # On s'arrête : appliquer la migration par-dessus échouerait à mi-chemin.
