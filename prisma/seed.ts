@@ -1,5 +1,5 @@
 /**
- * Seeds tfb_landing: the 8 languages, the landing sections, 6 brands, 7 modules
+ * Seeds tfb_landing: the 8 languages, the landing sections, 6 brands, 8 modules
  * with placeholder screenshot rows, 3 plans, one superadmin, and every FR/EN/AR
  * translation.
  *

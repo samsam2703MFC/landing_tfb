@@ -49,7 +49,7 @@ export const BRANDS = [
 /**
  * tfb_modules. One icon per module (readme ICONOGRAPHY):
  * shop → shopping-cart, invoicing → receipt, offers → percent, scan → qr-code,
- * marketing → megaphone, ceobot → bot, pwa → smartphone.
+ * marketing → megaphone, ceobot → bot, pwa → smartphone, consultant → clipboard-check.
  * `shots` is how many placeholder screenshot rows to create.
  */
 export const MODULES = [
@@ -60,6 +60,7 @@ export const MODULES = [
   { key: 'marketing', slug: 'marketing', icon: 'megaphone', moduleGroup: 'Marketing', repo: 'tfb/marketing', isNew: false, sortOrder: 5, shots: 2 },
   { key: 'ceobot', slug: 'ceobot', icon: 'bot', moduleGroup: 'Assistance', repo: 'tfb/ceobot', isNew: true, sortOrder: 6, shots: 2 },
   { key: 'pwa', slug: 'pwa', icon: 'smartphone', moduleGroup: 'Terrain', repo: 'tfb/pwa-shell', isNew: true, sortOrder: 7, shots: 2 },
+  { key: 'consultant', slug: 'consultant', icon: 'clipboard-check', moduleGroup: 'Terrain', repo: 'samsam2703MFC/pwa_consultant', isNew: true, sortOrder: 8, shots: 3 },
 ];
 
 /** tfb_plans. `amount` in cents; NULL = sur devis. */
@@ -280,6 +281,11 @@ export const MODULE_STRINGS: Record<AuthoredLocale, Record<string, ModuleCopy>> 
       bullets: ['Installable sur les téléphones des équipes', 'Mode hors ligne avec synchronisation', 'Notifications de service', 'Aucune boutique d’applications'],
       metric: ['0', 'installation IT'],
     },
+    consultant: {
+      name: 'Panel consultant', description: 'L’application terrain des animateurs réseau : visites, checklists et comptes rendus.',
+      bullets: ['Agenda des visites par point de vente', 'Checklists de visite notées et commentées', 'Objectifs, tendances et leviers par magasin', 'Réclamations et rapports remontés depuis le terrain'],
+      metric: ['0', 'ressaisie après la visite'],
+    },
   },
   en: {
     shop: { name: 'Shop', description: 'Online store wired to each location’s live stock.' },
@@ -289,6 +295,7 @@ export const MODULE_STRINGS: Record<AuthoredLocale, Record<string, ModuleCopy>> 
     marketing: { name: 'Marketing', description: 'Email, SMS and loyalty cards driven by the customer database.' },
     ceobot: { name: 'CEObot', description: 'Conversational assistant that answers on your numbers, not the web.' },
     pwa: { name: 'PWA app', description: 'Installable app for store teams, offline included.' },
+    consultant: { name: 'Consultant panel', description: 'Field app for network consultants: visits, checklists and reports.' },
   },
   ar: {
     shop: { name: 'المتجر', description: 'متجر إلكتروني مرتبط بمخزون كل نقطة بيع.' },
@@ -298,6 +305,7 @@ export const MODULE_STRINGS: Record<AuthoredLocale, Record<string, ModuleCopy>> 
     marketing: { name: 'التسويق', description: 'بريد ورسائل نصية وبطاقات ولاء من قاعدة العملاء.' },
     ceobot: { name: 'CEObot', description: 'مساعد محادثة يجيب من أرقامك، لا من الإنترنت.' },
     pwa: { name: 'تطبيق PWA', description: 'تطبيق قابل للتثبيت لفرق الفروع، يعمل دون اتصال.' },
+    consultant: { name: 'لوحة المستشارين', description: 'تطبيق ميداني لمستشاري الشبكة: الزيارات وقوائم المهام والتقارير.' },
   },
 };
 

@@ -34,7 +34,7 @@ service is MySQL too, so the schema targets MySQL.
 npm install
 cp .env.example .env        # then fill in DATABASE_URL and ADMIN_SESSION_SECRET
 npx prisma migrate deploy   # creates every tfb_ table
-npm run seed                # 8 languages, 8 sections, 6 brands, 7 modules, 3 plans, FR/EN/AR copy
+npm run seed                # 8 languages, 8 sections, 6 brands, 8 modules, 3 plans, FR/EN/AR copy
 npm run dev
 ```
 
