@@ -51,33 +51,114 @@ NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]')"
 ok "node $(node -v)"
 
 command -v mysql >/dev/null || die "Le client mysql est absent. L'app doit tourner sur le serveur de la base."
-mysqladmin ping --silent 2>/dev/null || die "MySQL ne répond pas en local."
-ok "MySQL joignable en localhost"
 
-# --- 2. Secrets -------------------------------------------------------------
+# --- 2. Accès administrateur MySQL ------------------------------------------
+say "Accès MySQL"
+
+# `mysqladmin ping` répond « alive » même quand l'authentification échoue : il
+# ne prouve donc rien. Seule une vraie requête le fait.
+MYSQL_DEFAULTS=""
+cleanup() { [ -n "$MYSQL_DEFAULTS" ] && rm -f "$MYSQL_DEFAULTS"; }
+trap cleanup EXIT
+
+mysql_admin() {
+  if [ -n "$MYSQL_DEFAULTS" ]; then mysql --defaults-file="$MYSQL_DEFAULTS" "$@"
+  else mysql "$@"; fi
+}
+
+if mysql -N -B -e 'SELECT 1' >/dev/null 2>&1; then
+  ok "connexion administrateur sans mot de passe (auth socket)"
+else
+  warn "MySQL demande une authentification."
+  read -rp  "   Utilisateur administrateur MySQL [root] : " MYSQL_ADMIN_USER
+  MYSQL_ADMIN_USER="${MYSQL_ADMIN_USER:-root}"
+  read -rsp "   Mot de passe de '$MYSQL_ADMIN_USER' : " MYSQL_ADMIN_PASS; echo
+
+  # Fichier d'options plutôt que --password= : un mot de passe en argument est
+  # lisible par tout le monde dans `ps`.
+  MYSQL_DEFAULTS="$(mktemp)"; chmod 600 "$MYSQL_DEFAULTS"
+  printf '[client]\nuser=%s\npassword=%s\n' "$MYSQL_ADMIN_USER" "$MYSQL_ADMIN_PASS" > "$MYSQL_DEFAULTS"
+  unset MYSQL_ADMIN_PASS
+
+  mysql_admin -N -B -e 'SELECT 1' >/dev/null 2>&1 \
+    || die "Authentification MySQL refusée pour '$MYSQL_ADMIN_USER'."
+  ok "connexion administrateur en tant que '$MYSQL_ADMIN_USER'"
+fi
+
+# Échappe une valeur pour un littéral SQL entre apostrophes.
+sql_quote() { printf '%s' "$1" | sed -e 's/\\/\\\\/g' -e "s/'/\\\\'/g"; }
+
+# --- 3. Base de données -----------------------------------------------------
+say "Base de données"
+
+# Distinguer « la requête a échoué » de « la base est absente » : les confondre
+# envoie créer une base qui existe déjà.
+if ! DB_LIST="$(mysql_admin -N -B -e "SHOW DATABASES LIKE '${DB_NAME}'" 2>&1)"; then
+  die "Impossible d'interroger MySQL : ${DB_LIST}"
+fi
+
+if [ -z "$DB_LIST" ]; then
+  # utf8mb4 n'est pas un détail : l'arabe et les emoji des messages de contact
+  # ne rentrent pas dans latin1.
+  mysql_admin -e "CREATE DATABASE \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci"
+  ok "Base ${DB_NAME} créée (utf8mb4)"
+else
+  ok "Base ${DB_NAME} présente"
+fi
+
+# --- 4. Secrets et compte applicatif ----------------------------------------
 say "Secrets"
+
+ensure_db_user() {
+  local user="$1" pass="$2"
+  local u p
+  u="$(sql_quote "$user")"; p="$(sql_quote "$pass")"
+  # CREATE IF NOT EXISTS puis ALTER : un compte préexistant avec un autre mot de
+  # passe est resynchronisé sur celui du fichier d'env, sinon l'app ne se
+  # connecterait jamais et l'erreur serait cherchée ailleurs.
+  mysql_admin <<SQL
+CREATE USER IF NOT EXISTS '${u}'@'localhost' IDENTIFIED BY '${p}';
+ALTER USER '${u}'@'localhost' IDENTIFIED BY '${p}';
+GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, REFERENCES
+  ON \`${DB_NAME}\`.* TO '${u}'@'localhost';
+FLUSH PRIVILEGES;
+SQL
+}
 
 if [ -f "$ENV_FILE" ]; then
   ok "$ENV_FILE existe déjà, il est conservé tel quel"
   # shellcheck disable=SC1090
   set -a; . "$ENV_FILE"; set +a
   [ -n "${DATABASE_URL:-}" ] || die "$ENV_FILE ne définit pas DATABASE_URL."
+
+  # Le fichier a pu être écrit lors d'un passage qui a échoué juste après :
+  # on réaligne le compte MySQL sur ce qu'il contient plutôt que de laisser
+  # l'incohérence en place.
+  URL_USER="$(DATABASE_URL="$DATABASE_URL" node -e 'process.stdout.write(decodeURIComponent(new URL(process.env.DATABASE_URL).username))')"
+  URL_PASS="$(DATABASE_URL="$DATABASE_URL" node -e 'process.stdout.write(decodeURIComponent(new URL(process.env.DATABASE_URL).password))')"
+  ensure_db_user "$URL_USER" "$URL_PASS"
+  ok "compte '${URL_USER}'@'localhost' aligné sur $ENV_FILE"
+  unset URL_PASS
 else
   warn "$ENV_FILE est absent, on le crée."
 
-  # Le mot de passe n'est jamais affiché ni passé en argument : il resterait
-  # visible dans l'historique du shell et dans la liste des processus.
-  read -rsp "   Mot de passe pour l'utilisateur MySQL '$DB_USER' : " DB_PASSWORD; echo
+  # Jamais en argument : un mot de passe dans argv est visible dans `ps` et
+  # reste dans l'historique du shell.
+  read -rsp "   Mot de passe à créer pour l'utilisateur MySQL '$DB_USER' : " DB_PASSWORD; echo
   [ -n "$DB_PASSWORD" ] || die "Mot de passe vide."
   read -rsp "   Mot de passe du compte back office à créer : " ADMIN_PASSWORD; echo
   [ -n "$ADMIN_PASSWORD" ] || die "Mot de passe vide."
   read -rp  "   E-mail du compte back office : " ADMIN_EMAIL
   [ -n "$ADMIN_EMAIL" ] || die "E-mail vide."
 
-  SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
+  # Le compte d'abord : si cette étape échoue, aucun fichier n'est écrit et le
+  # relancer repart d'un état propre.
+  ensure_db_user "$DB_USER" "$DB_PASSWORD"
+  ok "compte '${DB_USER}'@'localhost' créé, limité à ${DB_NAME}"
 
+  SESSION_SECRET="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
   # Encodage pourcent : un mot de passe contenant @ : / # ? casserait l'URL.
-  DB_PASSWORD_ENC="$(node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$DB_PASSWORD")"
+  DB_PASSWORD_ENC="$(DB_PASSWORD="$DB_PASSWORD" node -e 'process.stdout.write(encodeURIComponent(process.env.DB_PASSWORD))')"
 
   install -m 600 -o root -g root /dev/null "$ENV_FILE"
   cat > "$ENV_FILE" <<EOF
@@ -98,34 +179,34 @@ BILLING_SERVICE_URL=
 BILLING_SERVICE_TOKEN=
 EOF
   ok "$ENV_FILE écrit (0600, root)"
-
-  say "Compte MySQL"
-  if mysql -N -B -e "SELECT 1 FROM mysql.user WHERE user='${DB_USER}' AND host='localhost'" | grep -q 1; then
-    ok "L'utilisateur '${DB_USER}'@'localhost' existe déjà, il n'est pas modifié"
-  else
-    mysql <<SQL
-CREATE USER '${DB_USER}'@'localhost' IDENTIFIED BY '${DB_PASSWORD}';
-GRANT SELECT, INSERT, UPDATE, DELETE, CREATE, ALTER, INDEX, DROP, REFERENCES
-  ON \`${DB_NAME}\`.* TO '${DB_USER}'@'localhost';
-FLUSH PRIVILEGES;
-SQL
-    ok "Utilisateur '${DB_USER}'@'localhost' créé, limité à ${DB_NAME}"
-  fi
   unset DB_PASSWORD DB_PASSWORD_ENC
 fi
 
-# --- 3. Base de données -----------------------------------------------------
-say "Base de données"
-
-mysql -N -B -e "SHOW DATABASES LIKE '${DB_NAME}'" | grep -q "${DB_NAME}" \
-  || die "La base ${DB_NAME} n'existe pas. Créez-la d'abord."
-ok "Base ${DB_NAME} présente"
+# Vérifie que l'app peut réellement se connecter, avant de construire quoi que ce soit.
+set -a; . "$ENV_FILE"; set +a
+if ! DATABASE_URL="$DATABASE_URL" node -e '
+  const u = new URL(process.env.DATABASE_URL);
+  process.stdout.write(`${decodeURIComponent(u.username)}\n${decodeURIComponent(u.password)}\n`);
+' > /tmp/.tfbcheck 2>/dev/null; then
+  die "DATABASE_URL est mal formée dans $ENV_FILE."
+fi
+APP_USER_DB="$(sed -n 1p /tmp/.tfbcheck)"; APP_PASS_DB="$(sed -n 2p /tmp/.tfbcheck)"; rm -f /tmp/.tfbcheck
+APP_DEFAULTS="$(mktemp)"; chmod 600 "$APP_DEFAULTS"
+printf '[client]\nuser=%s\npassword=%s\n' "$APP_USER_DB" "$APP_PASS_DB" > "$APP_DEFAULTS"
+unset APP_PASS_DB
+if mysql --defaults-file="$APP_DEFAULTS" -N -B -e "USE \`${DB_NAME}\`; SELECT 1" >/dev/null 2>&1; then
+  ok "l'application peut se connecter en tant que '${APP_USER_DB}'"
+else
+  rm -f "$APP_DEFAULTS"
+  die "Le compte '${APP_USER_DB}' ne peut pas ouvrir ${DB_NAME}. Vérifiez DATABASE_URL dans $ENV_FILE."
+fi
+rm -f "$APP_DEFAULTS"
 
 # Une table tfb_ déjà là sans historique de migration = schéma posé autrement.
 # On s'arrête : appliquer la migration par-dessus échouerait à mi-chemin.
-EXISTING="$(mysql -N -B -e \
+EXISTING="$(mysql_admin -N -B -e \
   "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${DB_NAME}' AND table_name LIKE 'tfb\\_%'")"
-MIGRATED="$(mysql -N -B -e \
+MIGRATED="$(mysql_admin -N -B -e \
   "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${DB_NAME}' AND table_name='_prisma_migrations'")"
 
 if [ "$EXISTING" -gt 0 ] && [ "$MIGRATED" -eq 0 ]; then
@@ -173,7 +254,7 @@ set -a; . "$ENV_FILE"; set +a
 sudo -u "$APP_USER" DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy
 ok "schéma à jour"
 
-SEEDED="$(mysql -N -B -e "SELECT COUNT(*) FROM \`${DB_NAME}\`.tfb_languages" 2>/dev/null || echo 0)"
+SEEDED="$(mysql_admin -N -B -e "SELECT COUNT(*) FROM \`${DB_NAME}\`.tfb_languages" 2>/dev/null || echo 0)"
 if [ "$SEEDED" -eq 0 ]; then
   say "Données initiales"
   sudo -u "$APP_USER" \
