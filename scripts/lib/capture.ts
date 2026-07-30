@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { screenshotName } from './module-meta';
+import { joinUrl, screenshotName } from './module-meta';
 
 /**
  * Capture d'écrans avec Playwright.
@@ -108,10 +108,14 @@ export async function captureRoutes(req: CaptureRequest): Promise<CaptureResult[
     }
 
     for (const [i, route] of req.routes.entries()) {
-      const target = new URL(route, req.baseUrl).toString();
+      const target = joinUrl(req.baseUrl, route);
       const page = await context.newPage();
       try {
-        const response = await page.goto(target, { waitUntil: 'networkidle', timeout: 30_000 });
+        // 'load', pas 'networkidle' : une application qui interroge son API en
+        // boucle — un tableau de bord, typiquement — n'atteint jamais le repos
+        // réseau, et la capture expirait au bout de 30 s sur la seule page qui
+        // comptait. Le délai de stabilisation ci-dessous couvre le reste.
+        const response = await page.goto(target, { waitUntil: 'load', timeout: 30_000 });
 
         // Playwright ne lève pas sur un 404 : la page d'erreur se charge très
         // bien. Sans ce contrôle, une route cassée deviendrait une capture

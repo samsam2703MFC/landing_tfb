@@ -194,3 +194,18 @@ export function validateManifest(raw: unknown): { manifest: ModuleManifest; issu
 export function screenshotName(key: string, index: number): string {
   return `${key}-${String(index).padStart(2, '0')}.png`;
 }
+
+/**
+ * Colle une route sur une URL de base, **en gardant le préfixe de chemin**.
+ *
+ * `new URL('/dashboard', 'https://host/pwa_consultant')` donne
+ * `https://host/dashboard` : une route absolue écrase tout le chemin. C'est la
+ * règle des URL, et c'est faux ici — une application servie dans un
+ * sous-répertoire verrait chacune de ses routes pointer à côté, et le rapport
+ * annoncerait des captures réussies de pages qui ne sont pas les siennes.
+ */
+export function joinUrl(baseUrl: string, route: string): string {
+  const base = new URL(baseUrl);
+  if (!base.pathname.endsWith('/')) base.pathname += '/';
+  return new URL(route.replace(/^\/+/, ''), base).toString();
+}

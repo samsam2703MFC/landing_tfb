@@ -1,4 +1,4 @@
-import { parseRepo, localRepo, toModuleKey, validateManifest, screenshotName } from '../lib/module-meta';
+import { parseRepo, localRepo, toModuleKey, validateManifest, screenshotName, joinUrl } from '../lib/module-meta';
 let fail = 0;
 const eq = (label: string, got: unknown, want: unknown) => {
   const g = JSON.stringify(got), w = JSON.stringify(want);
@@ -44,6 +44,16 @@ eq('bullets',     validateManifest({ content: { fr: { bullets: ['a', 1, 'b'] } }
 console.log('screenshotName');
 eq('padding',     screenshotName('scan', 3), 'scan-03.png');
 eq('deux chiffres', screenshotName('scan', 12), 'scan-12.png');
+
+console.log('joinUrl');
+eq('racine',        joinUrl('http://h', '/a'), 'http://h/a');
+eq('sous-chemin',   joinUrl('https://h/pwa_consultant', '/dashboard'), 'https://h/pwa_consultant/dashboard');
+eq('slash final',   joinUrl('https://h/pwa_consultant/', '/dashboard'), 'https://h/pwa_consultant/dashboard');
+eq('route relative', joinUrl('https://h/app', 'shops'), 'https://h/app/shops');
+eq('deux segments', joinUrl('https://h/app', '/a/b'), 'https://h/app/a/b');
+eq('query gardée',  joinUrl('https://h/app', '/shops?tri=ca'), 'https://h/app/shops?tri=ca');
+eq('port gardé',    joinUrl('http://h:8080/app', '/x'), 'http://h:8080/app/x');
+eq('racine seule',  joinUrl('https://h/app', '/'), 'https://h/app/');
 
 console.log(fail === 0 ? '\nTous les tests passent.' : `\n${fail} échec(s).`);
 process.exit(fail === 0 ? 0 : 1);
