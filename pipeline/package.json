@@ -11,7 +11,9 @@
     "bootstrap": "node bootstrap-db.mjs",
     "ingest": "node ingest.mjs",
     "ingest:all": "node ingest-all.mjs",
-    "check": "node --check ingest.mjs && node --check ingest-all.mjs && node --check bootstrap-db.mjs && node --check lib/repo.mjs && node --check lib/ai.mjs && node --check lib/db.mjs"
+    "check": "node --check ingest.mjs && node --check ingest-all.mjs && node --check bootstrap-db.mjs && node --check lib/repo.mjs && node --check lib/ai.mjs && node --check lib/db.mjs && node --check seed-contenu.mjs && node --check contenu-initial.mjs",
+    "seed": "node seed-contenu.mjs",
+    "seed:sql": "node seed-contenu.mjs --sql"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.115.0",

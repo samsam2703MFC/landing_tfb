@@ -50,6 +50,9 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 ├── .env.example                  # toutes les variables, à copier en infra/.env sur le serveur
 ├── pipeline/                     # Node 20, ESM, .mjs pur — aucun TypeScript
 │   ├── bootstrap-db.mjs          # crée les trois tables (idempotent)
+│   ├── contenu-initial.mjs       # les 8 fiches rédigées, sans appel IA
+│   ├── seed-contenu.mjs          # les charge en base, ou produit contenu.sql
+│   ├── contenu.sql               # le même contenu en SQL portable
 │   ├── ingest.mjs                # ingère un module
 │   ├── ingest-all.mjs            # ingère tout + régénère la page d'accueil
 │   ├── Dockerfile                # image lancée à la demande sur le serveur
@@ -190,16 +193,37 @@ docker compose --profile outils run --rm pipeline node bootstrap-db.mjs
 
 Rejouable sans risque : le script ne crée que ce qui manque.
 
-### 4. Première ingestion
+### 4. Charger le contenu de départ
 
-Renseigner `ANTHROPIC_API_KEY` dans `infra/.env`, puis :
+Les huit fiches sont déjà rédigées à partir du code des dépôts. Aucune clé API
+n'est nécessaire :
+
+```bash
+docker compose --profile outils run --rm pipeline node seed-contenu.mjs
+```
+
+Ou directement en SQL, sans passer par le conteneur :
+
+```bash
+mysql -u tfb_landing -p tfb_landing < pipeline/contenu.sql   # ou psql -f
+```
+
+Les deux sont rejouables : le contenu est remplacé, jamais dupliqué. La landing
+a dès lors ses 8 modules et ses 57 fonctions.
+
+### 5. Passer à la régénération automatique
+
+Pour que le contenu suive le code sans intervention, renseigner
+`ANTHROPIC_API_KEY` dans `infra/.env`, puis :
 
 ```bash
 docker compose --profile outils run --rm pipeline node ingest-all.mjs
 ```
 
 Ou depuis GitHub → **Actions** → *Régénérer tous les modules*. Compter environ
-une minute et quelques centimes par module.
+une minute et quelques centimes par module. L'ingestion remplace le contenu de
+départ module par module — les clés de fonctions étant les mêmes, rien n'est
+dupliqué.
 
 ---
 
