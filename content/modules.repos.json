@@ -1,14 +1,14 @@
 {
-  "_comment": "Les dépôts que `npm run sync:modules` interroge. Chacun publie son .tfb/module.json ; la landing ne stocke aucune copie produit en dur. Ajouter un module = une ligne ici et un manifeste là-bas. `ref` est la branche lue : les dépôts n'ont pas tous la même branche par défaut, donc elle est explicite pour chacun plutôt que devinée.",
+  "_comment": "Les dépôts que `npm run sync:modules` interroge. Chacun publie son .tfb/module.json ; la landing ne stocke aucune copie produit en dur. Ajouter un module = une ligne ici et un manifeste là-bas. Tous les dépôts sont normalisés sur `main` ; un dépôt qui lirait ailleurs peut surcharger avec `ref`.",
   "defaultRef": "main",
   "repos": [
-    { "repo": "samsam2703MFC/WebShop", "ref": "main" },
-    { "repo": "samsam2703MFC/back_office_ws_franchisor", "ref": "main" },
-    { "repo": "samsam2703MFC/back_office_ws_franchisee", "ref": "main" },
-    { "repo": "samsam2703MFC/supplier_atl", "ref": "master" },
-    { "repo": "samsam2703MFC/pwa_kitchen", "ref": "master" },
-    { "repo": "samsam2703MFC/pwa_consultant", "ref": "master" },
-    { "repo": "samsam2703MFC/pwa_delivery", "ref": "claude/tournees-dc-html-zlths3" },
-    { "repo": "samsam2703MFC/signage", "ref": "claude/back-office-signage-uqnpca" }
+    { "repo": "samsam2703MFC/WebShop" },
+    { "repo": "samsam2703MFC/back_office_ws_franchisor" },
+    { "repo": "samsam2703MFC/back_office_ws_franchisee" },
+    { "repo": "samsam2703MFC/supplier_atl" },
+    { "repo": "samsam2703MFC/pwa_kitchen" },
+    { "repo": "samsam2703MFC/pwa_consultant" },
+    { "repo": "samsam2703MFC/pwa_delivery" },
+    { "repo": "samsam2703MFC/signage" }
   ]
 }

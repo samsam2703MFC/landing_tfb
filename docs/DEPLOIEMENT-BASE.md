@@ -183,6 +183,17 @@ npm run sync:modules -- --from-disk /tmp/repos
 ```
 
 Pour un dépôt privé, exportez `GITHUB_TOKEN` (droit `contents: read`) avant de lancer.
+La sync interroge alors l'API Contents, seul chemin qui honore un jeton ; sans jeton
+valide elle retombe en lecture publique et le dit. Elle n'envoie **jamais** le jeton à
+`raw.githubusercontent`, qui répondrait 404 — un manifeste sain deviendrait
+indiscernable d'un manifeste absent.
+
+**Branche lue.** Les 8 dépôts sont normalisés sur `main`. Si l'un d'eux revient à une
+autre branche, pinnez-la dans `content/modules.repos.json` :
+
+```json
+{ "repo": "samsam2703MFC/signage", "ref": "une-autre-branche" }
+```
 
 Vérification :
 
