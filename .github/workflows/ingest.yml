@@ -1,0 +1,73 @@
+name: Ingérer un module
+
+# Deux déclencheurs :
+#  - repository_dispatch « module-updated », envoyé par le dépôt d'un module
+#    quand son code bouge (voir examples/module-publish.yml) ;
+#  - lancement manuel depuis l'onglet Actions.
+on:
+  repository_dispatch:
+    types: [module-updated]
+  workflow_dispatch:
+    inputs:
+      module:
+        description: "Slug ou dépôt (org/nom) tel qu'il figure dans modules.json"
+        required: true
+        type: string
+      force:
+        description: "Régénérer même si le dépôt n'a pas bougé"
+        required: false
+        default: false
+        type: boolean
+
+# Une ingestion à la fois par module ; on laisse finir celle qui tourne.
+concurrency:
+  group: ingest-${{ github.event.client_payload.repo || inputs.module || 'manuel' }}
+  cancel-in-progress: false
+
+jobs:
+  ingerer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: pipeline/package-lock.json
+
+      - name: Installer les dépendances du pipeline
+        run: npm ci
+        working-directory: pipeline
+
+      - name: Déterminer la cible
+        id: cible
+        run: |
+          CIBLE="${{ github.event.client_payload.repo || inputs.module }}"
+          if [ -z "$CIBLE" ]; then
+            echo "Aucun module fourni." >&2
+            exit 1
+          fi
+          echo "valeur=$CIBLE" >> "$GITHUB_OUTPUT"
+
+      - name: Ingérer
+        working-directory: pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          DIRECTUS_URL: ${{ secrets.DIRECTUS_URL }}
+          DIRECTUS_TOKEN: ${{ secrets.DIRECTUS_TOKEN }}
+          GH_INGEST_TOKEN: ${{ secrets.GH_INGEST_TOKEN }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.force }}" = "true" ] || [ "${{ github.event.client_payload.force }}" = "true" ]; then
+            ARGS="--force"
+          fi
+          if [ -n "${{ github.event.client_payload.ref }}" ]; then
+            ARGS="$ARGS --ref=${{ github.event.client_payload.ref }}"
+          fi
+          node ingest.mjs "${{ steps.cible.outputs.valeur }}" $ARGS

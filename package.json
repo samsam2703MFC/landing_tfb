@@ -1,0 +1,19 @@
+{
+  "name": "landing-tfb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Landing ERP alimentée automatiquement depuis les dépôts GitHub des modules, via Directus et l'API Anthropic.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "bootstrap": "npm --prefix pipeline run bootstrap",
+    "ingest": "npm --prefix pipeline run ingest --",
+    "ingest:all": "npm --prefix pipeline run ingest:all",
+    "web:dev": "npm --prefix apps/web run dev",
+    "web:build": "npm --prefix apps/web run build",
+    "install:all": "npm --prefix pipeline install && npm --prefix apps/web install",
+    "check": "node --check pipeline/ingest.mjs && node --check pipeline/ingest-all.mjs && node --check pipeline/bootstrap-directus.mjs && node --check pipeline/lib/repo.mjs && node --check pipeline/lib/ai.mjs && node --check pipeline/lib/directus.mjs"
+  }
+}

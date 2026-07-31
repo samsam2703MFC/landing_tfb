@@ -1,0 +1,156 @@
+---
+/**
+ * Page d'accueil : problèmes du franchiseur d'abord, réponses ensuite,
+ * puis l'inventaire des modules. Tout vient de Directus, rien n'est écrit ici.
+ */
+import Layout from '../components/Layout.astro';
+import { chargerModules, chargerSite, grouperModules } from '../lib/directus.mjs';
+
+const [site, modules] = await Promise.all([chargerSite(), chargerModules()]);
+const groupes = grouperModules(modules);
+
+// Valeurs de repli si le pipeline n'a pas encore tourné.
+const titre = site?.titre || 'La valeur de votre réseau, c\'est sa capacité à être transmis';
+const sousTitre =
+  site?.sous_titre ||
+  'Un ERP qui met le savoir-faire dans l\'outil, et non dans la tête de quelques personnes.';
+const paragraphes = (site?.accroche || '').split('\n').filter((p) => p.trim().length > 0);
+const problemes = site?.problemes || [];
+const reponses = site?.reponses || [];
+const ctaTexte = site?.cta_texte || 'Demander une démonstration';
+const ctaUrl = site?.cta_url || '#contact';
+
+// Adresse de contact déduite du domaine, lue à l'exécution (pas au build).
+const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`;
+---
+
+<Layout titre={titre} description={site?.meta_description} modules={modules}>
+  <!-- Accroche -->
+  <section class="section" style="border-top: 0;">
+    <div class="contenant">
+      <div style="max-width: 62ch;">
+        <h1>{titre}</h1>
+        <p style="font-size: 1.2rem; color: var(--encre-douce);">{sousTitre}</p>
+        {paragraphes.map((paragraphe) => <p>{paragraphe}</p>)}
+        <p style="margin-top: 28px;">
+          <a class="bouton" href={ctaUrl}>{ctaTexte}</a>
+          {modules.length > 0 && (
+            <a class="bouton bouton--fantome" href="#modules" style="margin-left: 10px;">
+              Voir les {modules.length} modules
+            </a>
+          )}
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Les problèmes, avant toute solution -->
+  {problemes.length > 0 && (
+    <section class="section section--teinte" id="problemes">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Ce que vit un franchiseur</p>
+          <h2>Le réseau grandit, le contrôle s'éloigne</h2>
+        </div>
+        <div class="grille">
+          {problemes.map((probleme) => (
+            <article class="carte">
+              <h3>{probleme.titre}</h3>
+              <p>{probleme.texte}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Les réponses -->
+  {reponses.length > 0 && (
+    <section class="section" id="reponses">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Ce que nous mettons en face</p>
+          <h2>Des procédures qui vivent dans l'outil</h2>
+        </div>
+        <div class="grille">
+          {reponses.map((reponse) => (
+            <article class="carte">
+              <h3>{reponse.titre}</h3>
+              <p>{reponse.texte}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Schéma d'ensemble -->
+  {site?.mermaid && (
+    <section class="section section--teinte" id="schema">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Vue d'ensemble</p>
+          <h2>Comment l'information circule</h2>
+        </div>
+        <div class="schema">
+          <pre class="mermaid">{site.mermaid}</pre>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Inventaire des modules -->
+  <section class="section" id="modules">
+    <div class="contenant">
+      <div class="section__chapeau">
+        <p class="section__oeil">La plateforme</p>
+        <h2>{modules.length > 0 ? `${modules.length} modules, un seul référentiel` : 'Modules'}</h2>
+        <p>
+          Chaque module est un logiciel en production. Les fiches ci-dessous sont générées
+          automatiquement à partir de leur code source.
+        </p>
+      </div>
+
+      {modules.length === 0 ? (
+        <p style="color: var(--encre-douce);">
+          Aucun module publié pour le moment. Lancer <code>npm run ingest:all</code> pour alimenter
+          le site.
+        </p>
+      ) : (
+        groupes.map((groupe) => (
+          <div style="margin-bottom: 40px;">
+            <p class="etiquette" style="margin-bottom: 16px;">{groupe.nom}</p>
+            <div class="grille">
+              {groupe.modules.map((module) => (
+                <a class="carte carte--lien" href={`/modules/${module.slug}`}>
+                  <h3>{module.nom || module.slug}</h3>
+                  <p>{module.accroche}</p>
+                  {module.fonctions?.length > 0 && (
+                    <p style="margin-top: 14px; font-size: 0.85rem; color: var(--accent);">
+                      {module.fonctions.length} fonctions →
+                    </p>
+                  )}
+                </a>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
+    </div>
+  </section>
+
+  <!-- Contact -->
+  <section class="section section--teinte" id="contact">
+    <div class="contenant" style="max-width: 62ch;">
+      <p class="section__oeil">Prendre contact</p>
+      <h2>Voir la plateforme sur vos propres cas</h2>
+      <p>
+        Une démonstration se fait sur vos points de vente, vos indicateurs et vos procédures.
+        Écrivez-nous en précisant la taille du réseau et les sujets qui coincent aujourd'hui.
+      </p>
+      <p style="margin-top: 24px;">
+        <a class="bouton" href={ctaUrl.startsWith('#') ? lienContact : ctaUrl}>{ctaTexte}</a>
+      </p>
+    </div>
+  </section>
+</Layout>

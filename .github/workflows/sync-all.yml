@@ -1,0 +1,57 @@
+name: Régénérer tous les modules
+
+# Filet de sécurité : même si un dépôt oublie d'annoncer ses changements,
+# la landing est resynchronisée chaque lundi matin.
+on:
+  schedule:
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Régénérer même les modules inchangés'
+        required: false
+        default: false
+        type: boolean
+      only:
+        description: 'Limiter à certains slugs, séparés par des virgules (facultatif)'
+        required: false
+        type: string
+
+# Un lot complet à la fois.
+concurrency:
+  group: sync-all
+  cancel-in-progress: false
+
+jobs:
+  synchroniser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
+
+      - name: Installer Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: pipeline/package-lock.json
+
+      - name: Installer les dépendances du pipeline
+        run: npm ci
+        working-directory: pipeline
+
+      - name: Ingérer tous les modules
+        working-directory: pipeline
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
+          DIRECTUS_URL: ${{ secrets.DIRECTUS_URL }}
+          DIRECTUS_TOKEN: ${{ secrets.DIRECTUS_TOKEN }}
+          GH_INGEST_TOKEN: ${{ secrets.GH_INGEST_TOKEN }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.force }}" = "true" ]; then ARGS="--force"; fi
+          if [ -n "${{ inputs.only }}" ]; then ARGS="$ARGS --only=${{ inputs.only }}"; fi
+          node ingest-all.mjs $ARGS

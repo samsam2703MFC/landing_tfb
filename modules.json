@@ -1,0 +1,14 @@
+{
+  "_commentaire": "Liste des dépôts ingérés par le pipeline. Ajouter un module = ajouter une ligne ici. `slug` sert d'identifiant stable dans Directus (URL /modules/<slug>) : ne jamais le changer une fois publié. `ref` est facultatif et surcharge `defaultRef`.",
+  "defaultRef": "main",
+  "modules": [
+    { "slug": "webshop", "repo": "samsam2703MFC/WebShop", "groupe": "Vente", "ordre": 1 },
+    { "slug": "back-office-franchiseur", "repo": "samsam2703MFC/back_office_ws_franchisor", "groupe": "Pilotage", "ordre": 2 },
+    { "slug": "back-office-franchise", "repo": "samsam2703MFC/back_office_ws_franchisee", "groupe": "Pilotage", "ordre": 3 },
+    { "slug": "fournisseurs", "repo": "samsam2703MFC/supplier_atl", "groupe": "Approvisionnement", "ordre": 4 },
+    { "slug": "cuisine", "repo": "samsam2703MFC/pwa_kitchen", "groupe": "Terrain", "ordre": 5 },
+    { "slug": "consultant", "repo": "samsam2703MFC/pwa_consultant", "groupe": "Terrain", "ordre": 6 },
+    { "slug": "livraison", "repo": "samsam2703MFC/pwa_delivery", "groupe": "Terrain", "ordre": 7 },
+    { "slug": "affichage", "repo": "samsam2703MFC/signage", "groupe": "Vente", "ordre": 8 }
+  ]
+}

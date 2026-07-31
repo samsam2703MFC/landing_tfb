@@ -1,0 +1,50 @@
+# ---------------------------------------------------------------------------
+# À COPIER dans chaque dépôt de module, sous .github/workflows/publish-landing.yml
+#
+# Rôle : prévenir le dépôt de la landing que le code du module a changé.
+# La landing relit alors le dépôt, régénère la fiche et met Directus à jour.
+#
+# Secret à créer dans le dépôt du module :
+#   LANDING_DISPATCH_TOKEN — jeton GitHub (fine-grained) avec la permission
+#   « Contents: read » et « Actions: write » sur le dépôt de la landing,
+#   ou un classic token de scope `repo`.
+# ---------------------------------------------------------------------------
+
+name: Publier sur la landing
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.github/**'
+  workflow_dispatch:
+
+concurrency:
+  group: publier-landing
+  cancel-in-progress: true
+
+jobs:
+  prevenir:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Envoyer l'événement à la landing
+        env:
+          JETON: ${{ secrets.LANDING_DISPATCH_TOKEN }}
+          # Dépôt de la landing, à adapter si besoin.
+          LANDING: samsam2703MFC/landing_tfb
+        run: |
+          set -euo pipefail
+          code=$(curl -s -o /tmp/reponse.json -w '%{http_code}' \
+            -X POST "https://api.github.com/repos/$LANDING/dispatches" \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $JETON" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            -d "{\"event_type\":\"module-updated\",\"client_payload\":{\"repo\":\"${{ github.repository }}\",\"ref\":\"${{ github.ref_name }}\"}}")
+
+          if [ "$code" != "204" ]; then
+            echo "Échec de l'appel (HTTP $code) :" >&2
+            cat /tmp/reponse.json >&2
+            exit 1
+          fi
+          echo "Landing prévenue — l'ingestion de ${{ github.repository }} est lancée."

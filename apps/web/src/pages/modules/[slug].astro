@@ -1,0 +1,184 @@
+---
+/**
+ * Fiche d'un module : ce qu'il résout, ce qu'il fait, fonction par fonction.
+ * Contenu intégralement généré par le pipeline depuis le dépôt du module.
+ */
+import { marked } from 'marked';
+import Layout from '../../components/Layout.astro';
+import { chargerModule, chargerModules } from '../../lib/directus.mjs';
+
+const { slug } = Astro.params;
+const module = await chargerModule(slug);
+
+if (!module) {
+  return new Response('Module introuvable', { status: 404 });
+}
+
+const modules = await chargerModules();
+const autres = modules.filter((m) => m.slug !== module.slug).slice(0, 6);
+
+// La description est stockée en markdown ; le reste du contenu est du texte brut.
+const descriptionHtml = module.description ? marked.parse(module.description) : '';
+const problemes = module.problemes || [];
+const benefices = module.benefices || [];
+const fonctions = module.fonctions || [];
+const stack = module.stack || [];
+---
+
+<Layout titre={module.nom || module.slug} description={module.accroche} modules={modules}>
+  <!-- En-tête du module -->
+  <section class="section" style="border-top: 0;">
+    <div class="contenant">
+      <p style="margin-bottom: 20px;">
+        <a href="/#modules" style="text-decoration: none; color: var(--encre-douce);">← Tous les modules</a>
+      </p>
+      {module.groupe && <p class="etiquette" style="margin-bottom: 14px;">{module.groupe}</p>}
+      <h1 style="max-width: 20ch;">{module.nom || module.slug}</h1>
+      <p style="font-size: 1.2rem; color: var(--encre-douce); max-width: 62ch;">{module.accroche}</p>
+      {module.resume && <p style="max-width: 62ch;">{module.resume}</p>}
+
+      <dl
+        style="display: flex; flex-wrap: wrap; gap: 32px; margin-top: 32px; padding-top: 24px; border-top: 1px solid var(--trait);"
+      >
+        {module.public_cible && (
+          <div>
+            <dt style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--encre-douce);">
+              Utilisateurs
+            </dt>
+            <dd style="margin: 4px 0 0; font-weight: 600;">{module.public_cible}</dd>
+          </div>
+        )}
+        {fonctions.length > 0 && (
+          <div>
+            <dt style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--encre-douce);">
+              Fonctions
+            </dt>
+            <dd style="margin: 4px 0 0; font-weight: 600;">{fonctions.length}</dd>
+          </div>
+        )}
+        {stack.length > 0 && (
+          <div>
+            <dt style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--encre-douce);">
+              Technique
+            </dt>
+            <dd style="margin: 4px 0 0; font-weight: 600;">{stack.join(' · ')}</dd>
+          </div>
+        )}
+      </dl>
+    </div>
+  </section>
+
+  <!-- Les problèmes traités -->
+  {problemes.length > 0 && (
+    <section class="section section--teinte">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Le point de départ</p>
+          <h2>Ce que ce module fait disparaître</h2>
+        </div>
+        <div class="grille">
+          {problemes.map((probleme) => (
+            <article class="carte">
+              <h3>{probleme.titre}</h3>
+              <p>{probleme.texte}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Présentation longue -->
+  {descriptionHtml && (
+    <section class="section">
+      <div class="contenant">
+        <div class="prose" style="max-width: 68ch;" set:html={descriptionHtml} />
+      </div>
+    </section>
+  )}
+
+  <!-- Parcours principal -->
+  {module.mermaid && (
+    <section class="section section--teinte">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Parcours</p>
+          <h2>Comment on s'en sert</h2>
+        </div>
+        <div class="schema">
+          <pre class="mermaid">{module.mermaid}</pre>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Fonctions -->
+  {fonctions.length > 0 && (
+    <section class="section" id="fonctions">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Le détail</p>
+          <h2>Les {fonctions.length} fonctions du module</h2>
+        </div>
+        <div class="grille">
+          {fonctions.map((fonction) => (
+            <article class="carte">
+              <h3>{fonction.nom}</h3>
+              <p>{fonction.description}</p>
+              {fonction.benefice && (
+                <p
+                  style="margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--trait); color: var(--encre); font-weight: 600;"
+                >
+                  {fonction.benefice}
+                </p>
+              )}
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Bénéfices -->
+  {benefices.length > 0 && (
+    <section class="section section--teinte">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">Ce que ça change</p>
+          <h2>Au niveau du réseau</h2>
+        </div>
+        <div class="grille">
+          {benefices.map((benefice) => (
+            <article class="carte">
+              <h3>{benefice.titre}</h3>
+              <p>{benefice.texte}</p>
+            </article>
+          ))}
+        </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Les autres modules -->
+  {autres.length > 0 && (
+    <section class="section">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">La suite</p>
+          <h2>Les autres modules</h2>
+        </div>
+        <div class="grille">
+          {autres.map((autre) => (
+            <a class="carte carte--lien" href={`/modules/${autre.slug}`}>
+              <h3>{autre.nom || autre.slug}</h3>
+              <p>{autre.accroche}</p>
+            </a>
+          ))}
+        </div>
+        <p style="margin-top: 32px;">
+          <a class="bouton" href="/#contact">Demander une démonstration</a>
+        </p>
+      </div>
+    </section>
+  )}
+</Layout>

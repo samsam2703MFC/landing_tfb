@@ -1,0 +1,20 @@
+# Dépendances
+node_modules/
+
+# Build Astro
+apps/web/dist/
+apps/web/.astro/
+
+# Environnement — jamais commité, voir .env.example
+.env
+.env.*
+!.env.example
+
+# Sorties du pipeline (JSON intermédiaires de debug)
+pipeline/.cache/
+pipeline/out/
+
+# Divers
+*.log
+npm-debug.log*
+.DS_Store

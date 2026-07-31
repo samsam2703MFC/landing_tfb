@@ -1,0 +1,35 @@
+# Frontal HTTPS. Caddy obtient et renouvelle les certificats tout seul :
+# il suffit que les deux domaines pointent vers ce serveur (A/AAAA) et que
+# les ports 80 et 443 soient ouverts.
+
+{
+	# Adresse utilisée par Let's Encrypt pour les alertes d'expiration.
+	email {$ACME_EMAIL:admin@localhost}
+}
+
+# --- La landing ---
+{$SITE_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options SAMEORIGIN
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	reverse_proxy web:4321
+}
+
+# --- Le CMS ---
+{$CMS_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	reverse_proxy directus:8055
+}

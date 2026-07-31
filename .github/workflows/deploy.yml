@@ -1,0 +1,78 @@
+name: Déployer sur le serveur
+
+# Le serveur héberge un clone de ce dépôt et un fichier infra/.env.
+# Le déploiement se réduit donc à : mettre à jour le clone, reconstruire
+# l'image de la landing, relancer la pile.
+on:
+  push:
+    branches:
+      - main
+      - claude/landing-astro-directus
+    paths-ignore:
+      - '**.md'
+      - 'examples/**'
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: true
+
+jobs:
+  deployer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Préparer la clé SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Mettre à jour et relancer la pile
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          BRANCHE: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_deploy -p "${SSH_PORT:-22}" \
+              -o StrictHostKeyChecking=yes \
+              "$SSH_USER@$SSH_HOST" \
+              "set -euo pipefail; \
+               cd '$DEPLOY_PATH'; \
+               git fetch --prune origin; \
+               git checkout '$BRANCHE'; \
+               git reset --hard 'origin/$BRANCHE'; \
+               cd infra; \
+               docker compose up -d --build; \
+               docker image prune -f"
+
+      - name: Vérifier que le site répond
+        env:
+          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+        run: |
+          if [ -z "${SITE_DOMAIN:-}" ]; then
+            echo "SITE_DOMAIN non renseigné dans les variables du dépôt — vérification ignorée."
+            exit 0
+          fi
+          for tentative in 1 2 3 4 5; do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$SITE_DOMAIN/" || echo 000)
+            echo "tentative $tentative : HTTP $code"
+            [ "$code" = "200" ] && exit 0
+            sleep 10
+          done
+          echo "Le site ne répond pas 200 après le déploiement." >&2
+          exit 1
+
+      - name: Effacer la clé
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

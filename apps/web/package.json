@@ -1,0 +1,21 @@
+{
+  "name": "landing-tfb-web",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Landing ERP en rendu serveur (Astro SSR), alimentée par Directus.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "start": "node ./dist/server/entry.mjs",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/node": "^11.0.3",
+    "astro": "^7.1.6",
+    "marked": "^16.0.0"
+  }
+}
