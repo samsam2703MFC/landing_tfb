@@ -31,7 +31,10 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # Chemin du clone sur le serveur. Le secret l'emporte s'il existe ;
+          # sinon on retombe sur l'emplacement en place. Ce n'est pas une
+          # donnée sensible, juste un chemin de fichiers.
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/landing_tfb' }}
         run: |
           bloquant=0
 
@@ -70,7 +73,10 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          # Chemin du clone sur le serveur. Le secret l'emporte s'il existe ;
+          # sinon on retombe sur l'emplacement en place. Ce n'est pas une
+          # donnée sensible, juste un chemin de fichiers.
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/landing_tfb' }}
           BRANCHE: ${{ github.ref_name }}
         run: |
           set -euo pipefail

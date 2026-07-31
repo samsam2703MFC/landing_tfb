@@ -93,7 +93,7 @@ Le mapping vers les noms attendus par Directus est fait dans
 | `DIRECTUS_URL` | URL publique du CMS, ex. `https://cms.mondomaine.fr` |
 | `DIRECTUS_TOKEN` | jeton statique d'un utilisateur Directus administrateur |
 | `GH_INGEST_TOKEN` | jeton GitHub en lecture sur les dépôts modules (`repo` si privés) |
-| `DEPLOY_PATH` | chemin du clone sur le serveur, ex. `/opt/landing-tfb` |
+| `DEPLOY_PATH` | *(facultatif)* chemin du clone sur le serveur — à défaut, `/var/www/landing_tfb` |
 | `SSH_PORT` | *(facultatif)* port SSH si différent de 22 |
 
 ### Variables de dépôt GitHub (non secrètes, onglet *Variables*)
@@ -132,12 +132,15 @@ Copié depuis `.env.example`. Contient en plus des secrets ci-dessus :
 ### 2. Installer la pile
 
 ```bash
-sudo git clone <url-du-depot> /opt/landing-tfb
-cd /opt/landing-tfb/infra
+sudo git clone <url-du-depot> /var/www/landing_tfb
+cd /var/www/landing_tfb/infra
 cp ../.env.example .env
 $EDITOR .env          # renseigner les valeurs réelles
 docker compose up -d --build
 ```
+
+C'est ce répertoire que le workflow de déploiement met à jour. Pour en utiliser
+un autre, créer le secret `DEPLOY_PATH`.
 
 Directus crée ses propres tables système au premier démarrage, puis le compte
 administrateur. Vérifier : `https://cms.mondomaine.fr` doit afficher l'écran de
@@ -152,7 +155,7 @@ statique** → générer, copier. Cette valeur va dans le secret GitHub
 ### 4. Créer le schéma
 
 ```bash
-cd /opt/landing-tfb/pipeline
+cd /var/www/landing_tfb/pipeline
 npm ci
 DIRECTUS_URL=https://cms.mondomaine.fr DIRECTUS_TOKEN=xxx npm run bootstrap
 ```
