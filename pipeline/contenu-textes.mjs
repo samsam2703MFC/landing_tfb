@@ -48,7 +48,8 @@ export const TEXTES = [
   { cle: 'accueil.leviers.note2', section: 'Accueil', valeur: 'chaque levier garde sa couleur — la lettre fait l’identité' },
 
   { cle: 'accueil.modules.oeil', section: 'Accueil', valeur: 'Les modules' },
-  { cle: 'accueil.modules.titre', section: 'Accueil', valeur: '{n} modules, {f} familles', aide: '{n} et {f} sont remplacés par les nombres réels.' },
+  { cle: 'accueil.modules.familles', section: 'Accueil', valeur: 'Filtrer par famille', aide: 'Lu par les lecteurs d’écran, au-dessus des badges.' },
+  { cle: 'accueil.modules.toutes', section: 'Accueil', valeur: 'Toutes', aide: 'Badge qui remet le catalogue entier.' },
   { cle: 'accueil.modules.lien', section: 'Accueil', valeur: 'Suivre le fil d’onboarding' },
 
   { cle: 'accueil.ecrans.oeil', section: 'Accueil', valeur: 'À l’écran' },

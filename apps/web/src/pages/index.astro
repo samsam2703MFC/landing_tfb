@@ -32,7 +32,31 @@ const problemes = site?.problemes || [];
 const reponses = site?.reponses || [];
 const ctaTexte = site?.cta_texte || 'Demander une démonstration';
 
-const familles = [...new Set(modules.map((m) => m.groupe).filter(Boolean))];
+/**
+ * Les familles, avec leur clé d'ancrage et leur compte. La clé sert d'id de
+ * bouton radio : c'est elle qui fait marcher le filtre sans JavaScript.
+ */
+const cleFamille = (nom) =>
+  String(nom).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+
+const familles = [...new Set(modules.map((m) => m.groupe).filter(Boolean))].map((nom) => ({
+  nom,
+  cle: cleFamille(nom),
+  nombre: modules.filter((m) => m.groupe === nom).length,
+}));
+
+/**
+ * La règle qui masque tout ce qui n'appartient pas à la famille cochée.
+ * Écrite ici parce qu'elle dépend du contenu de la base — et enveloppée dans
+ * un `@supports` : sans `:has()`, le catalogue reste entier plutôt que figé.
+ */
+const filtreFamilles = `@supports selector(:has(*)) {\n${familles
+  .map(
+    (f) =>
+      `  body:has(#famille-${f.cle}:checked) .module:not([data-famille='${f.cle}']) { display: none; }`,
+  )
+  .join('\n')}\n}`;
 
 /** Une icône par réponse, prise dans l'ordre — purement décoratif. */
 const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 'triangle-alert', 'chart-line'];
@@ -142,16 +166,27 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
   <section class="bande bande--grise" id="modules">
     <div class="dedans">
       <div class="entete-modules">
-        <div class="entete-section" data-monte>
-          <span class="oeil">{t('accueil.modules.oeil')}</span>
-          <h2 class="h-section">{t('accueil.modules.titre', { n: modules.length, f: familles.length })}</h2>
+        <div class="entete-section entete-section--filtre" data-monte>
+          <h2 class="oeil">{t('accueil.modules.oeil')}</h2>
+          <div class="familles" role="group" aria-label={t('accueil.modules.familles')}>
+            <input class="familles__choix" type="radio" name="famille" id="famille-toutes" checked />
+            <label class="badge-famille" for="famille-toutes">
+              {t('accueil.modules.toutes')} <b>{modules.length}</b>
+            </label>
+            {familles.map((f) => (
+              <Fragment>
+                <input class="familles__choix" type="radio" name="famille" id={`famille-${f.cle}`} />
+                <label class="badge-famille" for={`famille-${f.cle}`}>{f.nom} <b>{f.nombre}</b></label>
+              </Fragment>
+            ))}
+          </div>
         </div>
         <a href={lien('/onboarding')} class="entete-modules__lien">{t('accueil.modules.lien')}</a>
       </div>
 
       <div class="grille-modules">
         {modules.map((m) => (
-          <a class="module" href={lien(`/modules/${m.slug}`)} data-monte>
+          <a class="module" href={lien(`/modules/${m.slug}`)} data-famille={cleFamille(m.groupe || '')} data-monte>
             <div class="module__tete">
               <span class="module__icone"><Icone nom={m.icone || m.fonctions?.[0]?.icone || 'layers'} taille={20} /></span>
               <span class="module__noms">
@@ -171,6 +206,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
         ))}
       </div>
     </div>
+    <style set:html={filtreFamilles}></style>
   </section>
 
   <!-- ── Les réseaux qui travaillent avec nous ───────────────────────── -->
@@ -275,6 +311,33 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     padding: 14px 24px; background: var(--slate-25);
     font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500);
   }
+
+  /* ── Filtre par famille ────────────────────────────────────────────── */
+  .entete-section--filtre { gap: 12px; max-width: none; }
+  .entete-section--filtre h2 { margin: 0; }
+  .familles { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  /* Le bouton radio porte l'état, le badge porte l'apparence : le filtre
+     tient sans une ligne de JavaScript. */
+  .familles__choix { position: absolute; opacity: 0; pointer-events: none; }
+  .badge-famille {
+    display: inline-flex; align-items: center; gap: 8px;
+    block-size: 34px; padding-inline: 14px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-pill);
+    background: #fff; color: var(--slate-600);
+    font: 500 var(--text-sm) / 1 var(--font-sans);
+    cursor: pointer; user-select: none;
+    transition: var(--transition-control);
+  }
+  .badge-famille:hover { border-color: var(--plum-300); color: var(--navy-900); }
+  .badge-famille b {
+    font: 500 12px/1 var(--font-mono); font-variant-numeric: tabular-nums;
+    color: var(--slate-400);
+  }
+  .familles__choix:checked + .badge-famille {
+    background: var(--plum-500); border-color: var(--plum-500); color: #fff;
+  }
+  .familles__choix:checked + .badge-famille b { color: rgba(255, 255, 255, 0.72); }
+  .familles__choix:focus-visible + .badge-famille { box-shadow: var(--shadow-focus); }
 
   /* ── Bandeau des réseaux ───────────────────────────────────────────── */
   .bandeau {
