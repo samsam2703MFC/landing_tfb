@@ -303,6 +303,50 @@ export function Pricing({
 
 /* --------------------------------------------------------- Module detail ---- */
 
+/**
+ * Le franchiseur d'abord, l'outil ensuite. Chaque carte met sa phrase — celle
+ * qu'il dit vraiment en rendez-vous — face à ce que l'exploitation écrite en fait.
+ *
+ * Cinq paires, numérotées dans les traductions (pain.1p / pain.1a …), pour qu'on
+ * puisse en ajouter ou en retirer depuis le back-office sans toucher au code.
+ */
+export function Pains({ payload }: { payload: LandingPayload }) {
+  const t = useT(payload);
+  const pairs = [1, 2, 3, 4, 5]
+    .map((n) => ({ n, pain: payload.strings[`pain.${n}p`], answer: payload.strings[`pain.${n}a`] }))
+    .filter((p) => p.pain && p.answer);
+
+  if (pairs.length === 0) return null;
+
+  return (
+    <section style={{ background: 'var(--surface-page)', padding: 'var(--space-20) 0' }}>
+      <div style={SECTION}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: '62ch' }}>
+          <span className="fb-eyebrow">{t('pain.eyebrow')}</span>
+          <h2 style={{ font: 'var(--type-display-3)', letterSpacing: 'var(--tracking-display)' }}>{t('pain.title')}</h2>
+          <p style={{ font: 'var(--type-body-lg)', color: 'var(--text-secondary)' }}>{t('pain.lead')}</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-10)' }}>
+          {pairs.map(({ n, pain, answer }) => (
+            <Card key={n} padding="lg">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.45 var(--font-display)', letterSpacing: 'var(--tracking-tight)', color: 'var(--text-primary)' }}>
+                  {pain}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)' }}>
+                  <Icon name="arrow-up-right" size={18} color="var(--plum-600)" className="fb-flip" style={{ marginTop: 3, flex: 'none' }} />
+                  <p style={{ font: 'var(--type-body)', color: 'var(--text-secondary)' }}>{answer}</p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** Layout C — the page tfb_modules.redirect_url opens. */
 export function ModuleDetail({
   payload,
