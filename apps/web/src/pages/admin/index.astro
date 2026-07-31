@@ -1,14 +1,16 @@
 ---
 /**
- * Tableau de bord de la console : ce que contient la base, et par où
- * commencer. Rien d'éditable ici — c'est une page de repérage.
+ * Tableau de bord de la console : ce que contient la base, et ce qui manque.
+ * Rien d'éditable ici — c'est une page de repérage.
  */
 import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import Pastille from '../../components/Pastille.astro';
 import { lien } from '../../lib/lien.mjs';
-import { LEVIERS } from '../../lib/db.mjs';
+import { LEVIERS } from '../../lib/leviers.mjs';
 import { compteurs, listerModules } from '../../lib/admin/donnees.mjs';
 
-let chiffres = null;
+let chiffres = { modules: 0, actifs: 0, fonctions: 0, captures: 0 };
 let modules = [];
 let erreur = null;
 
@@ -19,17 +21,44 @@ try {
   erreur = `Base injoignable : ${err.message}`;
 }
 
+const masques = modules.filter((m) => !m.actif);
 const sansCapture = modules.filter((m) => m.nb_captures === 0);
 const sansLevier = modules.filter((m) => (m.leviers || []).length === 0);
-const masques = modules.filter((m) => !m.actif);
+const familles = [...new Set(modules.map((m) => m.groupe).filter(Boolean))];
 ---
 
-<Console titre="Tableau de bord" erreur={erreur}>
+<Console
+  titre="Tableau de bord"
+  fil="TFB Admin · Contenu"
+  actif="accueil"
+  erreur={erreur}
+  compteurs={chiffres}
+>
   <div class="tuiles">
-    <div class="tuile"><b>{chiffres?.modules ?? '—'}</b><span>Modules</span></div>
-    <div class="tuile"><b>{chiffres?.actifs ?? '—'}</b><span>Affichés</span></div>
-    <div class="tuile"><b>{chiffres?.fonctions ?? '—'}</b><span>Fonctions</span></div>
-    <div class="tuile"><b>{chiffres?.captures ?? '—'}</b><span>Captures</span></div>
+    <div class="tuile tuile--encre">
+      <span class="tuile__oeil">Modules publiés</span>
+      <span class="tuile__chiffre num">{chiffres.actifs}</span>
+      <span class="tuile__note">
+        sur {chiffres.modules} en base · {familles.length} famille{familles.length > 1 ? 's' : ''}
+      </span>
+    </div>
+    <div class="tuile">
+      <span class="tuile__oeil">Composants</span>
+      <span class="tuile__chiffre num">{chiffres.fonctions}</span>
+      <span class="tuile__note">entrées de menu, toutes rattachées à un levier</span>
+    </div>
+    <div class="tuile">
+      <span class="tuile__oeil">Captures</span>
+      <span class="tuile__chiffre num">{chiffres.captures}</span>
+      <span class="tuile__note">
+        {sansCapture.length > 0 ? `${sansCapture.length} module(s) sans aucune image` : 'tous les modules sont illustrés'}
+      </span>
+    </div>
+    <div class="tuile">
+      <span class="tuile__oeil">Traduction</span>
+      <span class="tuile__chiffre num">1</span>
+      <span class="tuile__note">français seul — les autres langues restent à faire</span>
+    </div>
   </div>
 
   <section class="bloc">
@@ -40,33 +69,35 @@ const masques = modules.filter((m) => !m.actif);
       </div>
     </div>
     <div class="bloc__corps">
-      {sansCapture.length === 0 && sansLevier.length === 0 && masques.length === 0 && !erreur && (
-        <p>Rien à signaler : tous les modules sont affichés, rattachés à des leviers et illustrés.</p>
+      {!erreur && masques.length === 0 && sansCapture.length === 0 && sansLevier.length === 0 && (
+        <p class="tuile__note">
+          Rien à signaler : tous les modules sont affichés, rattachés à des leviers et illustrés.
+        </p>
       )}
 
       {masques.length > 0 && (
-        <p>
-          <strong>{masques.length} module(s) masqué(s) :</strong>{' '}
+        <p class="tuile__note">
+          <strong>{masques.length} module(s) masqué(s)</strong> —{' '}
           {masques.map((m, i) => (
             <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
           ))}
         </p>
       )}
       {sansLevier.length > 0 && (
-        <p>
-          <strong>{sansLevier.length} module(s) sans levier :</strong>{' '}
+        <p class="tuile__note">
+          <strong>{sansLevier.length} module(s) sans levier</strong> —{' '}
           {sansLevier.map((m, i) => (
             <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
           ))}
         </p>
       )}
       {sansCapture.length > 0 && (
-        <p>
-          <strong>{sansCapture.length} module(s) sans capture :</strong>{' '}
+        <p class="tuile__note">
+          <strong>{sansCapture.length} module(s) sans capture</strong> —{' '}
           {sansCapture.map((m, i) => (
             <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
           ))}
-          {' '}— les captures sont publiées par chaque dépôt dans <span class="jeton">docs/landing/*.png</span> et
+          . Les captures sont publiées par chaque dépôt dans <span class="jeton">docs/landing/*.png</span> et
           reprises au déploiement.
         </p>
       )}
@@ -77,17 +108,28 @@ const masques = modules.filter((m) => !m.actif);
     <div class="bloc__tete">
       <div>
         <h2>Les 6 leviers</h2>
-        <p>L'ossature de lecture du réseau. Chaque module et chaque fonction s'y rattache.</p>
+        <p>L'ossature de lecture — chaque module et chaque composant est rattaché à un ou deux leviers.</p>
+      </div>
+      <div class="bloc__actions">
+        <a class="bouton bouton--sobre bouton--sm" href={lien('/admin/leviers')}>
+          Voir la répartition
+          <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
+        </a>
       </div>
     </div>
     <div class="bloc__corps">
-      <div class="choix-leviers">
+      <div class="choix-leviers choix-leviers--large">
         {LEVIERS.map((l) => (
-          <span class="choix-levier" data-levier={l.cle}>
-            <span data-lettre={l.lettre}>{l.nom} — {l.question}</span>
+          <span class="choix-levier" style={`--fond:${l.fond};--encre:${l.encre}`}>
+            <span style={`background:${l.fond};color:${l.encre};padding-inline:10px;inline-size:auto;gap:6px`}>
+              {l.lettre} {l.nom}
+            </span>
           </span>
         ))}
       </div>
+      <p class="tuile__note">
+        Trois font le chiffre — Trafic, Récurrence, Expérience. Trois font le coût — Food Cost, Labour, Overhead.
+      </p>
     </div>
   </section>
 </Console>

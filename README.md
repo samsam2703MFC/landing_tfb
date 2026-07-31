@@ -292,10 +292,14 @@ Le contenu se modifie aussi depuis le navigateur, sans redéploiement, à
 l'adresse `<BASE_PATH>/admin` — par exemple
 `https://185.180.206.46/landing_tfb/admin`.
 
-Elle donne accès à la page d'accueil (titre, accroche, problèmes du
-franchiseur et réponses), à chaque module (fiche, leviers, liens avec les
-autres modules, ordre, affichage), à chaque fonction (nom, description,
-gain, leviers, ordre) et aux captures d'écran (titre, rattachement, ordre).
+Six écrans, sur la même densité que la maquette : **Tableau de bord**
+(ce qui manque au contenu publié), **Modules** (fiche, leviers, liens,
+ordre, publication, icône), **Composants** (les 79 entrées de menu à plat,
+filtrables par module — la vue qui sert à repérer les trous), **Leviers**
+(la répartition réelle du catalogue sur les six), **Captures** (titre,
+rattachement, ordre) et **Page d'accueil** (titre, accroche, problèmes du
+franchiseur et réponses).
+
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.
 

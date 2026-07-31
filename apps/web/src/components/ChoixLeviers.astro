@@ -1,0 +1,21 @@
+---
+/**
+ * Les six leviers en cases à cocher, pour la console.
+ *
+ * Une case décochée reste visible en gris : on voit d'un coup d'œil les six
+ * possibles et ceux retenus, sans avoir à ouvrir une liste.
+ */
+import { LEVIERS, titreLevier } from '../lib/leviers.mjs';
+
+const { nom = 'leviers', choisis = [], large = false } = Astro.props;
+const retenus = new Set(choisis || []);
+---
+
+<div class={`choix-leviers${large ? ' choix-leviers--large' : ''}`}>
+  {LEVIERS.map((l) => (
+    <label class="choix-levier" title={titreLevier(l)} style={`--fond:${l.fond};--encre:${l.encre}`}>
+      <input type="checkbox" name={nom} value={l.cle} checked={retenus.has(l.cle)} />
+      <span>{l.lettre}{large && ` ${l.nom}`}</span>
+    </label>
+  ))}
+</div>

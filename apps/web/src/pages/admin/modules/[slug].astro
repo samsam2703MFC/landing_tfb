@@ -9,7 +9,9 @@
  */
 import Console from '../../../components/Console.astro';
 import { lien } from '../../../lib/lien.mjs';
-import { LEVIERS } from '../../../lib/db.mjs';
+import ChoixLeviers from '../../../components/ChoixLeviers.astro';
+import Pastille from '../../../components/Pastille.astro';
+import { LEVIERS, leviersDe } from '../../../lib/leviers.mjs';
 import {
   CHAMPS_MODULE,
   ajouterFonction,
@@ -19,6 +21,7 @@ import {
   lireBlocs,
   lireListe,
   lireLiens,
+  compteurs,
   slugsModules,
   supprimerFonction,
 } from '../../../lib/admin/donnees.mjs';
@@ -84,6 +87,7 @@ const module = await chargerModuleAdmin(slug);
 if (!module) return new Response(`Module « ${slug} » introuvable.`, { status: 404 });
 
 const autres = (await slugsModules()).filter((m) => m.slug !== slug);
+const chiffres = await compteurs().catch(() => ({}));
 const message = Astro.url.searchParams.get('ok');
 
 // Une ligne vide en fin de liste sert de champ d'ajout, sans JavaScript.
@@ -94,9 +98,11 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
 
 <Console
   titre={module.nom || module.slug}
-  fil={['Console', 'Modules', module.slug]}
+  fil={`TFB Admin · Modules · ${module.slug}`}
+  actif="modules"
   message={message}
   erreur={erreur}
+  compteurs={chiffres}
 >
   <a slot="actions" class="bouton bouton--sobre" href={lien(`/modules/${module.slug}`)} target="_blank">
     Voir la page publique
@@ -154,14 +160,7 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
 
         <div class="champ">
           <span class="legende">Leviers actionnés</span>
-          <div class="choix-leviers">
-            {LEVIERS.map((l) => (
-              <label class="choix-levier" data-levier={l.cle}>
-                <input type="checkbox" name="leviers" value={l.cle} checked={module.leviers.includes(l.cle)} />
-                <span data-lettre={l.lettre}>{l.nom}</span>
-              </label>
-            ))}
-          </div>
+          <ChoixLeviers choisis={module.leviers} large={true} />
         </div>
 
         <div class="champ">
@@ -243,7 +242,7 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
     </section>
 
     <div class="actions" style="margin-top: var(--space-5);">
-      <button class="bouton" type="submit">Enregistrer la fiche</button>
+      <button class="bouton bouton--marque" type="submit">Enregistrer la fiche</button>
       <a class="bouton bouton--sobre" href={lien('/admin/modules')}>Retour à la liste</a>
     </div>
   </form>
@@ -258,22 +257,16 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
     </div>
     <div class="bloc__corps">
       {module.fonctions.map((fonction) => (
-        <details class="fonction">
+        <details class="fiche">
           <summary>
             <span>{fonction.nom || fonction.cle}</span>
-            <span class="fonction__meta">
-              <span class="choix-leviers">
-                {(fonction.leviers || []).map((cle) => (
-                  <span class="choix-levier" data-levier={cle}>
-                    <span data-lettre={LEVIERS.find((l) => l.cle === cle)?.lettre || '?'}></span>
-                  </span>
-                ))}
-              </span>
+            <span class="actions">
+              <span class="pastilles">{leviersDe(fonction.leviers).map((l) => <Pastille levier={l} />)}</span>
               <span class="jeton">{fonction.cle}</span>
             </span>
           </summary>
 
-          <form method="post" class="fonction__corps">
+          <form method="post" class="fiche__corps">
             <input type="hidden" name="action" value="fonction" />
             <input type="hidden" name="id" value={fonction.id} />
 
@@ -304,22 +297,15 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
 
             <div class="champ">
               <span class="legende">Leviers</span>
-              <div class="choix-leviers">
-                {LEVIERS.map((l) => (
-                  <label class="choix-levier" data-levier={l.cle}>
-                    <input type="checkbox" name="leviers" value={l.cle} checked={(fonction.leviers || []).includes(l.cle)} />
-                    <span data-lettre={l.lettre}>{l.nom}</span>
-                  </label>
-                ))}
-              </div>
+              <ChoixLeviers choisis={fonction.leviers} />
             </div>
 
             <div class="actions">
-              <button class="bouton bouton--sm" type="submit">Enregistrer</button>
+              <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
             </div>
           </form>
 
-          <form method="post" class="fonction__corps" style="padding-top: 0;">
+          <form method="post" class="fiche__corps" style="padding-top: 0;">
             <input type="hidden" name="action" value="suppression-fonction" />
             <input type="hidden" name="id" value={fonction.id} />
             <button
@@ -332,9 +318,9 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
       ))}
 
       <!-- Ajout -->
-      <details class="fonction">
+      <details class="fiche">
         <summary><span>+ Ajouter une fonction</span></summary>
-        <form method="post" class="fonction__corps">
+        <form method="post" class="fiche__corps">
           <input type="hidden" name="action" value="ajout-fonction" />
           <input type="hidden" name="module_id" value={module.id} />
 
@@ -370,18 +356,11 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
 
           <div class="champ">
             <span class="legende">Leviers</span>
-            <div class="choix-leviers">
-              {LEVIERS.map((l) => (
-                <label class="choix-levier" data-levier={l.cle}>
-                  <input type="checkbox" name="leviers" value={l.cle} />
-                  <span data-lettre={l.lettre}>{l.nom}</span>
-                </label>
-              ))}
-            </div>
+            <ChoixLeviers />
           </div>
 
           <div class="actions">
-            <button class="bouton bouton--sm" type="submit">Ajouter</button>
+            <button class="bouton bouton--marque bouton--sm" type="submit">Ajouter</button>
           </div>
         </form>
       </details>

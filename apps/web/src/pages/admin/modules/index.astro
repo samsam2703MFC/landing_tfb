@@ -1,25 +1,25 @@
 ---
 /**
- * Liste des modules. C'est ici qu'on règle l'ordre d'affichage et qu'on
- * masque un module sans le supprimer — un module retiré de la base
+ * La table des modules. C'est ici qu'on règle l'ordre d'affichage et qu'on
+ * masque un module sans le supprimer — un module supprimé de la base
  * reviendrait à la prochaine ingestion, alors qu'un module masqué reste
  * masqué.
  */
 import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import Pastille from '../../../components/Pastille.astro';
 import { lien } from '../../../lib/lien.mjs';
-import { LEVIERS } from '../../../lib/db.mjs';
-import { basculerModule, listerModules } from '../../../lib/admin/donnees.mjs';
+import { leviersDe } from '../../../lib/leviers.mjs';
+import { basculerModule, compteurs, listerModules } from '../../../lib/admin/donnees.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-
-let message = null;
 let erreur = null;
 
 if (Astro.request.method === 'POST') {
   try {
-    const formulaire = await Astro.request.formData();
-    const slug = String(formulaire.get('slug') || '');
-    const actif = formulaire.get('actif') === '1';
+    const f = await Astro.request.formData();
+    const slug = String(f.get('slug') || '');
+    const actif = f.get('actif') === '1';
     await basculerModule(slug, actif);
     return Astro.redirect(
       `${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} ${actif ? 'affiché' : 'masqué'}.`)}`,
@@ -30,81 +30,101 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-message = Astro.url.searchParams.get('ok');
+const message = Astro.url.searchParams.get('ok');
 
 let modules = [];
+let chiffres = {};
 try {
   modules = await listerModules();
+  chiffres = await compteurs();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
 
-const lettre = (cle) => LEVIERS.find((l) => l.cle === cle)?.lettre || '?';
+const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
 ---
 
-<Console titre="Modules" fil={['Console', 'Modules']} message={message} erreur={erreur}>
+<Console
+  titre="Modules"
+  fil="TFB Admin · Contenu · Modules"
+  actif="modules"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
   <section class="bloc">
     <div class="bloc__tete">
       <div>
-        <h2>{modules.length} module(s)</h2>
-        <p>L'ordre gouverne l'affichage sur la page d'accueil et dans le fil d'onboarding.</p>
+        <h2>Modules</h2>
+        <p>
+          <span class="jeton">landing_modules</span> — régénérés depuis les dépôts GitHub par le pipeline.
+          L'ordre gouverne l'affichage sur l'accueil et dans le fil d'onboarding.
+        </p>
       </div>
     </div>
 
-    <table>
-      <thead>
-        <tr>
-          <th>Ordre</th>
-          <th>Module</th>
-          <th>Famille</th>
-          <th>Leviers</th>
-          <th>Fonctions</th>
-          <th>Captures</th>
-          <th>État</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        {modules.map((module) => (
+    <div class="roule">
+      <table>
+        <thead>
           <tr>
-            <td class="num">{module.ordre}</td>
-            <td>
-              <a href={lien(`/admin/modules/${module.slug}`)}><strong>{module.nom || module.slug}</strong></a>
-              <div><span class="jeton">{module.slug}</span></div>
-            </td>
-            <td>{module.groupe || '—'}</td>
-            <td>
-              <div class="choix-leviers">
-                {(module.leviers || []).map((cle) => (
-                  <span class="choix-levier" data-levier={cle}><span data-lettre={lettre(cle)}></span></span>
-                ))}
-                {(module.leviers || []).length === 0 && '—'}
-              </div>
-            </td>
-            <td class="num">{module.nb_fonctions}</td>
-            <td class="num">{module.nb_captures}</td>
-            <td><span class={module.actif ? 'etat etat--on' : 'etat'}>{module.actif ? 'Affiché' : 'Masqué'}</span></td>
-            <td>
-              <div class="actions">
-                <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/modules/${module.slug}`)}>Modifier</a>
-                <form method="post">
-                  <input type="hidden" name="slug" value={module.slug} />
-                  <input type="hidden" name="actif" value={module.actif ? '0' : '1'} />
-                  <button class="bouton bouton--sobre bouton--sm" type="submit">
-                    {module.actif ? 'Masquer' : 'Afficher'}
-                  </button>
-                </form>
-              </div>
-            </td>
+            <th>Module</th>
+            <th>Famille</th>
+            <th>Leviers</th>
+            <th class="a-droite">Ordre</th>
+            <th class="a-droite">Composants</th>
+            <th class="a-droite">Captures</th>
+            <th>Statut</th>
+            <th></th>
           </tr>
-        ))}
-      </tbody>
-    </table>
-  </section>
+        </thead>
+        <tbody>
+          {modules.map((m) => (
+            <tr>
+              <td>
+                <span style="display:flex;align-items:center;gap:10px">
+                  <span style="display:inline-flex;align-items:center;justify-content:center;inline-size:26px;block-size:26px;border-radius:6px;background:var(--plum-50);color:var(--plum-600);flex:none">
+                    <Icone nom={m.icone || 'layers'} taille={14} />
+                  </span>
+                  <a href={lien(`/admin/modules/${m.slug}`)}><strong>{m.nom || m.slug}</strong></a>
+                </span>
+                <code class="slug" style="margin-inline-start:36px">{m.slug}</code>
+              </td>
+              <td>{m.groupe || '—'}</td>
+              <td>
+                <span class="pastilles">
+                  {leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}
+                  {(m.leviers || []).length === 0 && '—'}
+                </span>
+              </td>
+              <td class="a-droite num">{m.ordre}</td>
+              <td class="a-droite num">{m.nb_fonctions}</td>
+              <td class="a-droite num" style={m.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
+                {m.nb_captures}
+              </td>
+              <td>
+                <span class={m.actif ? 'etat etat--on' : 'etat'}>{m.actif ? 'Publié' : 'Masqué'}</span>
+              </td>
+              <td>
+                <div class="actions">
+                  <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/modules/${m.slug}`)}>Modifier</a>
+                  <form method="post">
+                    <input type="hidden" name="slug" value={m.slug} />
+                    <input type="hidden" name="actif" value={m.actif ? '0' : '1'} />
+                    <button class="bouton bouton--sobre bouton--sm" type="submit">
+                      {m.actif ? 'Masquer' : 'Publier'}
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
 
-  <p style="font: var(--type-caption); color: var(--text-tertiary);">
-    Un module s'ajoute au dépôt, pas ici : une ligne dans <span class="jeton">modules.json</span> et sa fiche dans
-    <span class="jeton">pipeline/contenu-initial.mjs</span>. La console modifie ce qui est publié, elle ne
-    remplace pas la source.
-  </p>
+    <div class="bloc__pied">
+      {modules.length} module(s), {total} composants. Un module s'ajoute au dépôt, pas ici : une ligne dans
+      <span class="jeton">modules.json</span> et sa fiche dans <span class="jeton">pipeline/contenu-initial.mjs</span>.
+    </div>
+  </section>
 </Console>

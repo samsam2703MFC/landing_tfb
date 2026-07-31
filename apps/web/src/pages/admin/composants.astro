@@ -1,0 +1,133 @@
+---
+/**
+ * Tous les composants du catalogue, tous modules confondus.
+ *
+ * La table des modules dit ce que le réseau achète ; celle-ci dit ce qu'il
+ * obtient, entrée de menu par entrée de menu. C'est la vue qui sert à
+ * repérer les trous : un composant sans levier, sans gain écrit, sans
+ * capture.
+ *
+ * Le filtre par module est un simple lien : la page se recharge, l'état est
+ * dans l'URL, et un filtre partagé par courriel mène bien au même écran.
+ */
+import Console from '../../components/Console.astro';
+import Pastille from '../../components/Pastille.astro';
+import { lien } from '../../lib/lien.mjs';
+import { leviersDe } from '../../lib/leviers.mjs';
+import { compteurs, listerModules, chargerModuleAdmin } from '../../lib/admin/donnees.mjs';
+
+let erreur = null;
+let modules = [];
+let chiffres = {};
+
+try {
+  modules = await listerModules();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const filtre = Astro.url.searchParams.get('module') || '';
+const retenus = filtre ? modules.filter((m) => m.slug === filtre) : modules;
+
+/** Les composants des modules retenus, à plat, avec leur module d'origine. */
+const composants = [];
+for (const m of retenus) {
+  const complet = await chargerModuleAdmin(m.slug).catch(() => null);
+  if (!complet) continue;
+  const captures = new Set((complet.captures || []).map((c) => c.fonction_cle).filter(Boolean));
+  for (const f of complet.fonctions || []) {
+    composants.push({
+      ...f,
+      module_nom: m.nom || m.slug,
+      module_slug: m.slug,
+      illustre: captures.has(f.cle),
+    });
+  }
+}
+
+const sansLevier = composants.filter((c) => (c.leviers || []).length === 0).length;
+const sansGain = composants.filter((c) => !c.benefice).length;
+const sansCapture = composants.filter((c) => !c.illustre).length;
+---
+
+<Console
+  titre="Composants"
+  fil="TFB Admin · Contenu · Composants"
+  actif="composants"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Composants</h2>
+        <p>
+          Un composant, c'est une entrée de menu : ce qu'elle fait, le gain qu'elle apporte, ses leviers
+          et sa capture d'écran. <span class="jeton">landing_fonctions</span>
+        </p>
+      </div>
+      <div class="bloc__actions">
+        <a class={`bouton bouton--sm ${filtre ? 'bouton--sobre' : 'bouton--marque'}`} href={lien('/admin/composants')}>
+          Tous ({composants.length === 0 && filtre ? '…' : ''}{!filtre ? composants.length : ''})
+        </a>
+        {modules.map((m) => (
+          <a
+            class={`bouton bouton--sm ${filtre === m.slug ? 'bouton--marque' : 'bouton--sobre'}`}
+            href={lien(`/admin/composants?module=${m.slug}`)}
+          >{m.nom || m.slug}</a>
+        ))}
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr>
+            <th>Composant</th>
+            <th>Module</th>
+            <th>Leviers</th>
+            <th>Capture</th>
+            <th>Le gain</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {composants.map((c) => (
+            <tr>
+              <td style="white-space:nowrap">
+                <strong>{c.nom || c.cle}</strong>
+                <code class="slug">{c.cle}</code>
+              </td>
+              <td style="white-space:nowrap">
+                <a href={lien(`/admin/modules/${c.module_slug}`)}>{c.module_nom}</a>
+              </td>
+              <td>
+                <span class="pastilles">
+                  {leviersDe(c.leviers).map((l) => <Pastille levier={l} />)}
+                  {(c.leviers || []).length === 0 && <span class="etat etat--manque">aucun</span>}
+                </span>
+              </td>
+              <td>
+                <span class={c.illustre ? 'etat etat--on' : 'etat etat--manque'}>
+                  {c.illustre ? 'illustré' : 'à venir'}
+                </span>
+              </td>
+              <td style="color:var(--slate-600);max-inline-size:34rem">
+                {c.benefice || <span class="etat etat--manque">non renseigné</span>}
+              </td>
+              <td>
+                <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/modules/${c.module_slug}`)}>Modifier</a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bloc__pied">
+      {composants.length} composant(s){filtre ? ` du module ${filtre}` : ''} ·
+      {sansLevier} sans levier · {sansGain} sans gain écrit · {sansCapture} sans capture.
+    </div>
+  </section>
+</Console>

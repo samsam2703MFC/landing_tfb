@@ -8,6 +8,7 @@
 import Console from '../../components/Console.astro';
 import { lien } from '../../lib/lien.mjs';
 import {
+  compteurs,
   CHAMPS_SITE,
   chargerSiteAdmin,
   enregistrerSite,
@@ -16,6 +17,7 @@ import {
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
+let chiffres = {};
 
 if (Astro.request.method === 'POST') {
   try {
@@ -39,12 +41,13 @@ try {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
 
+chiffres = await compteurs().catch(() => ({}));
 const message = Astro.url.searchParams.get('ok');
 const problemes = site ? [...site.problemes, { titre: '', texte: '' }] : [];
 const reponses = site ? [...site.reponses, { titre: '', texte: '' }] : [];
 ---
 
-<Console titre="Page d'accueil" fil={['Console', 'Accueil']} message={message} erreur={erreur}>
+<Console actif="site" compteurs={chiffres} titre="Page d'accueil" fil="TFB Admin · Contenu · Accueil" message={message} erreur={erreur}>
   <a slot="actions" class="bouton bouton--sobre" href={lien('/')} target="_blank">Voir la page</a>
 
   {!site && !erreur && (
@@ -120,7 +123,7 @@ const reponses = site ? [...site.reponses, { titre: '', texte: '' }] : [];
       </section>
 
       <div class="actions" style="margin-top: var(--space-5);">
-        <button class="bouton" type="submit">Enregistrer</button>
+        <button class="bouton bouton--marque" type="submit">Enregistrer</button>
       </div>
     </form>
   )}

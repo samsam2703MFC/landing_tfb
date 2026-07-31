@@ -1,0 +1,113 @@
+---
+/**
+ * Les six leviers et leur répartition réelle.
+ *
+ * Les leviers ne se modifient pas : ils sont l'ossature de lecture du réseau,
+ * définis dans `lib/leviers.mjs`. Cette page sert à voir comment le catalogue
+ * se répartit dessus — un levier que rien n'actionne est un trou dans l'offre,
+ * un levier porté par tous les modules ne discrimine plus rien.
+ */
+import Console from '../../components/Console.astro';
+import Pastille from '../../components/Pastille.astro';
+import { lien } from '../../lib/lien.mjs';
+import { LEVIERS } from '../../lib/leviers.mjs';
+import { compteurs, listerModules, chargerModuleAdmin } from '../../lib/admin/donnees.mjs';
+
+let erreur = null;
+let modules = [];
+let chiffres = {};
+
+try {
+  modules = await listerModules();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+/** Compte, par levier, les modules et les composants qui l'actionnent. */
+const compte = new Map(LEVIERS.map((l) => [l.cle, { modules: [], composants: 0 }]));
+for (const m of modules) {
+  for (const cle of m.leviers || []) compte.get(cle)?.modules.push(m);
+  const complet = await chargerModuleAdmin(m.slug).catch(() => null);
+  for (const f of complet?.fonctions || []) {
+    for (const cle of f.leviers || []) {
+      const c = compte.get(cle);
+      if (c) c.composants += 1;
+    }
+  }
+}
+
+const totalComposants = [...compte.values()].reduce((n, c) => n + c.composants, 0);
+---
+
+<Console
+  titre="Leviers"
+  fil="TFB Admin · Contenu · Leviers"
+  actif="leviers"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les 6 leviers</h2>
+        <p>
+          L'ossature de lecture du réseau. Trois font le chiffre, trois font le coût.
+          Ils ne se modifient pas ici : ils sont définis dans le code, parce que tout le contenu s'y rattache.
+        </p>
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr>
+            <th>Levier</th>
+            <th>La question</th>
+            <th class="a-droite">Modules</th>
+            <th class="a-droite">Composants</th>
+            <th>Qui l'actionne</th>
+          </tr>
+        </thead>
+        <tbody>
+          {LEVIERS.map((l) => {
+            const c = compte.get(l.cle);
+            return (
+              <tr>
+                <td style="white-space:nowrap">
+                  <span style="display:flex;align-items:center;gap:10px">
+                    <Pastille levier={l} taille="md" />
+                    <span>
+                      <strong>{l.nom}</strong>
+                      <code class="slug">{l.cle}</code>
+                    </span>
+                  </span>
+                </td>
+                <td style="color:var(--slate-600)">{l.question}</td>
+                <td class="a-droite num">{c.modules.length}</td>
+                <td class="a-droite num">{c.composants}</td>
+                <td>
+                  {c.modules.length === 0 ? (
+                    <span class="etat etat--manque">aucun module</span>
+                  ) : (
+                    c.modules.map((m, i) => (
+                      <Fragment>
+                        {i > 0 ? ', ' : ''}
+                        <a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a>
+                      </Fragment>
+                    ))
+                  )}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bloc__pied">
+      {totalComposants} rattachement(s) de composant à un levier — un composant peut en porter deux.
+      Un levier sans module est un trou dans l'offre ; un levier porté par tous ne discrimine plus rien.
+    </div>
+  </section>
+</Console>
