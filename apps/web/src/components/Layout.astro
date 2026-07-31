@@ -350,12 +350,42 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
         background: var(--surface-card);
         box-shadow: var(--shadow-sm);
       }
-      .capture img { display: block; width: 100%; height: auto; }
+      .capture img { display: block; width: 100%; height: auto; background: var(--surface-sunken); }
       .capture figcaption {
         padding: var(--space-3) var(--space-4);
         font-size: var(--text-sm, 0.88rem);
         color: var(--text-secondary);
         border-top: 1px solid var(--border-subtle, var(--slate-100));
+      }
+      .capture figcaption strong { display: block; color: var(--text-primary); }
+      .capture figcaption span { display: block; }
+
+      /* Cliquable : la capture de la page d'accueil mène à la fiche du module. */
+      .capture--lien {
+        display: block;
+        text-decoration: none;
+        transition: border-color var(--duration-fast, 150ms) var(--ease-standard, ease),
+                    transform var(--duration-fast, 150ms) var(--ease-standard, ease),
+                    box-shadow var(--duration-fast, 150ms) var(--ease-standard, ease);
+      }
+      .capture--lien:hover {
+        border-color: var(--brand);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md, 0 12px 32px -18px rgba(12, 19, 41, 0.5));
+        text-decoration: none;
+      }
+
+      /* Sur fond sombre — le fil d'onboarding. */
+      .captures--sombre { grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); margin-bottom: var(--space-8); }
+      .captures--sombre .capture {
+        background: rgba(255, 255, 255, 0.05);
+        border-color: rgba(255, 255, 255, 0.14);
+        box-shadow: none;
+      }
+      .captures--sombre .capture img { background: rgba(255, 255, 255, 0.06); }
+      .captures--sombre .capture figcaption {
+        color: var(--text-inverse-secondary);
+        border-top-color: rgba(255, 255, 255, 0.12);
       }
 
       /* ── Schémas Mermaid ───────────────────────────────────────────────── */

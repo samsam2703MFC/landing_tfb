@@ -108,6 +108,20 @@ const couverture = LEVIERS.map((l) => ({
             <p class="fiche__onboarding">{m.onboarding}</p>
           )}
 
+          <!-- À quoi ça ressemble, avant d'expliquer à quoi ça sert -->
+          {(m.captures || []).length > 0 && (
+            <ul class="captures captures--sombre">
+              {m.captures.slice(0, 3).map((c) => (
+                <li>
+                  <figure class="capture">
+                    <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || m.nom} loading="lazy" decoding="async" />
+                    {c.titre && <figcaption>{c.titre}</figcaption>}
+                  </figure>
+                </li>
+              ))}
+            </ul>
+          )}
+
           <div class="fiche__colonnes">
             <!-- Ce qu'on y gagne -->
             <div>

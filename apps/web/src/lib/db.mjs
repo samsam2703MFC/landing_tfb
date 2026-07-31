@@ -271,6 +271,48 @@ export async function chargerParcours() {
   return modules;
 }
 
+/**
+ * Toutes les captures des modules affichés, avec le module d'où elles
+ * viennent. Sert la galerie de la page d'accueil : sans elle, les copies
+ * d'écran ne seraient visibles que sur la fiche de chaque module.
+ */
+export async function chargerCaptures(limite = 0) {
+  const lignes = await lire(
+    'captures-galerie',
+    `SELECT c.fichier, c.titre, c.ordre, m.slug AS module_slug, m.nom AS module_nom, m.ordre AS module_ordre
+       FROM ${table('captures')} c
+       JOIN ${table('modules')} m ON m.id = c.module_id
+      WHERE m.actif = ?
+      ORDER BY m.ordre, c.ordre`,
+    [VRAI()],
+  );
+  const captures = lignes || [];
+  if (limite <= 0) return captures;
+
+  // On prend d'abord une capture par module, puis on complète : la galerie
+  // montre la largeur du catalogue avant la profondeur d'un seul module.
+  const parModule = new Map();
+  for (const c of captures) {
+    if (!parModule.has(c.module_slug)) parModule.set(c.module_slug, []);
+    parModule.get(c.module_slug).push(c);
+  }
+  const choisies = [];
+  let rang = 0;
+  while (choisies.length < limite) {
+    let ajout = false;
+    for (const liste of parModule.values()) {
+      if (liste[rang]) {
+        choisies.push(liste[rang]);
+        ajout = true;
+        if (choisies.length >= limite) break;
+      }
+    }
+    if (!ajout) break;
+    rang += 1;
+  }
+  return choisies;
+}
+
 /** Regroupe les modules par famille, en conservant l'ordre d'apparition. */
 export function grouperModules(modules) {
   const groupes = new Map();

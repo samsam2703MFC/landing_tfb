@@ -138,7 +138,7 @@ Les diagrammes sont stockés en texte Mermaid et rendus **dans le navigateur**
 
 ## Variables et secrets
 
-### Secrets GitHub — les six déjà en place suffisent
+### Secrets GitHub — les six déjà en place suffisent, un septième est facultatif
 
 | Secret | Usage |
 | --- | --- |
@@ -147,7 +147,9 @@ Les diagrammes sont stockés en texte Mermaid et rendus **dans le navigateur**
 | `SSH_KEY` | clé privée OpenSSH, ou son encodage base64 (`base64 -w0 ~/.ssh/id_deploy`), plus sûr à copier |
 | `DB_LOGIN`, `DB_NAME`, `DB_PASS` | non utilisés par les workflows — ce sont les mêmes valeurs à reporter dans `infra/.env` |
 
-Deux secrets facultatifs : `SSH_PORT` (22 par défaut) et `DEPLOY_PATH`
+| `ADMIN_PASSWORD` | *(facultatif)* mot de passe de la console. Présent, il est écrit dans `infra/.env` à chaque déploiement ; absent, le fichier du serveur n'est pas touché |
+
+Deux autres secrets facultatifs : `SSH_PORT` (22 par défaut) et `DEPLOY_PATH`
 (`/var/www/landing_tfb` par défaut).
 
 ### Variables de dépôt GitHub (non secrètes, onglet *Variables*)
@@ -170,7 +172,7 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | `SITE_DOMAIN` | domaine, vide tant qu'aucun DNS ne pointe vers le serveur |
 | `HTTP_PORT` | port d'écoute de la landing, `8090` par défaut |
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
-| `ADMIN_PASSWORD` | ouvre la console `<BASE_PATH>/admin` — vide, elle reste fermée |
+| `ADMIN_PASSWORD` | ouvre la console `<BASE_PATH>/admin` — vide, elle reste fermée. Écrasé à chaque déploiement si le secret GitHub du même nom existe |
 | `ADMIN_SECRET` | *(facultatif)* clé de signature du cookie de session |
 | `ANTHROPIC_API_KEY` | clé API, nécessaire seulement pour l'ingestion |
 | `GH_INGEST_TOKEN` | jeton de lecture GitHub, seulement si des dépôts modules sont privés |
@@ -289,8 +291,15 @@ gain, leviers, ordre) et aux captures d'écran (titre, rattachement, ordre).
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.
 
-Elle s'ouvre en renseignant `ADMIN_PASSWORD` dans `infra/.env`, dix
-caractères au minimum :
+Elle s'ouvre de deux façons, au choix.
+
+**Par un secret GitHub** — rien à faire sur le serveur. Créer le secret de
+dépôt `ADMIN_PASSWORD` (Settings → Secrets and variables → Actions), dix
+caractères au minimum et sans apostrophe, puis relancer le déploiement : le
+workflow écrit la valeur dans `infra/.env` et redémarre le service. Changer
+le secret et redéployer coupe toutes les sessions ouvertes.
+
+**À la main sur le serveur**, si le secret n'existe pas :
 
 ```bash
 sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=<un mot de passe long>/' infra/.env
@@ -298,7 +307,8 @@ systemctl restart landing-tfb
 ```
 
 Sans cette variable — ou avec la valeur du gabarit — la console répond `503`
-et le site public continue d'être servi normalement.
+et le site public continue d'être servi normalement. Le déploiement le
+signale en avertissement plutôt que d'échouer.
 
 **Console et pipeline se partagent la même base.** Une ingestion IA du dépôt
 écrase les champs qu'elle régénère : ce qui est écrit à la main dans la

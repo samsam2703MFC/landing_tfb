@@ -44,8 +44,18 @@ jobs:
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/landing_tfb' }}
           BRANCHE: ${{ github.ref_name }}
           DEPOT: ${{ github.server_url }}/${{ github.repository }}.git
+          # Mot de passe de la console. Facultatif : sans ce secret, le fichier
+          # infra/.env du serveur n'est pas touché — ce qui y est déjà écrit
+          # reste en place.
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
+
+          # Le mot de passe traverse le script en base64 : la valeur brute
+          # pourrait contenir des caractères que le shell interpréterait.
+          # GitHub masque de toute façon les secrets dans les journaux.
+          MDP_B64=$(printf '%s' "${ADMIN_PASSWORD:-}" | base64 -w0)
+
           # Le script distant est passé par l'entrée standard : les valeurs du
           # runner sont fixées en tête, le reste s'exécute côté serveur (d'où
           # les \$ échappés).
@@ -61,6 +71,7 @@ jobs:
           RACINE='$DEPLOY_PATH'
           BRANCHE_CIBLE='$BRANCHE'
           DEPOT_URL='$DEPOT'
+          MDP_B64='$MDP_B64'
 
           # Premier déploiement : le clone n'existe pas encore.
           if [ ! -d "\$RACINE/.git" ]; then
@@ -117,6 +128,32 @@ jobs:
             exit 1
           fi
           echo "Node.js \$(node --version)"
+
+          # Le mot de passe de la console, quand le secret ADMIN_PASSWORD
+          # existe. Il est réécrit à chaque déploiement : le secret GitHub fait
+          # foi, et le changer suffit à couper toutes les sessions ouvertes.
+          if [ -n "\$MDP_B64" ]; then
+            MDP=\$(printf '%s' "\$MDP_B64" | base64 -d)
+            # La valeur est écrite entre apostrophes, parce que le fichier est
+            # sourcé par ce script et relu par systemd. Ni l'un ni l'autre ne
+            # sait échapper une apostrophe à l'intérieur.
+            case "\$MDP" in
+              *"'"*)
+                echo "::error::Le secret ADMIN_PASSWORD contient une apostrophe. La retirer : ni le shell ni systemd ne savent la relire depuis un fichier d'environnement." >&2
+                exit 1
+                ;;
+            esac
+            if [ \${#MDP} -lt 10 ]; then
+              echo "::error::Le secret ADMIN_PASSWORD fait moins de 10 caractères. La console refuserait de s'ouvrir." >&2
+              exit 1
+            fi
+            grep -v '^ADMIN_PASSWORD=' infra/.env > infra/.env.nouveau || true
+            printf "ADMIN_PASSWORD='%s'\n" "\$MDP" >> infra/.env.nouveau
+            mv infra/.env.nouveau infra/.env
+            chmod 600 infra/.env
+            unset MDP
+            echo "Mot de passe de la console repris du secret ADMIN_PASSWORD."
+          fi
 
           # Sans Docker, « host.docker.internal » ne résout pas : la base est
           # jointe en direct sur la boucle locale.

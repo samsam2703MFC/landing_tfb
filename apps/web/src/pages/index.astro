@@ -4,10 +4,15 @@
  * puis l'inventaire des modules. Tout vient de la base, rien n'est écrit ici.
  */
 import Layout from '../components/Layout.astro';
-import { chargerModules, chargerSite, grouperModules } from '../lib/db.mjs';
+import { chargerCaptures, chargerModules, chargerSite, grouperModules } from '../lib/db.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const [site, modules] = await Promise.all([chargerSite(), chargerModules()]);
+const [site, modules, captures] = await Promise.all([
+  chargerSite(),
+  chargerModules(),
+  // Une par module d'abord : la galerie montre la largeur du catalogue.
+  chargerCaptures(8),
+]);
 const groupes = grouperModules(modules);
 
 // Valeurs de repli si le pipeline n'a pas encore tourné.
@@ -92,11 +97,40 @@ const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`
         <div class="section__chapeau">
           <p class="oeil oeil--clair">Vue d'ensemble</p>
           <h2 class="sur-sombre">Comment l'information circule</h2>
-          <p class="chapo">Huit modules, une seule donnée. <a href={lien('/onboarding')} style="color: var(--teal-300)">Suivre le parcours détaillé →</a></p>
+          <p class="chapo">{modules.length > 0 ? `${modules.length} modules` : 'Des modules'}, une seule donnée. <a href={lien('/onboarding')} style="color: var(--teal-300)">Suivre le parcours détaillé →</a></p>
         </div>
         <div class="schema">
           <pre class="mermaid">{site.mermaid}</pre>
         </div>
+      </div>
+    </section>
+  )}
+
+  <!-- Le produit tel qu'il est, à l'écran -->
+  {captures.length > 0 && (
+    <section class="section" id="ecrans">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="section__oeil">À l'écran</p>
+          <h2>Le produit tel qu'il tourne</h2>
+          <p>
+            Des copies d'écran des applications en service, reprises directement
+            dans les dépôts. Pas de maquette.
+          </p>
+        </div>
+        <ul class="captures">
+          {captures.map((c) => (
+            <li>
+              <a class="capture capture--lien" href={lien(`/modules/${c.module_slug}`)}>
+                <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || c.module_nom} loading="lazy" decoding="async" />
+                <figcaption>
+                  <strong>{c.module_nom}</strong>
+                  {c.titre && <span>{c.titre}</span>}
+                </figcaption>
+              </a>
+            </li>
+          ))}
+        </ul>
       </div>
     </section>
   )}
