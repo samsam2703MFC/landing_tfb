@@ -22,6 +22,20 @@ export function table(nom) {
   return `${process.env.DB_PREFIX || 'landing_'}${nom}`;
 }
 
+/**
+ * Les 6 leviers de gestion HEXm — la grille de lecture du réseau.
+ * Reprise telle quelle de AgendaService::LEVERS dans le panel consultant :
+ * c'est la source de vérité, elle ne se réinvente pas ici.
+ */
+export const LEVIERS = [
+  { cle: 'trafic', lettre: 'T', nom: 'Trafic', question: 'Combien de clients entrent ?' },
+  { cle: 'recurrence', lettre: 'R', nom: 'Récurrence', question: 'Combien reviennent ?' },
+  { cle: 'xp', lettre: 'E', nom: 'Expérience', question: 'Que vivent-ils sur place ?' },
+  { cle: 'food', lettre: 'F', nom: 'Food Cost', question: 'Que coûte ce qu’on sert ?' },
+  { cle: 'labour', lettre: 'L', nom: 'Labour', question: 'Que coûtent les heures ?' },
+  { cle: 'overhead', lettre: 'O', nom: 'Overhead', question: 'Que coûte la structure ?' },
+];
+
 /** true si l'on parle à PostgreSQL. */
 export function estPostgres() {
   return CLIENT() === 'pg' || CLIENT() === 'postgres' || CLIENT() === 'postgresql';
