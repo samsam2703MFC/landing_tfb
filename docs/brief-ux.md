@@ -1,6 +1,11 @@
 # Brief UX — landing The Franchise Buddy
 
-À coller dans Claude Design, avec `apps/web/src/design-system/` en pièce jointe.
+À coller dans Claude Design, avec trois pièces jointes :
+
+- `docs/contenu-reel.md` — **les vrais textes**, les 9 modules, leurs 79
+  entrées de menu, leurs leviers et leurs liens, plus le tableau des volumes ;
+- `apps/web/src/design-system/` — les jetons CSS de la marque ;
+- `apps/web/public/brand/` — les trois déclinaisons du logo.
 
 Ce document dit **ce qui est négociable et ce qui ne l'est pas**. Tout ce qui
 figure sous « Contraintes » vient de la mécanique du site : une maquette qui
@@ -69,8 +74,8 @@ Chaque bloc est rempli à l'exécution depuis SQL. Le nombre d'éléments varie 
 **variera encore** : un dixième module arrivera, une fonction disparaîtra.
 Aucune mise en page ne peut supposer « exactement trois cartes ».
 
-Volumes réels aujourd'hui — à utiliser comme contenu de maquette, y compris les
-extrêmes :
+Volumes réels aujourd'hui — repris de `docs/contenu-reel.md`, à utiliser comme
+contenu de maquette, y compris les extrêmes :
 
 | Élément | Minimum | Maximum |
 | --- | --- | --- |
@@ -143,8 +148,8 @@ pas une illustration calibrée au pixel.
 
 Par ordre d'utilité :
 
-1. **La page d'accueil complète**, avec les vrais textes (voir
-   `pipeline/contenu-initial.mjs`), pas du faux latin.
+1. **La page d'accueil complète**, avec les vrais textes de
+   `docs/contenu-reel.md`, pas du faux latin.
 2. **Le fil d'onboarding**, dans ses deux états : fil seul, et fil avec une
    fiche déployée. Prendre le module à 22 entrées de menu comme cas de test.
 3. **La fiche module**, avec captures et sans captures.

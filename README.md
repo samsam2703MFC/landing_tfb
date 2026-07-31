@@ -56,6 +56,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── ingest.mjs                # ingère un module
 │   ├── ingest-all.mjs            # ingère tout + régénère la page d'accueil
 │   ├── sync-captures.mjs         # récupère les captures publiées par les dépôts
+│   ├── exporter-contenu.mjs      # sort le contenu réel en Markdown lisible
 │   ├── Dockerfile                # image lancée à la demande sur le serveur
 │   └── lib/
 │       ├── repo.mjs              # lecture GitHub et construction du digest
@@ -85,6 +86,9 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │       ├── ingest.yml            # un module (repository_dispatch ou manuel)
 │       ├── sync-all.yml          # tout, chaque lundi 04:00 UTC + manuel
 │       └── deploy.yml            # déploiement SSH
+├── docs/
+│   ├── brief-ux.md               # ce qu'une maquette doit respecter
+│   └── contenu-reel.md           # GÉNÉRÉ — les vrais textes du site
 └── examples/
     └── module-publish.yml        # à copier dans chaque dépôt de module
 ```
@@ -276,6 +280,10 @@ node pipeline/seed-contenu.mjs --si-vide
 
 # récupérer les captures publiées par les dépôts modules
 node pipeline/sync-captures.mjs
+
+# sortir tout le contenu en Markdown lisible (docs/contenu-reel.md)
+node pipeline/exporter-contenu.mjs          # depuis les fiches de départ
+node pipeline/exporter-contenu.mjs --base   # depuis la base, retouches comprises
 ```
 
 ### La console d'administration
