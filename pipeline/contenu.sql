@@ -5,11 +5,11 @@
 
 BEGIN;
 
-DELETE FROM tfb_fonctions;
-DELETE FROM tfb_modules;
+DELETE FROM landing_fonctions;
+DELETE FROM landing_modules;
 
 -- ── Webshop (webshop)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'webshop', 'samsam2703MFC/WebShop', 'main', 'Vente', 1, '1',
@@ -38,44 +38,44 @@ Les entreprises ont leur propre parcours — commande pour un bureau et un servi
   F --> G[Preparation en cuisine]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'catalogue', 'Catalogue par boutique',
   'Le même catalogue réseau, filtré et tarifé pour la boutique choisie : assortiment, prix local, saison, allergènes. Changer de boutique change la vitrine, pas le référentiel.',
   'Le siège garde la main sur l''offre sans imposer le même rayon à tous.', 'book-open', 1
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'creneaux', 'Créneaux et heure limite',
   'Le moteur de disponibilité croise les jours d''ouverture, le stock du jour et le remplissage du créneau. L''heure limite est lue dans la configuration de la boutique et réévaluée en continu.',
   'Plus d''annulation le lendemain matin faute de capacité.', 'clock', 2
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'tarifs', 'Tarifs, bons et remises',
   'Le devis du panier est calculé côté serveur : règles de prix du siège, promotions locales, bons validés à l''usage, offre croisée par portion. Le client voit un prix, pas une estimation.',
   'Le montant annoncé est le montant facturé, sans litige.', 'credit-card', 3
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'b2b', 'Commande B2B',
   'Les entreprises commandent pour un bureau et un service, sur une tournée existante, avec leurs frais de livraison propres et leur numéro de TVA vérifié.',
   'La facture part au bon service sans ressaisie comptable.', 'users', 4
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'compte', 'Compte et suivi de commande',
   'Inscription, session, historique et suivi : le client retrouve ses commandes passées et l''état de celle du jour, la même donnée que celle affichée en magasin.',
   'Le magasin et le client regardent le même écran quand ils s''appellent.', 'search', 5
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'marque', 'Thème par enseigne',
   'Couleurs, logo et typographies viennent des jetons de la boutique servis par l''API. Une enseigne de plus dans le réseau ne demande pas un nouveau front.',
   'Une seconde marque se lance en paramétrage, pas en projet.', 'layers', 6
-FROM tfb_modules WHERE slug = 'webshop';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'webshop';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'langues', 'Quatre langues',
   'Français, néerlandais, anglais et allemand, choisis par le client — indispensable pour un réseau belge où deux boutiques voisines ne parlent pas la même langue.',
   'Le réseau s''étend sur une frontière linguistique sans dupliquer le site.', 'settings', 7
-FROM tfb_modules WHERE slug = 'webshop';
+FROM landing_modules WHERE slug = 'webshop';
 
 -- ── Console marque (console-marque)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'console-marque', 'samsam2703MFC/back_office_ws_franchisor', 'main', 'Pilotage', 2, '1',
@@ -106,49 +106,49 @@ La gouvernance est explicite : la fiche boutique dit ce que le franchisé a le d
   H --> I[Analyse par boutique et par zone]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'dashboard', 'Tableau de bord réseau',
   'Les indicateurs du réseau consolidés au siège, avec le détail par boutique en dessous : on voit l''écart entre les points de vente sans exporter quoi que ce soit.',
   'L''écart se traite dans la semaine, pas au trimestre.', 'bar-chart', 1
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'boutiques', 'Boutiques du réseau',
   'La fiche de chaque point de vente — ouverture, périmètre, réglages hérités du siège — et ce que le franchisé a le droit de modifier chez lui.',
   'La gouvernance est un interrupteur, pas une convention orale.', 'map-pin', 2
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'catalogue', 'Catalogue produits',
   'L''arbre catégories puis produits, avec la saison et la disponibilité. C''est la source unique que lisent le webshop, les écrans en magasin et les consoles franchisées.',
   'Un prix se change une fois et se propage partout.', 'book-open', 3
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'menus', 'Menus et formules',
   'Le constructeur de formules : une formule, ses étapes, les choix ouverts à chaque étape, et le prix résolu côté serveur avec sa marge.',
   'La marge d''une formule est connue avant de la lancer.', 'layers', 4
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'promotions', 'Promotions réseau',
   'Bons de réduction et règles de prix décidés au siège, avec le périmètre des boutiques concernées. Le franchisé garde ses promotions locales à côté, sans écraser celles de la marque.',
   'Une opération nationale se lance sans appeler chaque magasin.', 'credit-card', 5
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'geo', 'Analyse géographique',
   'Les ventes rapportées aux codes postaux : zones de chalandise, recouvrements entre boutiques, secteurs vides. C''est l''écran qui sert à décider où ouvrir.',
   'Une ouverture cesse d''être un pari.', 'map-pin', 6
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'tracabilite', 'Traçabilité clients',
   'Le parcours d''un client à travers le réseau : où il commande, à quelle fréquence, sous quelle enseigne. Utile quand plusieurs boutiques servent la même personne.',
   'Le client appartient au réseau, pas à une boutique.', 'search', 7
-FROM tfb_modules WHERE slug = 'console-marque';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-marque';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'prospects', 'Prospects',
   'Les candidats franchisés et les demandes d''ouverture suivis au même endroit que le reste du réseau, plutôt que dans un tableur à part.',
   'Le développement du réseau se pilote comme le reste.', 'users', 8
-FROM tfb_modules WHERE slug = 'console-marque';
+FROM landing_modules WHERE slug = 'console-marque';
 
 -- ── Console franchisé (console-franchise)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'console-franchise', 'samsam2703MFC/back_office_ws_franchisee', 'main', 'Pilotage', 3, '1',
@@ -178,49 +178,49 @@ Les incidents utilisent les mêmes motifs codifiés que l''application du chauff
   H --> I[Rentabilite par tournee]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'dashboard', 'Tableau de bord du jour',
   'Commandes à préparer, tournées engagées, incidents ouverts : la journée du magasin sur un écran, avec les compteurs qui disent où ça coince.',
   'Le responsable sait où porter son attention en arrivant.', 'bar-chart', 1
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'preparation', 'Préparation des commandes',
   'Les commandes du jour regroupées par tournée ou à plat, avec le détail article par article. C''est la liste que suit l''équipe en cuisine et que le chauffeur contre-scanne au chargement.',
   'Une seule liste sert la production et le contrôle au départ.', 'clipboard-check', 2
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'livraison', 'Livraison du jour',
   'L''état des tournées en cours vu du magasin : ce qui est parti, ce qui est livré, ce qui traîne.',
   'Le magasin répond au client sans appeler le chauffeur.', 'truck', 3
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'stock', 'Stock du jour',
   'La disponibilité par produit et par jour, celle-là même que le webshop consulte avant d''accepter une commande.',
   'Fermer un produit ici le retire de la vente en ligne tout de suite.', 'package', 4
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'b2b', 'Clients et demandes B2B',
   'Les entreprises livrées : sociétés, services, sites de livraison, e-mails de facturation. Les demandes entrantes se traitent ici et alimentent les tournées.',
   'Le franchisé développe son B2B sans dépendre du siège.', 'users', 5
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'incidents', 'Incidents et litiges',
   'Les incidents remontés du terrain — colis manquant, client absent, litige de facturation — avec leur preuve et leur suite, sur les mêmes motifs codifiés que l''app chauffeur.',
   'Les problèmes se comptent au lieu de se raconter.', 'triangle-alert', 6
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'capacite', 'Capacité et remplissage',
   'Les créneaux, leur remplissage et les fermetures exceptionnelles.',
   'Ce qui est vendu en ligne reste produisible en cuisine.', 'clock', 7
-FROM tfb_modules WHERE slug = 'console-franchise';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'console-franchise';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'rentabilite', 'Rentabilité',
   'Ce que rapporte réellement une tournée ou un client une fois les frais de livraison posés en face.',
   'La discussion sur les frais se fait sur des chiffres.', 'trending-up', 8
-FROM tfb_modules WHERE slug = 'console-franchise';
+FROM landing_modules WHERE slug = 'console-franchise';
 
 -- ── Fournisseur (fournisseurs)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'fournisseurs', 'samsam2703MFC/supplier_atl', 'main', 'Approvisionnement', 4, '1',
@@ -250,49 +250,49 @@ Les commandes du réseau arrivent, sont préparées, expédiées et suivies au t
   H --> I[Analyse des ventes et des marges]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'matieres', 'Matières premières et ingrédients',
   'Le référentiel amont : matières, ingrédients, unités et prix d''achat. C''est ce qui donne un coût de revient à chaque recette au lieu d''un prix décidé au doigt mouillé.',
   'La marge se calcule à partir de données, pas d''intuitions.', 'package', 1
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'recettes', 'Recettes et fiches techniques',
   'Chaque produit fabriqué a sa recette et sa fiche technique : composants, quantités, process. La fiche sert autant à produire qu''à répondre à un client sur ce qu''il y a dedans.',
   'Le savoir-faire est écrit, donc transmissible.', 'chef-hat', 2
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'catalogue', 'Catalogue fournisseur',
   'Ce que l''atelier propose au réseau, avec l''accès client au catalogue : le point de vente commande sur le vrai référentiel, pas sur un PDF envoyé une fois.',
   'Fini les commandes passées sur un tarif périmé.', 'book-open', 3
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'cennik', 'Liste de prix par client',
   'Chaque client a sa grille négociée. Elle se saisit à la main ou s''importe en JSON, validée avant écriture.',
   'Reprendre un tarif annuel ne veut plus dire retaper deux cents lignes.', 'credit-card', 4
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'commandes', 'Commandes des points de vente',
   'Les commandes arrivent du réseau, sont préparées et suivies jusqu''à l''expédition, au tarif du client qui les a passées.',
   'Le bon prix s''applique sans vérification manuelle.', 'clipboard-check', 5
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'logistique', 'Logistique et expéditions',
   'Les départs, les regroupements et ce qui part vers quel point de vente — l''écran qui dit ce qui est réellement sorti de l''atelier aujourd''hui.',
   'L''atelier sait ce qu''il a expédié sans compter les palettes.', 'truck', 6
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'reclamations', 'Réclamations',
   'Les retours du réseau sur un produit ou une livraison, tracés avec leur suite.',
   'Un défaut récurrent devient visible avant de coûter cher.', 'triangle-alert', 7
-FROM tfb_modules WHERE slug = 'fournisseurs';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'fournisseurs';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'analytics', 'Analyse des ventes',
   'Ce qui se vend, à qui, à quelle marge, sur la base des vraies commandes et des vrais coûts de revient plutôt que d''un export retravaillé.',
   'Les décisions d''assortiment s''appuient sur la marge réelle.', 'trending-up', 8
-FROM tfb_modules WHERE slug = 'fournisseurs';
+FROM landing_modules WHERE slug = 'fournisseurs';
 
 -- ── Cuisine (cuisine)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'cuisine', 'samsam2703MFC/pwa_kitchen', 'main', 'Terrain', 5, '1',
@@ -322,44 +322,44 @@ Les fiches produit et les recettes viennent du même référentiel que celui ten
   B --> I[Reclamation declaree au poste]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'production', 'Production du jour',
   'Ce qu''il y a à faire aujourd''hui, avec l''avancement par tâche : à faire, en cours, terminé. Le tableau de bord ouvre sur cet état, pas sur un menu.',
   'L''équipe voit l''essentiel en déverrouillant l''écran.', 'chef-hat', 1
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'checklists', 'Checklists de poste',
   'Les contrôles d''ouverture, de service et de fermeture cochés dans l''app, horodatés et attribués.',
   'Ce qui a été fait est prouvable sans classeur.', 'clipboard-check', 2
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'fiches', 'Produits et recettes',
   'La base de connaissances de la cuisine : fiche produit, recette, fiche technique. Le même contenu que celui tenu par le fournisseur, consulté au poste de travail.',
   'Une recette nouvelle arrive au poste sans réimpression.', 'file-text', 3
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'commandes', 'Commandes à produire',
   'Les commandes qui concernent la cuisine, avec leur détail. La cuisine travaille sur la commande réelle du client, pas sur une recopie.',
   'Une erreur de recopie en moins entre le client et le four.', 'package', 4
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'clients', 'Clients servis',
   'Qui est livré, avec quelles particularités. Utile quand une commande B2B revient chaque semaine avec ses contraintes.',
   'Les habitudes d''un client régulier ne se redécouvrent pas.', 'users', 5
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'reclamations', 'Réclamations',
   'Un problème constaté en production se déclare sur place, avec son motif. Il part vers le fournisseur ou le siège au lieu de rester dans un carnet.',
   'Le défaut remonte le jour où il est vu.', 'triangle-alert', 6
-FROM tfb_modules WHERE slug = 'cuisine';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'cuisine';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'hors-ligne', 'Installable et hors ligne',
   'L''app s''installe sur le téléphone ou la tablette de la cuisine depuis le navigateur, sans boutique d''applications ni intervention IT, et supporte les coupures réseau du magasin.',
   'Déployer un magasin de plus ne demande aucune informatique sur place.', 'smartphone', 7
-FROM tfb_modules WHERE slug = 'cuisine';
+FROM landing_modules WHERE slug = 'cuisine';
 
 -- ── Panel consultant (consultant)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'consultant', 'samsam2703MFC/pwa_consultant', 'main', 'Terrain', 6, '1',
@@ -389,44 +389,44 @@ Les objectifs par indicateur, la tendance sur la période et les leviers identif
   G --> H[Validation cote proprietaire]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'agenda', 'Agenda des visites',
   'Les visites planifiées par point de vente, préparées avant de partir et retrouvées sur place. L''animateur sait ce qu''il va voir et ce qu''il a laissé ouvert la dernière fois.',
   'Rien ne se perd entre deux passages.', 'calendar', 1
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'checklists', 'Checklists de visite notées',
   'Chaque tâche du magasin est vérifiée, notée et commentée, et la revue porte le nom de son auteur et son horodatage.',
   'Le contrôle devient démontrable, pas déclaratif.', 'clipboard-check', 2
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'objectifs', 'Objectifs, tendances et leviers',
   'Les cibles par indicateur et par magasin, la tendance sur la période, et les leviers identifiés pour la corriger.',
   'La discussion avec le franchisé porte sur des chiffres.', 'trending-up', 3
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'reclamations', 'Réclamations matériel',
   'Ce qui est cassé ou manquant se déclare pendant la visite, sur plusieurs magasins d''un coup quand le même problème revient dans le réseau.',
   'Un défaut de série se traite en une fois.', 'triangle-alert', 4
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'rapports', 'Comptes rendus de visite',
   'Le compte rendu se construit à partir de ce qui a été vérifié sur place, et se valide côté propriétaire.',
   'Personne ne retape la visite le soir.', 'file-text', 5
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'notes', 'Notes de terrain',
   'Les remarques prises au passage, rattachées au magasin et retrouvées à la visite suivante — plutôt qu''un carnet qui reste dans la voiture.',
   'La mémoire du magasin survit au changement d''animateur.', 'pencil', 6
-FROM tfb_modules WHERE slug = 'consultant';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'consultant';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'kiosque', 'Installable et plein écran',
   'L''app s''installe depuis le navigateur et s''ouvre sans barre d''adresse. Sur un écran fixe en magasin, elle se lance en mode kiosque.',
   'Un poste de plus se met en service en quelques minutes.', 'smartphone', 7
-FROM tfb_modules WHERE slug = 'consultant';
+FROM landing_modules WHERE slug = 'consultant';
 
 -- ── Tournées de livraison (livraison)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'livraison', 'samsam2703MFC/pwa_delivery', 'main', 'Approvisionnement', 7, '1',
@@ -458,39 +458,39 @@ Le tout fonctionne hors ligne par construction. La tournée entière tient dans 
   H --> I',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'tournee', 'Tournée du jour',
   'La tournée assignée s''ouvre avec ses chiffres : colis à livrer, points de passage, heure de départ et ETA de fin. L''ordre de passage est figé, il ne se réordonne pas en cours de route.',
   'Le magasin et le client savent quand la livraison passe.', 'map-pin', 1
-FROM tfb_modules WHERE slug = 'livraison';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'livraison';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'chargement', 'Chargement en double scan',
   'Le chauffeur scanne ce qu''il embarque, l''app le confronte au bon préparé par le magasin. Les manquants sont listés par client et le départ reste bloqué tant que l''emport est incomplet.',
   'L''erreur se corrige au dépôt, pas chez le client.', 'package', 2
-FROM tfb_modules WHERE slug = 'livraison';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'livraison';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'livraison', 'Preuve de livraison',
   'À chaque point : dépôt scanné, photo géolocalisée, puis un QR qui tourne et que le client scanne pour confirmer. Repli sur code PIN, signature ou photo seule.',
   'Un litige se tranche sur une preuve datée.', 'clipboard-check', 3
-FROM tfb_modules WHERE slug = 'livraison';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'livraison';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'incident', 'Incidents codifiés',
   'Client absent, adresse fermée, colis abîmé : le chauffeur choisit un motif dans une liste fermée, décide de la suite et joint la preuve.',
   'Le siège lit des motifs comparables entre tournées.', 'triangle-alert', 4
-FROM tfb_modules WHERE slug = 'livraison';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'livraison';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'hors-ligne', 'Hors ligne par défaut',
   'La tournée entière tient dans la tablette. Sans réseau, le chauffeur continue à scanner, photographier et clôturer ; les écritures partent à la reconnexion, dans l''ordre, sans doublon.',
   'La zone blanche n''interrompt plus la tournée.', 'refresh-cw', 5
-FROM tfb_modules WHERE slug = 'livraison';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'livraison';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'contrat', 'Salarié ou sous-traitant',
   'Le même écran sert les deux statuts : le chauffeur salarié voit son pointage de service, le sous-traitant ne l''a pas. Le type de contrat est porté par la session.',
   'Une seule application à maintenir pour les deux modèles.', 'users', 6
-FROM tfb_modules WHERE slug = 'livraison';
+FROM landing_modules WHERE slug = 'livraison';
 
 -- ── Régie d'affichage (affichage)
-INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)
 VALUES (
   'affichage', 'samsam2703MFC/signage', 'main', 'Vente', 8, '1',
@@ -520,40 +520,40 @@ Chaque écran est un player authentifié par jeton qui envoie un battement de c�
   H --> I[Supervision du reseau]',
   'contenu-initial'
 );
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'compositeur', 'Compositeur de film',
   'La bibliothèque d''éléments — catégories, liaisons, promos — et la playlist qui en fait un film. Mise en page, mouvement, filigrane et jetons dynamiques se règlent élément par élément.',
   'Un montage vidéo de moins à sous-traiter.', 'layers', 1
-FROM tfb_modules WHERE slug = 'affichage';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'affichage';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'produits', 'Produits et tarifs affichés',
   'Les listes de prix à l''écran sont liées à la table produits, pas retapées. Un changement de prix se propage au prochain film.',
   'Le prix vu par le client est celui de la caisse.', 'book-open', 2
-FROM tfb_modules WHERE slug = 'affichage';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'affichage';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'campagnes', 'Campagnes et promotions',
   'Les opérations commerciales sont taguées en campagne : on active une campagne et tous les éléments qui la portent basculent d''un coup, sur les écrans choisis.',
   'Une opération nationale démarre partout le même matin.', 'bell', 3
-FROM tfb_modules WHERE slug = 'affichage';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'affichage';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'planning', 'Périodes et planning de diffusion',
   'Le petit-déjeuner, le service du midi et le goûter n''affichent pas la même chose. Les périodes décrivent ces plages et le planning dit quel film passe quand.',
   'L''écran vend ce qui est disponible à cette heure-là.', 'calendar', 4
-FROM tfb_modules WHERE slug = 'affichage';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'affichage';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'reseau', 'Réseau et supervision des écrans',
   'Chaque écran est un player authentifié par jeton qui envoie un battement de cœur et une capture. La supervision montre magasin par magasin ce qui est réellement affiché.',
   'Un écran décroché se voit le jour même.', 'monitor', 5
-FROM tfb_modules WHERE slug = 'affichage';
-INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
+FROM landing_modules WHERE slug = 'affichage';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, ordre)
 SELECT id, 'film', 'Visionneuse publique',
   'La dernière playlist publiée est consultable en plein écran sans connexion, à l''adresse /film.',
   'Le responsable vérifie l''affichage depuis son téléphone.', 'smartphone', 6
-FROM tfb_modules WHERE slug = 'affichage';
+FROM landing_modules WHERE slug = 'affichage';
 
 -- ── Page d'accueil
-DELETE FROM tfb_site;
-INSERT INTO tfb_site (titre, sous_titre, accroche, problemes, reponses, mermaid,
+DELETE FROM landing_site;
+INSERT INTO landing_site (titre, sous_titre, accroche, problemes, reponses, mermaid,
   cta_texte, cta_url, meta_description)
 VALUES (
   'La valeur d''un réseau, c''est sa capacité à être transmis',

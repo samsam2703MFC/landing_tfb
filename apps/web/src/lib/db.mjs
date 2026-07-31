@@ -17,6 +17,14 @@ const cache = new Map();
 
 let poolPromesse = null;
 
+/**
+ * Préfixe des tables, identique à celui du pipeline. `landing_` par défaut :
+ * la base peut déjà contenir des tables d'un autre projet.
+ */
+function table(nom) {
+  return `${process.env.DB_PREFIX || 'landing_'}${nom}`;
+}
+
 function estPostgres() {
   const client = (process.env.DB_CLIENT || 'mysql').toLowerCase();
   return client === 'pg' || client === 'postgres' || client === 'postgresql';
@@ -106,9 +114,9 @@ function normaliserModule(ligne) {
 
 const VRAI = () => (estPostgres() ? true : 1);
 
-/** Contenu de la page d'accueil (ligne unique de tfb_site). */
+/** Contenu de la page d'accueil (la ligne unique de la table site). */
 export async function chargerSite() {
-  const lignes = await lire('site', 'SELECT * FROM tfb_site ORDER BY id LIMIT 1');
+  const lignes = await lire('site', `SELECT * FROM ${table('site')} ORDER BY id LIMIT 1`);
   if (!lignes || lignes.length === 0) return null;
   const site = lignes[0];
   return {
@@ -122,7 +130,7 @@ export async function chargerSite() {
 export async function chargerModules() {
   const lignes = await lire(
     'modules',
-    'SELECT * FROM tfb_modules WHERE actif = ? ORDER BY ordre, nom',
+    `SELECT * FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
     [VRAI()],
   );
   if (!lignes || lignes.length === 0) return [];
@@ -130,7 +138,7 @@ export async function chargerModules() {
   const modules = lignes.map(normaliserModule);
   const fonctions = await lire(
     'fonctions-resume',
-    'SELECT module_id, cle, nom, icone FROM tfb_fonctions ORDER BY module_id, ordre',
+    `SELECT module_id, cle, nom, icone FROM ${table('fonctions')} ORDER BY module_id, ordre`,
   );
 
   if (fonctions) {
@@ -151,7 +159,7 @@ export async function chargerModules() {
 export async function chargerModule(slug) {
   const lignes = await lire(
     `module:${slug}`,
-    'SELECT * FROM tfb_modules WHERE slug = ? AND actif = ? LIMIT 1',
+    `SELECT * FROM ${table('modules')} WHERE slug = ? AND actif = ? LIMIT 1`,
     [slug, VRAI()],
   );
   if (!lignes || lignes.length === 0) return null;
@@ -159,7 +167,7 @@ export async function chargerModule(slug) {
   const module = normaliserModule(lignes[0]);
   const fonctions = await lire(
     `fonctions:${slug}`,
-    'SELECT * FROM tfb_fonctions WHERE module_id = ? ORDER BY ordre',
+    `SELECT * FROM ${table('fonctions')} WHERE module_id = ? ORDER BY ordre`,
     [module.id],
   );
   module.fonctions = fonctions || [];

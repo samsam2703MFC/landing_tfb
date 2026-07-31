@@ -20,12 +20,12 @@ Dépôt module (push sur main)
 GitHub Actions « Ingérer un module »
         │  se connecte au serveur en SSH et y lance le pipeline
         ▼
-Pipeline (conteneur, sur le serveur)
+Pipeline (Node, sur le serveur)
         │  1. lit le dépôt via l'API GitHub (README, arborescence, code)
         │  2. appelle l'API Anthropic en tool-use forcé → JSON structuré
-        │  3. écrit dans tfb_modules / tfb_fonctions / tfb_site
+        │  3. écrit dans landing_modules / landing_fonctions / landing_site
         ▼
-   Base SQL existante  ──►  Landing Astro SSR  ──►  Caddy  ──►  visiteur
+   Base SQL existante  ──►  Landing Astro SSR (systemd)  ──►  visiteur
 ```
 
 L'ingestion tourne **sur le serveur**, pas sur le runner GitHub : la base n'a
@@ -66,8 +66,10 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/pages/index.astro
 │   ├── src/pages/modules/[slug].astro
 │   └── Dockerfile
-├── infra/
-│   ├── docker-compose.yml        # landing + Caddy, plus le pipeline en profil « outils »
+├── deploy/
+│   └── landing-tfb.service       # gabarit du service systemd
+├── infra/                        # variante conteneurs, facultative
+│   ├── docker-compose.yml        # landing + Caddy
 │   └── Caddyfile                 # HTTPS automatique
 ├── .github/
 │   ├── actions/preparer-ssh/     # écriture et contrôle de la clé, partagés par les workflows
@@ -83,15 +85,15 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 
 ## Le modèle de données
 
-Trois tables ordinaires, préfixées `tfb_` pour cohabiter avec le reste de la
-base. Elles sont créées par `bootstrap-db.mjs` et interrogeables directement
-en SQL.
+Trois tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
+la base sans risque de collision — le préfixe se change avec `DB_PREFIX`. Elles
+sont créées par `bootstrap-db.mjs` et interrogeables directement en SQL.
 
 | Table | Contenu |
 | --- | --- |
-| `tfb_modules` | une ligne par dépôt : `slug`, `nom`, `accroche`, `resume`, `description` (markdown), `public_cible`, `problemes`, `benefices`, `stack`, `mots_cles`, `mermaid`, `commit_sha`, `modele_ia`, `genere_le`, `ordre`, `actif` |
-| `tfb_fonctions` | une ligne par fonction : `module_id`, `cle`, `nom`, `description`, `benefice`, `icone`, `ordre` |
-| `tfb_site` | une seule ligne : le contenu de la page d'accueil (`titre`, `accroche`, `problemes`, `reponses`, `mermaid`, `cta_*`, `meta_description`) |
+| `landing_modules` | une ligne par dépôt : `slug`, `nom`, `accroche`, `resume`, `description` (markdown), `public_cible`, `problemes`, `benefices`, `stack`, `mots_cles`, `mermaid`, `commit_sha`, `modele_ia`, `genere_le`, `ordre`, `actif` |
+| `landing_fonctions` | une ligne par fonction : `module_id`, `cle`, `nom`, `description`, `benefice`, `icone`, `ordre` |
+| `landing_site` | une seule ligne : le contenu de la page d'accueil (`titre`, `accroche`, `problemes`, `reponses`, `mermaid`, `cta_*`, `meta_description`) |
 
 Les colonnes `problemes`, `benefices`, `stack`, `mots_cles` et `reponses` sont
 de type JSON.
@@ -99,7 +101,7 @@ de type JSON.
 **Corriger un texte à la main** se fait en SQL :
 
 ```sql
-UPDATE tfb_modules SET accroche = 'Nouvelle phrase.' WHERE slug = 'consultant';
+UPDATE landing_modules SET accroche = 'Nouvelle phrase.' WHERE slug = 'consultant';
 ```
 
 Attention : une nouvelle ingestion du même module écrase les champs générés.
@@ -108,7 +110,7 @@ Pour figer un texte retouché, retirer le dépôt de `modules.json`.
 **Masquer un module** sans le supprimer :
 
 ```sql
-UPDATE tfb_modules SET actif = 0 WHERE slug = 'consultant';   -- TRUE/FALSE en PostgreSQL
+UPDATE landing_modules SET actif = 0 WHERE slug = 'consultant';   -- TRUE/FALSE en PostgreSQL
 ```
 
 Les diagrammes sont stockés en texte Mermaid et rendus **dans le navigateur**
@@ -143,9 +145,11 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | Variable | Rôle |
 | --- | --- |
 | `DB_CLIENT` | `mysql` (MySQL / MariaDB) ou `pg` (PostgreSQL) |
-| `DB_HOST`, `DB_PORT` | accès à la base (`host.docker.internal` si elle tourne sur l'hôte) |
+| `DB_HOST`, `DB_PORT` | accès à la base (`127.0.0.1` si elle tourne sur le serveur) |
 | `DB_LOGIN`, `DB_NAME`, `DB_PASS` | identifiants de la base |
-| `SITE_DOMAIN` | domaine servi par Caddy |
+| `DB_PREFIX` | *(facultatif)* préfixe des tables, `landing_` par défaut |
+| `SITE_DOMAIN` | domaine, vide tant qu'aucun DNS ne pointe vers le serveur |
+| `HTTP_PORT` | port d'écoute de la landing, `8090` par défaut |
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
 | `ANTHROPIC_API_KEY` | clé API, nécessaire seulement pour l'ingestion |
 | `GH_INGEST_TOKEN` | jeton de lecture GitHub, seulement si des dépôts modules sont privés |
@@ -158,16 +162,17 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 
 ### 1. Prérequis serveur
 
-- Docker et le plugin Compose
-- La base SQL joignable depuis les conteneurs, avec une base dédiée
-- Un enregistrement DNS pointant vers le serveur, ports 80 et 443 ouverts
+- Node.js 20 ou plus (le déploiement le vérifie)
+- La base SQL joignable en local, avec une base dédiée
+- Un port libre pour la landing (8090 par défaut)
 
-Créer la base si besoin :
+Créer la base et le compte si besoin — sur Debian/Ubuntu, `debian-sys-maint`
+évite d'avoir à connaître le mot de passe root MySQL :
 
 ```sql
-CREATE DATABASE tfb_landing CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-CREATE USER 'tfb_landing'@'%' IDENTIFIED BY 'un-mot-de-passe';
-GRANT ALL PRIVILEGES ON tfb_landing.* TO 'tfb_landing'@'%';
+CREATE DATABASE IF NOT EXISTS tfb_landing CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER IF NOT EXISTS 'tfb_landing'@'localhost' IDENTIFIED BY 'un-mot-de-passe';
+GRANT ALL PRIVILEGES ON tfb_landing.* TO 'tfb_landing'@'localhost';
 FLUSH PRIVILEGES;
 ```
 
@@ -175,49 +180,43 @@ FLUSH PRIVILEGES;
 
 Lancer le workflow *Déployer sur le serveur*. Il clone le dépôt dans
 `/var/www/landing_tfb`, y dépose `infra/.env` à partir du gabarit, puis
-s'arrête en demandant de le remplir. Renseigner le fichier :
+s'arrête en demandant de le remplir :
 
 ```bash
-cd /var/www/landing_tfb/infra
-$EDITOR .env
+$EDITOR /var/www/landing_tfb/infra/.env
 ```
 
-Relancer le workflow : la landing et Caddy démarrent.
+Relancer le workflow. Il fait alors tout le reste, sans intervention :
 
-### 3. Créer les tables
+1. installe les dépendances et vérifie Node
+2. crée les trois tables `landing_*`
+3. charge les 8 fiches si la base est vide
+4. construit la landing et (re)démarre le service `landing-tfb`
+
+La landing répond sur `http://<serveur>:8090`. Vérifier :
 
 ```bash
-cd /var/www/landing_tfb/infra
-docker compose --profile outils run --rm pipeline node bootstrap-db.mjs
+systemctl status landing-tfb
+journalctl -u landing-tfb -f
 ```
 
-Rejouable sans risque : le script ne crée que ce qui manque.
+### 3. Passer en HTTPS sur un domaine
 
-### 4. Charger le contenu de départ
+Dès qu'un enregistrement DNS pointe vers le serveur, deux voies :
 
-Les huit fiches sont déjà rédigées à partir du code des dépôts. Aucune clé API
-n'est nécessaire :
+- **derrière le serveur web existant** — ajouter un proxy vers
+  `http://127.0.0.1:8090` dans Apache ou nginx ;
+- **avec Caddy en conteneur** — `infra/docker-compose.yml` et `infra/Caddyfile`
+  sont prêts, avec HTTPS automatique, si Docker est installé plus tard.
 
-```bash
-docker compose --profile outils run --rm pipeline node seed-contenu.mjs
-```
+### 4. Régénération automatique du contenu
 
-Ou directement en SQL, sans passer par le conteneur :
-
-```bash
-mysql -u tfb_landing -p tfb_landing < pipeline/contenu.sql   # ou psql -f
-```
-
-Les deux sont rejouables : le contenu est remplacé, jamais dupliqué. La landing
-a dès lors ses 8 modules et ses 57 fonctions.
-
-### 5. Passer à la régénération automatique
-
-Pour que le contenu suive le code sans intervention, renseigner
+Le contenu de départ est figé. Pour qu'il suive le code, renseigner
 `ANTHROPIC_API_KEY` dans `infra/.env`, puis :
 
 ```bash
-docker compose --profile outils run --rm pipeline node ingest-all.mjs
+cd /var/www/landing_tfb && set -a && . ./infra/.env && set +a
+node pipeline/ingest-all.mjs
 ```
 
 Ou depuis GitHub → **Actions** → *Régénérer tous les modules*. Compter environ
@@ -229,18 +228,22 @@ dupliqué.
 
 ## Utilisation courante
 
-Sur le serveur, depuis `infra/` :
+Sur le serveur, après avoir chargé l'environnement
+(`set -a && . ./infra/.env && set +a`) :
 
 ```bash
 # un module précis, à partir de son slug ou de son dépôt
-docker compose --profile outils run --rm pipeline node ingest.mjs consultant
-docker compose --profile outils run --rm pipeline node ingest.mjs consultant --force
+node pipeline/ingest.mjs consultant
+node pipeline/ingest.mjs consultant --force
 
 # voir ce que l'IA produirait, sans rien écrire en base
-docker compose --profile outils run --rm pipeline node ingest.mjs consultant --dry-run
+node pipeline/ingest.mjs consultant --dry-run
 
 # tout le catalogue
-docker compose --profile outils run --rm pipeline node ingest-all.mjs --only=consultant,cuisine
+node pipeline/ingest-all.mjs --only=consultant,cuisine
+
+# recharger les fiches de départ (sans IA)
+node pipeline/seed-contenu.mjs
 ```
 
 ### Ajouter un module
@@ -270,9 +273,9 @@ docker compose --profile outils run --rm pipeline node ingest-all.mjs --only=con
 
 | Symptôme | Cause probable |
 | --- | --- |
-| La landing affiche « Aucun module publié » | l'ingestion n'a jamais tourné, ou la base est injoignable — `docker compose logs web` |
+| La landing affiche « Aucun module publié » | l'ingestion n'a jamais tourné, ou la base est injoignable — `journalctl -u landing-tfb -n 50` |
 | `Variables de base manquantes` | `infra/.env` incomplet |
-| `relation "tfb_modules" does not exist` | `bootstrap-db.mjs` n'a pas été lancé |
+| `relation "landing_modules" does not exist` | `bootstrap-db.mjs` n'a pas été lancé |
 | `Dépôt … introuvable` | `GH_INGEST_TOKEN` absent ou sans accès au dépôt privé |
 | `Réponse invalide : …` après 3 tentatives | le dépôt ne contient pas assez de matière (README vide, peu de code) |
 | Un diagramme ne s'affiche pas | Mermaid invalide : le bloc est masqué automatiquement, relancer l'ingestion avec `--force` |

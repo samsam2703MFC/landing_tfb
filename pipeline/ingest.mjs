@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { genererContenuModule, modele } from './lib/ai.mjs';
 import { chargerDepot } from './lib/repo.mjs';
-import { json, ouvrir, upsert } from './lib/db.mjs';
+import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const REGISTRE = resolve(ICI, '..', 'modules.json');
@@ -74,7 +74,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   // 2. Le dépôt a-t-il bougé depuis la dernière ingestion ?
   if (!dryRun && db) {
     const trouves = await db.requete(
-      'SELECT id, commit_sha FROM tfb_modules WHERE slug = ? LIMIT 1',
+      `SELECT id, commit_sha FROM ${table('modules')} WHERE slug = ? LIMIT 1`,
       [entree.slug],
     );
     if (!force && trouves.length > 0 && trouves[0].commit_sha === depot.sha) {
@@ -98,7 +98,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   }
 
   // 4. Écriture du module
-  const { id: moduleId, cree } = await upsert(db, 'tfb_modules', 'slug', entree.slug, {
+  const { id: moduleId, cree } = await upsert(db, table('modules'), 'slug', entree.slug, {
     repo: entree.repo,
     ref: branche,
     groupe: entree.groupe,
@@ -121,7 +121,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
 
   // 5. Écriture des fonctions, clé par clé
   const anciennes = await db.requete(
-    'SELECT id, cle FROM tfb_fonctions WHERE module_id = ?',
+    `SELECT id, cle FROM ${table('fonctions')} WHERE module_id = ?`,
     [moduleId],
   );
   const parCle = new Map(anciennes.map((f) => [f.cle, f.id]));
@@ -139,12 +139,12 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
     const idExistant = parCle.get(fonction.cle);
     if (idExistant) {
       await db.executer(
-        'UPDATE tfb_fonctions SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?',
+        `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?`,
         [...valeurs, idExistant],
       );
     } else {
       await db.executer(
-        'INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)`,
         [moduleId, fonction.cle, ...valeurs],
       );
     }
@@ -156,7 +156,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   const obsoletes = anciennes.filter((f) => !clesVues.has(f.cle)).map((f) => f.id);
   if (obsoletes.length) {
     const marqueurs = obsoletes.map(() => '?').join(', ');
-    await db.executer(`DELETE FROM tfb_fonctions WHERE id IN (${marqueurs})`, obsoletes);
+    await db.executer(`DELETE FROM ${table('fonctions')} WHERE id IN (${marqueurs})`, obsoletes);
     console.log(`   ${obsoletes.length} fonction(s) obsolète(s) supprimée(s)`);
   }
 

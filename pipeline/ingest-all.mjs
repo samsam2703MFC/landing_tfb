@@ -15,7 +15,7 @@
  */
 
 import { genererContenuSite } from './lib/ai.mjs';
-import { json, ouvrir } from './lib/db.mjs';
+import { json, ouvrir, table } from './lib/db.mjs';
 import { chargerRegistre, ingererModule } from './ingest.mjs';
 
 function lireOptions(argv) {
@@ -38,7 +38,7 @@ function lireOptions(argv) {
 /** Régénère le contenu de la page d'accueil à partir de ce qui est en base. */
 async function regenererSite(db) {
   const modules = await db.requete(
-    'SELECT id, slug, nom, accroche, resume, groupe FROM tfb_modules WHERE actif = ? ORDER BY ordre, nom',
+    `SELECT id, slug, nom, accroche, resume, groupe FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
     [db.dialecte === 'pg' ? true : 1],
   );
 
@@ -50,14 +50,14 @@ async function regenererSite(db) {
   // Les noms de fonctions donnent au modèle la matière pour la synthèse.
   for (const module of modules) {
     module.fonctions = await db.requete(
-      'SELECT nom FROM tfb_fonctions WHERE module_id = ? ORDER BY ordre',
+      `SELECT nom FROM ${table('fonctions')} WHERE module_id = ? ORDER BY ordre`,
       [module.id],
     );
   }
 
   const contenu = await genererContenuSite(modules);
 
-  const lignes = await db.requete('SELECT id FROM tfb_site LIMIT 1');
+  const lignes = await db.requete(`SELECT id FROM ${table('site')} LIMIT 1`);
   const valeurs = [
     contenu.titre,
     contenu.sous_titre,
@@ -72,14 +72,14 @@ async function regenererSite(db) {
 
   if (lignes.length > 0) {
     await db.executer(
-      `UPDATE tfb_site SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?,
+      `UPDATE ${table('site')} SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?,
        reponses = ?, mermaid = ?, cta_texte = ?, meta_description = ?, genere_le = ?
        WHERE id = ?`,
       [...valeurs, lignes[0].id],
     );
   } else {
     await db.executer(
-      `INSERT INTO tfb_site (titre, sous_titre, accroche, problemes, reponses,
+      `INSERT INTO ${table('site')} (titre, sous_titre, accroche, problemes, reponses,
        mermaid, cta_texte, meta_description, genere_le)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       valeurs,

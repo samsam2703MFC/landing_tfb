@@ -1,8 +1,8 @@
 /**
  * Accès direct à la base SQL — MySQL/MariaDB ou PostgreSQL selon DB_CLIENT.
  *
- * Le contenu généré est écrit dans trois tables ordinaires (`tfb_modules`,
- * `tfb_fonctions`, `tfb_site`). Pas de CMS intermédiaire : ce sont des tables
+ * Le contenu généré est écrit dans trois tables ordinaires (`landing_modules`,
+ * `landing_fonctions`, `landing_site`). Pas de CMS intermédiaire : ce sont des tables
  * SQL comme les autres, lisibles et modifiables par n'importe quel outil.
  *
  * Les deux dialectes diffèrent sur trois points, gérés ici une fois pour
@@ -11,6 +11,16 @@
  */
 
 const CLIENT = () => (process.env.DB_CLIENT || 'mysql').toLowerCase();
+
+/**
+ * Préfixe des tables. `landing_` par défaut : la base peut déjà contenir des
+ * tables d'un autre projet, et `CREATE TABLE IF NOT EXISTS` sur un nom occupé
+ * ne crée rien tout en laissant croire que tout va bien. Surchargeable par
+ * DB_PREFIX si le nom est lui aussi déjà pris.
+ */
+export function table(nom) {
+  return `${process.env.DB_PREFIX || 'landing_'}${nom}`;
+}
 
 /** true si l'on parle à PostgreSQL. */
 export function estPostgres() {
@@ -110,9 +120,9 @@ export function lireJson(valeur, defaut = null) {
  * Insertion ou mise à jour selon une clé unique — le cœur de l'idempotence.
  * Renvoie { id, cree }.
  */
-export async function upsert(db, table, cleColonne, cleValeur, donnees) {
+export async function upsert(db, nomTable, cleColonne, cleValeur, donnees) {
   const existants = await db.requete(
-    `SELECT id FROM ${table} WHERE ${cleColonne} = ? LIMIT 1`,
+    `SELECT id FROM ${nomTable} WHERE ${cleColonne} = ? LIMIT 1`,
     [cleValeur],
   );
 
@@ -122,14 +132,14 @@ export async function upsert(db, table, cleColonne, cleValeur, donnees) {
   if (existants.length > 0) {
     const id = existants[0].id;
     const affectations = colonnes.map((c) => `${c} = ?`).join(', ');
-    await db.executer(`UPDATE ${table} SET ${affectations} WHERE id = ?`, [...valeurs, id]);
+    await db.executer(`UPDATE ${nomTable} SET ${affectations} WHERE id = ?`, [...valeurs, id]);
     return { id, cree: false };
   }
 
   const toutes = [cleColonne, ...colonnes];
   const marqueurs = toutes.map(() => '?').join(', ');
   const id = await db.inserer(
-    `INSERT INTO ${table} (${toutes.join(', ')}) VALUES (${marqueurs})`,
+    `INSERT INTO ${nomTable} (${toutes.join(', ')}) VALUES (${marqueurs})`,
     [cleValeur, ...valeurs],
   );
   return { id, cree: true };

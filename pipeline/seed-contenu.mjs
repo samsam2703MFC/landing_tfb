@@ -15,7 +15,7 @@
 import { writeFile } from 'node:fs/promises';
 
 import { MODULES, SITE } from './contenu-initial.mjs';
-import { json, ouvrir, upsert } from './lib/db.mjs';
+import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 // ---------------------------------------------------------------------------
 // Écriture en base
@@ -27,14 +27,14 @@ async function ecrireEnBase({ siVide = false } = {}) {
     // Utilisé au déploiement : on amorce une base neuve, mais on ne réécrit
     // jamais par-dessus un contenu déjà généré par l'ingestion.
     if (siVide) {
-      const [{ n }] = await db.requete('SELECT COUNT(*) AS n FROM tfb_modules');
+      const [{ n }] = await db.requete(`SELECT COUNT(*) AS n FROM ${table('modules')}`);
       if (Number(n) > 0) {
         console.log(`${n} module(s) déjà en base — contenu de départ non rechargé.`);
         return;
       }
     }
     for (const module of MODULES) {
-      const { id, cree } = await upsert(db, 'tfb_modules', 'slug', module.slug, {
+      const { id, cree } = await upsert(db, table('modules'), 'slug', module.slug, {
         repo: module.repo,
         ref: 'main',
         groupe: module.groupe,
@@ -56,7 +56,7 @@ async function ecrireEnBase({ siVide = false } = {}) {
       });
 
       const anciennes = await db.requete(
-        'SELECT id, cle FROM tfb_fonctions WHERE module_id = ?',
+        `SELECT id, cle FROM ${table('fonctions')} WHERE module_id = ?`,
         [id],
       );
       const parCle = new Map(anciennes.map((f) => [f.cle, f.id]));
@@ -74,12 +74,12 @@ async function ecrireEnBase({ siVide = false } = {}) {
         const existant = parCle.get(fonction.cle);
         if (existant) {
           await db.executer(
-            'UPDATE tfb_fonctions SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?',
+            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?`,
             [...valeurs, existant],
           );
         } else {
           await db.executer(
-            'INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)',
+            `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [id, fonction.cle, ...valeurs],
           );
         }
@@ -90,7 +90,7 @@ async function ecrireEnBase({ siVide = false } = {}) {
       const obsoletes = anciennes.filter((f) => !vues.has(f.cle)).map((f) => f.id);
       if (obsoletes.length) {
         await db.executer(
-          `DELETE FROM tfb_fonctions WHERE id IN (${obsoletes.map(() => '?').join(', ')})`,
+          `DELETE FROM ${table('fonctions')} WHERE id IN (${obsoletes.map(() => '?').join(', ')})`,
           obsoletes,
         );
       }
@@ -106,16 +106,16 @@ async function ecrireEnBase({ siVide = false } = {}) {
       json(SITE.problemes), json(SITE.reponses),
       SITE.mermaid, SITE.cta_texte, SITE.cta_url, SITE.meta_description, new Date(),
     ];
-    const lignes = await db.requete('SELECT id FROM tfb_site LIMIT 1');
+    const lignes = await db.requete(`SELECT id FROM ${table('site')} LIMIT 1`);
     if (lignes.length > 0) {
       await db.executer(
-        `UPDATE tfb_site SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?, reponses = ?,
+        `UPDATE ${table('site')} SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?, reponses = ?,
          mermaid = ?, cta_texte = ?, cta_url = ?, meta_description = ?, genere_le = ? WHERE id = ?`,
         [...valeurs, lignes[0].id],
       );
     } else {
       await db.executer(
-        `INSERT INTO tfb_site (titre, sous_titre, accroche, problemes, reponses, mermaid,
+        `INSERT INTO ${table('site')} (titre, sous_titre, accroche, problemes, reponses, mermaid,
          cta_texte, cta_url, meta_description, genere_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         valeurs,
       );
@@ -155,13 +155,13 @@ function genererSql() {
   l.push('');
   l.push('BEGIN;');
   l.push('');
-  l.push('DELETE FROM tfb_fonctions;');
-  l.push('DELETE FROM tfb_modules;');
+  l.push(`DELETE FROM ${table('fonctions')};`);
+  l.push(`DELETE FROM ${table('modules')};`);
   l.push('');
 
   for (const m of MODULES) {
     l.push(`-- ── ${m.nom} (${m.slug})`);
-    l.push('INSERT INTO tfb_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,');
+    l.push(`INSERT INTO ${table('modules')} (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,`);
     l.push('  description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)');
     l.push('VALUES (');
     l.push(`  ${litteral(m.slug)}, ${litteral(m.repo)}, 'main', ${litteral(m.groupe)}, ${m.ordre}, '1',`);
@@ -179,18 +179,18 @@ function genererSql() {
     l.push(');');
 
     m.fonctions.forEach((f, i) => {
-      l.push('INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre)');
+      l.push(`INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre)`);
       l.push(`SELECT id, ${litteral(f.cle)}, ${litteral(f.nom)},`);
       l.push(`  ${litteral(f.description)},`);
       l.push(`  ${litteral(f.benefice)}, ${litteral(f.icone)}, ${i + 1}`);
-      l.push(`FROM tfb_modules WHERE slug = ${litteral(m.slug)};`);
+      l.push(`FROM ${table('modules')} WHERE slug = ${litteral(m.slug)};`);
     });
     l.push('');
   }
 
   l.push("-- ── Page d'accueil");
-  l.push('DELETE FROM tfb_site;');
-  l.push('INSERT INTO tfb_site (titre, sous_titre, accroche, problemes, reponses, mermaid,');
+  l.push(`DELETE FROM ${table('site')};`);
+  l.push(`INSERT INTO ${table('site')} (titre, sous_titre, accroche, problemes, reponses, mermaid,`);
   l.push('  cta_texte, cta_url, meta_description)');
   l.push('VALUES (');
   l.push(`  ${litteral(SITE.titre)},`);

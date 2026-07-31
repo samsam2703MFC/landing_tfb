@@ -3,13 +3,13 @@
  * Création des tables du site dans la base existante.
  *
  * Idempotent : `CREATE TABLE IF NOT EXISTS`, donc rejouable sans risque.
- * Les trois tables sont préfixées `tfb_` pour cohabiter avec le reste de la
- * base sans collision.
+ * Les tables portent le préfixe DB_PREFIX (`landing_` par défaut) pour
+ * cohabiter avec le reste de la base sans collision de noms.
  *
  * Usage : node bootstrap-db.mjs
  */
 
-import { estPostgres, ouvrir } from './lib/db.mjs';
+import { estPostgres, ouvrir, table } from './lib/db.mjs';
 
 /** Définitions par dialecte : seuls les types changent. */
 function tables(pg) {
@@ -22,8 +22,8 @@ function tables(pg) {
 
   return [
     {
-      nom: 'tfb_modules',
-      sql: `CREATE TABLE IF NOT EXISTS tfb_modules (
+      nom: table('modules'),
+      sql: `CREATE TABLE IF NOT EXISTS ${table('modules')} (
         id ${id},
         slug ${chaine(120)} NOT NULL UNIQUE,
         repo ${chaine(255)},
@@ -47,8 +47,8 @@ function tables(pg) {
       )`,
     },
     {
-      nom: 'tfb_fonctions',
-      sql: `CREATE TABLE IF NOT EXISTS tfb_fonctions (
+      nom: table('fonctions'),
+      sql: `CREATE TABLE IF NOT EXISTS ${table('fonctions')} (
         id ${id},
         module_id INT NOT NULL,
         cle ${chaine(120)} NOT NULL,
@@ -60,8 +60,8 @@ function tables(pg) {
       )`,
     },
     {
-      nom: 'tfb_site',
-      sql: `CREATE TABLE IF NOT EXISTS tfb_site (
+      nom: table('site'),
+      sql: `CREATE TABLE IF NOT EXISTS ${table('site')} (
         id ${id},
         titre ${chaine(255)},
         sous_titre ${chaine(255)},
@@ -80,19 +80,21 @@ function tables(pg) {
 
 /** Index secondaires, créés séparément pour rester portables. */
 const INDEX = [
-  { nom: 'idx_tfb_fonctions_module', table: 'tfb_fonctions', colonnes: 'module_id' },
-  { nom: 'idx_tfb_fonctions_cle', table: 'tfb_fonctions', colonnes: 'module_id, cle' },
-  { nom: 'idx_tfb_modules_actif', table: 'tfb_modules', colonnes: 'actif, ordre' },
+  { suffixe: 'fonctions_module', table: 'fonctions', colonnes: 'module_id' },
+  { suffixe: 'fonctions_cle', table: 'fonctions', colonnes: 'module_id, cle' },
+  { suffixe: 'modules_actif', table: 'modules', colonnes: 'actif, ordre' },
 ];
 
 /** MySQL ne connaît pas `CREATE INDEX IF NOT EXISTS` : on tolère le doublon. */
 async function creerIndex(db, pg, index) {
+  const nom = `idx_${table(index.suffixe)}`;
+  const cible = table(index.table);
   const sql = pg
-    ? `CREATE INDEX IF NOT EXISTS ${index.nom} ON ${index.table} (${index.colonnes})`
-    : `CREATE INDEX ${index.nom} ON ${index.table} (${index.colonnes})`;
+    ? `CREATE INDEX IF NOT EXISTS ${nom} ON ${cible} (${index.colonnes})`
+    : `CREATE INDEX ${nom} ON ${cible} (${index.colonnes})`;
   try {
     await db.executer(sql);
-    console.log(`  + index ${index.nom}`);
+    console.log(`  + index ${nom}`);
   } catch (err) {
     const dejaLa = /duplicate key name|already exists/i.test(err.message);
     if (!dejaLa) throw err;
@@ -114,14 +116,14 @@ async function principal() {
       await creerIndex(db, pg, index);
     }
 
-    // La table `tfb_site` ne contient qu'une ligne : on l'amorce si besoin.
-    const lignes = await db.requete('SELECT id FROM tfb_site LIMIT 1');
+    // La table site ne contient qu'une ligne : on l'amorce si besoin.
+    const lignes = await db.requete(`SELECT id FROM ${table('site')} LIMIT 1`);
     if (lignes.length === 0) {
       await db.executer(
-        'INSERT INTO tfb_site (cta_texte, cta_url) VALUES (?, ?)',
+        `INSERT INTO ${table('site')} (cta_texte, cta_url) VALUES (?, ?)`,
         ['Demander une démonstration', '#contact'],
       );
-      console.log('✓ ligne unique de tfb_site créée');
+      console.log(`✓ ligne unique de ${table('site')} créée`);
     }
 
     console.log('\nTables prêtes. Lancer ensuite : npm run ingest:all');
