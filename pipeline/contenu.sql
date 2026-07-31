@@ -583,6 +583,161 @@ SELECT id, 'film', 'Visionneuse publique',
   'Le responsable vérifie l''affichage depuis son téléphone.', 'smartphone', '["xp"]', 6
 FROM landing_modules WHERE slug = 'affichage';
 
+-- ── Recrutement de franchisés (recrutement)
+INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+  description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
+  leviers, liens, onboarding, modele_ia)
+VALUES (
+  'recrutement', 'samsam2703MFC/atelier-espace-candidat', 'main', 'Développement', 9, '1',
+  'Recrutement de franchisés',
+  'Du premier clic sur l''annonce à la signature, un seul dossier suivi.',
+  'Recruter un franchisé prend six à dix-huit mois et passe par une trentaine d''échanges. Ce module tient les quatre faces de ce parcours au même endroit : la page publique qui capte les candidatures, le CRM qui suit les étapes, l''espace où le candidat avance seul, et la vue du propriétaire qui dit ce que tout cela coûte.',
+  'Le recrutement de franchisés est le processus le plus mal outillé des réseaux, et le plus déterminant : c''est lui qui décide qui portera l''enseigne pendant dix ans. Dans la plupart des réseaux il vit dans une boîte mail, un tableur et la mémoire d''un consultant. Quand ce consultant part, la moitié des dossiers en cours devient illisible.
+
+Ce module part du constat qu''un candidat traverse quatre surfaces, et qu''elles doivent raconter la même chose. La page publique présente l''enseigne, ses emplacements disponibles et son formulaire. Le CRM suit le dossier étape par étape, avec les documents attendus à chaque étape. L''espace candidat laisse la personne avancer seule — lire, regarder, simuler son financement, réserver un rendez-vous — sans mobiliser un consultant pour chaque question. Et la vue du propriétaire dit, en lecture seule, combien de candidats sont dans le tuyau, où ils bloquent, et ce que coûte une signature.
+
+La liaison entre les quatre est l''adresse e-mail. Un envoi du formulaire crée d''un coup la trace brute du lead, le compte du portail candidat et la fiche CRM à l''étape « dossier reçu ». Aucune ressaisie, et surtout aucun candidat qui existe dans un outil mais pas dans l''autre.
+
+Le parcours candidat n''est pas figé dans le code : les étapes, leur ordre, leur caractère bloquant, les documents qu''elles exigent et l''e-mail qu''elles déclenchent se paramètrent. Un réseau qui change sa méthode de recrutement change son paramétrage, pas son logiciel — et c''est précisément ce qui rend la méthode transmissible à un nouveau directeur du développement.
+
+Les emplacements sont une table unique servie aux trois fronts : ils alimentent la liste déroulante du formulaire, les épingles de la carte publique et le carrousel d''opportunités du portail candidat. Une zone ouverte au recrutement se déclare une fois.',
+  'Direction du développement, consultants recrutement, candidats franchisés',
+  '[{"titre":"Le dossier vit dans une boîte mail","texte":"Les pièces d''un candidat sont éparpillées entre des mails, un dossier partagé et la mémoire du consultant. Personne d''autre ne peut reprendre le dossier, et le réseau ne sait pas dire où en est un candidat sans appeler quelqu''un."},{"titre":"Le candidat attend, et se refroidit","texte":"Entre deux rendez-vous, un candidat n''a rien à faire ni rien à lire. Le délai devient un signal négatif : celui qui abandonne au troisième mois est souvent celui qui n''avait simplement plus de nouvelles."},{"titre":"La méthode de recrutement ne se transmet pas","texte":"Les étapes, les questions à poser, les documents à réclamer sont dans la tête du recruteur. Un départ, et le réseau réapprend son propre processus — au moment précis où il voudrait accélérer son développement."},{"titre":"Le coût d''une signature est inconnu","texte":"Salons, publicité, temps consultant, primes : les dépenses de recrutement sont réelles mais jamais rapportées au nombre de signatures. Le réseau investit sans savoir ce qu''il paie pour un franchisé."}]',
+  '[{"titre":"Un candidat, un dossier, quatre vues","texte":"La page publique, le CRM, l''espace candidat et la vue du propriétaire lisent la même donnée, reliée par l''adresse e-mail. Le formulaire crée les trois enregistrements d''un coup."},{"titre":"Le candidat avance sans vous","texte":"Vidéothèque, documents à lire, carte des emplacements, simulateur de financement, créneaux de rendez-vous : entre deux échanges, il progresse seul et vous le voyez progresser."},{"titre":"Le parcours est un paramétrage","texte":"Étapes, ordre, caractère bloquant, documents exigés et e-mail déclenché se règlent dans l''interface. La méthode du réseau est écrite quelque part, donc reprenable."},{"titre":"Le coût par signature est un chiffre","texte":"Fixe, primes, publicité, foires et campagnes sont additionnés et rapportés aux candidats et aux signatures. Le développement se pilote comme le reste du réseau."},{"titre":"Les documents se génèrent et se relisent","texte":"Publipostage à partir de modèles à variables, annexes fixes, signature électronique, puis lecture assistée des pièces reçues avec synthèse et alertes."}]',
+  '["React","PHP","MySQL","Vite"]',
+  '["recrutement franchisé","CRM","espace candidat","parcours","DIP","signature électronique"]',
+  'flowchart TD
+  A[Page franchise publique] --> B[Formulaire de candidature]
+  B --> C[Trace du lead]
+  B --> D[Compte espace candidat]
+  B --> E[Fiche CRM etape 1]
+  E --> F[Etapes du parcours]
+  F --> G[Documents et publipostage]
+  G --> H[Signature electronique]
+  F --> I[Rendez-vous et agenda]
+  F --> J[Messagerie]
+  D --> K[Videos badges carte simulateur]
+  K --> L[Dossier de candidature]
+  L --> E
+  E --> M[Bilan du proprietaire]
+  N[Emplacements] --> A
+  N --> D',
+  '["overhead","xp","trafic"]',
+  '[{"slug":"console-marque","sens":"envoie","quoi":"le franchisé signé et sa zone, prêts à devenir un point de vente"},{"slug":"console-marque","sens":"recoit","quoi":"les emplacements ciblés par l''analyse géographique du réseau"},{"slug":"consultant","sens":"envoie","quoi":"le nouveau franchisé à accompagner sur ses premières visites"}]',
+  'C''est ici qu''un réseau grandit. Le candidat entre par l''annonce, avance seul entre deux rendez-vous, et vous voyez à tout moment où il en est et ce qu''il vous coûte. Rien de tout cela ne dépend plus de la mémoire d''un recruteur.',
+  'contenu-initial'
+);
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'landing', 'Page franchise publique',
+  'La page qui présente l''enseigne aux candidats : carrousels photos et vidéos, carte des emplacements, formulaire de contact. Tout son contenu vient de la base — aucune ligne à modifier pour changer une diapositive.',
+  'Le développement publie son annonce sans passer par un développeur.', 'monitor', '["trafic"]', 1
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'leads', 'Candidatures entrantes',
+  'Chaque envoi du formulaire est archivé tel quel, et crée en même temps le compte du portail et la fiche CRM. La trace brute n''est jamais effacée : c''est la sauvegarde de secours des candidatures.',
+  'Aucune candidature ne se perd entre deux outils.', 'users', '["trafic","overhead"]', 2
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'parcours', 'Étapes du parcours',
+  'Les étapes du recrutement, leur ordre, celles qui bloquent la suite, les documents qu''elles réclament et l''e-mail qu''elles déclenchent. Le processus du réseau est décrit ici, pas dans une note de service.',
+  'La méthode de recrutement survit au départ du recruteur.', 'clipboard-check', '["overhead"]', 3
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'candidats', 'Fiches candidats',
+  'Le dossier de chaque candidat : coordonnées, zone visée, étape courante, notes privées ou partagées, documents reçus par étape, motif de clôture.',
+  'N''importe quel consultant reprend un dossier en trois minutes.', 'search', '["overhead"]', 4
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'emplacements', 'Emplacements et zones',
+  'Une seule table sert les trois fronts : la liste déroulante du formulaire, les épingles de la carte publique et le carrousel d''opportunités du portail. Boutique existante, zone disponible ou zone ciblée sont distinguées.',
+  'Une zone ouverte au recrutement se déclare une seule fois.', 'map-pin', '["trafic","overhead"]', 5
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'publipostage', 'Publipostage et contrats',
+  'Des modèles de documents à variables — DIP, contrat, bail — remplis avec les données du candidat, avec leurs annexes PDF fixes. Le document part complet du premier coup.',
+  'Une heure de mise en forme par dossier en moins.', 'book-open', '["overhead"]', 6
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'signature', 'Signature électronique',
+  'Envoi à signer, relance et retour du document signé rattaché à l''étape. Le statut de signature est visible dans le dossier, pas dans la boîte mail de quelqu''un.',
+  'Le délai de signature cesse d''être un angle mort.', 'clipboard-check', '["overhead","xp"]', 7
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'lecture-ia', 'Lecture assistée des documents',
+  'Les pièces reçues sont analysées : synthèse, champs extraits, alertes sur ce qui manque ou détonne. Le consultant relit une synthèse au lieu de trente pages.',
+  'Les pièces d''un dossier se contrôlent en quelques minutes.', 'search', '["overhead"]', 8
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'lexique', 'Lexique documentaire',
+  'La bibliothèque des types de documents du réseau — ce qu''est un DIP, ce que contient un contrat, quelle pièce sert à quoi — organisée et consultable par les consultants.',
+  'Un consultant qui arrive sait quoi demander, et pourquoi.', 'layers', '["overhead"]', 9
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'rdv', 'Rendez-vous et Google Calendar',
+  'Les rendez-vous du parcours, leur lieu, leur statut, et leur synchronisation avec l''agenda du consultant. Le candidat réserve depuis son espace, le consultant les voit dans son calendrier.',
+  'Plus d''aller-retour de dix messages pour caler une date.', 'calendar', '["overhead","xp"]', 10
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'messagerie', 'Messagerie intégrée',
+  'Les e-mails envoyés et reçus sont journalisés dans le dossier du candidat, avec les modèles automatiques — dont l''accusé de réception sous 48 heures.',
+  'L''historique de la relation est dans le dossier, pas dans une boîte personnelle.', 'bell', '["xp","overhead"]', 11
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'espace-candidat', 'Espace candidat',
+  'Le portail du candidat, en deux niveaux : découverte à l''inscription, puis accès complet une fois le dossier validé. Ce que le candidat peut voir dépend de son avancement, pas d''un envoi manuel.',
+  'Le candidat a quelque chose à faire entre deux rendez-vous.', 'smartphone', '["xp"]', 12
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'journey', 'Parcours en 8 étapes',
+  'Le suivi visuel côté candidat : les huit étapes, la barre d''avancement, et surtout la prochaine action attendue de lui.',
+  'Le candidat sait toujours ce qu''on attend de lui.', 'trending-up', '["xp"]', 13
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'videotheque', 'Vidéothèque et quiz',
+  'Les vidéos de présentation du réseau, avec leur progression de visionnage, puis un quiz qui vérifie ce qui a été compris et débloque un badge.',
+  'La présentation du concept ne repose plus sur une réunion.', 'monitor', '["xp"]', 14
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'badges', 'Collection de badges',
+  'Neuf badges gagnés au fil du parcours. Un candidat engagé dans une collection est un candidat qui revient, et sa progression est un signal lisible pour le consultant.',
+  'L''engagement du candidat devient mesurable.', 'bell', '["xp"]', 15
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'carte', 'Carte des emplacements',
+  'La carte du territoire vue par le candidat : boutiques existantes, zones disponibles, zones ciblées, avec le détail de chaque emplacement et un carrousel des opportunités d''ouverture.',
+  'Le candidat se projette sur un territoire réel, pas sur une promesse.', 'map-pin', '["xp","trafic"]', 16
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'investisseurs', 'Financement et investisseurs',
+  'Les partenaires financiers du réseau et un simulateur d''apport et de mensualité. Le candidat teste son plan avant le premier rendez-vous bancaire.',
+  'La question de l''argent se pose tôt, sur des chiffres.', 'credit-card', '["xp","overhead"]', 17
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'agenda', 'Créneaux réservables',
+  'Les disponibilités du consultant groupées par jour, réservables depuis l''espace candidat, plus la journée découverte réservée aux dossiers validés.',
+  'Le rendez-vous se prend quand le candidat y pense, pas trois jours plus tard.', 'clock', '["xp"]', 18
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'candidature', 'Dossier de candidature',
+  'Le formulaire détaillé — apport, expérience, motivation, zone. Son envoi valide le dossier, débloque le niveau 2 du portail et bascule la fiche CRM.',
+  'Le passage à l''étape suivante est déclenché par le candidat, pas relancé par vous.', 'clipboard-check', '["overhead","xp"]', 19
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'bilan', 'Bilan du propriétaire',
+  'Une vue en lecture seule, sur téléphone : candidats actifs, en attente, signés, abandonnés, répartition par étape et par zone, motifs d''abandon, candidatures des 7 et 30 derniers jours.',
+  'Le propriétaire suit son développement sans ouvrir le CRM.', 'bar-chart', '["overhead"]', 20
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'couts', 'Coût du recrutement',
+  'Fixe, primes de signature, publicité, foires et salons, campagnes par prestataire — additionnés puis rapportés au nombre de candidats et de signatures.',
+  'On sait enfin ce que coûte un franchisé recruté.', 'trending-up', '["overhead"]', 21
+FROM landing_modules WHERE slug = 'recrutement';
+INSERT INTO landing_fonctions (module_id, cle, nom, description, benefice, icone, leviers, ordre)
+SELECT id, 'acces', 'Comptes et journal de connexion',
+  'Les comptes consultants avec leur rôle, révocables, et le journal de chaque connexion, échec et déconnexion avec l''adresse et le navigateur.',
+  'L''accès aux dossiers candidats est traçable.', 'settings', '["overhead"]', 22
+FROM landing_modules WHERE slug = 'recrutement';
+
 -- ── Page d'accueil
 DELETE FROM landing_site;
 INSERT INTO landing_site (titre, sous_titre, accroche, problemes, reponses, mermaid,
@@ -591,10 +746,11 @@ VALUES (
   'La valeur d''un réseau, c''est sa capacité à être transmis',
   'Un ERP qui met le savoir-faire dans l''outil plutôt que dans la tête de quelques personnes.',
   'Un réseau se vend sur ce qu''il peut transmettre. Tant que les procédures vivent dans la mémoire des fondateurs, dans des tableurs personnels et dans des habitudes prises en magasin, ce qui se transmet n''est qu''une enseigne et un bail. Le repreneur rachète un nom, pas une méthode.
-Nos huit modules couvrent l''exploitation réelle d''un réseau : la vente en ligne, le pilotage du siège et du point de vente, l''approvisionnement, la production, l''animation terrain, la livraison et l''affichage. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d''autre que dans une conversation.',
+Nos neuf modules couvrent l''exploitation réelle d''un réseau : le recrutement des franchisés, la vente en ligne, le pilotage du siège et du point de vente, l''approvisionnement, la production, l''animation terrain, la livraison et l''affichage. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d''autre que dans une conversation.',
   '[{"titre":"L''exécution en magasin est invisible","texte":"Le siège apprend qu''un standard n''est pas tenu quand un client se plaint, ou lors d''une visite. Entre les deux, personne ne sait. L''écart entre deux points de vente se creuse sans que rien ne le signale."},{"titre":"L''information remonte tard et déformée","texte":"Les chiffres arrivent par tableur en fin de mois, recopiés au moins deux fois. Quand ils arrivent, le trimestre est joué et la discussion porte sur la fiabilité du fichier plutôt que sur la décision à prendre."},{"titre":"Les procédures ne survivent pas au départ","texte":"Le savoir-faire tient dans quelques personnes. Un responsable qui part emporte le tour de main, la mémoire des clients difficiles et les raisons derrière chaque règle. Le successeur réapprend au prix d''une saison."},{"titre":"Chaque outil raconte une histoire différente","texte":"Le site annonce un stock, la cuisine en connaît un autre, le chauffeur découvre le troisième. La ressaisie entre ces mondes coûte des heures et introduit les erreurs qu''on passe ensuite à corriger."},{"titre":"« Vérifié » ne prouve rien","texte":"Une case cochée sans nom ni horodatage ne démontre rien — ni à un franchisé, ni à un contrôle, ni à un repreneur. Le réseau ne peut pas prouver que ses standards existent ailleurs que dans son discours."}]',
   '[{"titre":"Le terrain saisit là où il travaille","texte":"Les applications de la cuisine, de l''animateur et du chauffeur sont installables depuis un navigateur et fonctionnent hors ligne. La donnée naît au poste de travail, une seule fois, au moment où le geste est fait."},{"titre":"Chaque contrôle porte un nom et une heure","texte":"Checklists de poste, checklists de visite notées, preuve de livraison géolocalisée : ce qui est vérifié est attribué et daté. Un standard devient démontrable, donc transmissible."},{"titre":"Un seul référentiel produit","texte":"Le catalogue du siège alimente le webshop, les consoles franchisées et les écrans en magasin. Un prix se change une fois. Le stock du jour vu en cuisine est celui que le site consulte avant d''accepter une commande."},{"titre":"La frontière siège–franchisé est un réglage","texte":"La fiche de chaque boutique dit ce qui est hérité du siège et ce que le franchisé pilote chez lui. La règle ne se renégocie pas à chaque changement de propriétaire."},{"titre":"Les incidents se comptent","texte":"Motifs codifiés, partagés entre l''application du chauffeur et la console du magasin. Un défaut récurrent devient un chiffre comparable entre boutiques, donc un sujet qu''on traite."}]',
   'flowchart LR
+  R[Recrutement] --> A
   A[Console marque] --> B[Catalogue et regles]
   B --> C[Webshop]
   B --> D[Console franchise]

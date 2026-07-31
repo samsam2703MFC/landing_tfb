@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 /**
- * Charge le contenu de départ des huit modules, sans appeler l'API Anthropic.
+ * Charge le contenu de départ des modules, sans appeler l'API Anthropic.
  *
  * Trois usages :
- *   node seed-contenu.mjs            écrit directement dans la base
- *   node seed-contenu.mjs --si-vide  n'écrit que si aucun module n'existe
- *   node seed-contenu.mjs --sql      écrit le fichier contenu.sql
+ *   node seed-contenu.mjs            réécrit tout le contenu de départ
+ *   node seed-contenu.mjs --si-vide  n'écrit que les modules absents de la base
+ *   node seed-contenu.mjs --sql      écrit le fichier pipeline/contenu.sql
+ *
+ * `--si-vide` est le mode du déploiement : il complète — un module ajouté au
+ * catalogue arrive en base au prochain déploiement — mais ne réécrit jamais
+ * par-dessus une fiche déjà générée, ni par l'IA, ni à la main dans la console.
  *
  * Idempotent comme l'ingestion : upsert par `slug` pour les modules, par
  * (module_id, cle) pour les fonctions, et suppression de ce qui a disparu.
@@ -13,9 +17,13 @@
  */
 
 import { writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { MODULES, SITE } from './contenu-initial.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
+
+const ICI = dirname(fileURLToPath(import.meta.url));
 
 // ---------------------------------------------------------------------------
 // Écriture en base
@@ -24,16 +32,21 @@ import { json, ouvrir, table, upsert } from './lib/db.mjs';
 async function ecrireEnBase({ siVide = false } = {}) {
   const db = await ouvrir();
   try {
-    // Utilisé au déploiement : on amorce une base neuve, mais on ne réécrit
-    // jamais par-dessus un contenu déjà généré par l'ingestion.
+    // Mode du déploiement : on complète ce qui manque sans toucher au reste.
+    // Un module ajouté au catalogue arrive donc tout seul, et une fiche déjà
+    // retouchée — par l'ingestion IA ou dans la console — est laissée en place.
+    let dejaLa = new Set();
     if (siVide) {
-      const [{ n }] = await db.requete(`SELECT COUNT(*) AS n FROM ${table('modules')}`);
-      if (Number(n) > 0) {
-        console.log(`${n} module(s) déjà en base — contenu de départ non rechargé.`);
-        return;
-      }
+      const lignes = await db.requete(`SELECT slug FROM ${table('modules')}`);
+      dejaLa = new Set(lignes.map((l) => l.slug));
     }
+
+    let ignores = 0;
     for (const module of MODULES) {
+      if (dejaLa.has(module.slug)) {
+        ignores += 1;
+        continue;
+      }
       const { id, cree } = await upsert(db, table('modules'), 'slug', module.slug, {
         repo: module.repo,
         ref: 'main',
@@ -104,30 +117,38 @@ async function ecrireEnBase({ siVide = false } = {}) {
       );
     }
 
-    // Page d'accueil : une seule ligne.
+    // Page d'accueil : une seule ligne. En mode « complète », on ne l'écrit
+    // que si elle est encore vide — sinon on écraserait un texte retouché.
     const valeurs = [
       SITE.titre, SITE.sous_titre, SITE.accroche,
       json(SITE.problemes), json(SITE.reponses),
       SITE.mermaid, SITE.cta_texte, SITE.cta_url, SITE.meta_description, new Date(),
     ];
-    const lignes = await db.requete(`SELECT id FROM ${table('site')} LIMIT 1`);
-    if (lignes.length > 0) {
+    const lignes = await db.requete(`SELECT id, titre FROM ${table('site')} LIMIT 1`);
+    if (siVide && lignes.length > 0 && lignes[0].titre) {
+      console.log("· page d'accueil déjà renseignée — laissée en place");
+    } else if (lignes.length > 0) {
       await db.executer(
         `UPDATE ${table('site')} SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?, reponses = ?,
          mermaid = ?, cta_texte = ?, cta_url = ?, meta_description = ?, genere_le = ? WHERE id = ?`,
         [...valeurs, lignes[0].id],
       );
+      console.log("✓ page d'accueil");
     } else {
       await db.executer(
         `INSERT INTO ${table('site')} (titre, sous_titre, accroche, problemes, reponses, mermaid,
          cta_texte, cta_url, meta_description, genere_le) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         valeurs,
       );
+      console.log("✓ page d'accueil");
     }
-    console.log("✓ page d'accueil");
 
-    const total = MODULES.reduce((n, m) => n + m.fonctions.length, 0);
-    console.log(`\n${MODULES.length} modules, ${total} fonctions en base.`);
+    if (ignores > 0) {
+      console.log(`\n${ignores} module(s) déjà en base, laissé(s) en place.`);
+    }
+    const [{ nm }] = await db.requete(`SELECT COUNT(*) AS nm FROM ${table('modules')}`);
+    const [{ nf }] = await db.requete(`SELECT COUNT(*) AS nf FROM ${table('fonctions')}`);
+    console.log(`${Number(nm)} modules, ${Number(nf)} fonctions en base.`);
   } finally {
     await db.fermer();
   }
@@ -219,7 +240,8 @@ function genererSql() {
 
 async function principal() {
   if (process.argv.includes('--sql')) {
-    const cible = 'contenu.sql';
+    // Toujours à côté du script, quel que soit le répertoire d'appel.
+    const cible = resolve(ICI, 'contenu.sql');
     await writeFile(cible, genererSql(), 'utf8');
     const total = MODULES.reduce((n, m) => n + m.fonctions.length, 0);
     console.log(`✓ ${cible} écrit — ${MODULES.length} modules, ${total} fonctions.`);

@@ -211,7 +211,7 @@ Relancer le workflow. Il fait alors tout le reste, sans intervention :
 
 1. installe les dépendances et vérifie Node
 2. crée les trois tables `landing_*`
-3. charge les 9 fiches si la base est vide
+3. crée les fiches des modules encore absents de la base
 4. construit la landing et (re)démarre le service `landing-tfb`
 
 La landing répond sur `https://<serveur>/landing_tfb/`, à côté des autres
@@ -266,8 +266,14 @@ node pipeline/ingest.mjs consultant --dry-run
 # tout le catalogue
 node pipeline/ingest-all.mjs --only=consultant,cuisine
 
-# recharger les fiches de départ (sans IA)
+# recharger toutes les fiches de départ (sans IA) — écrase ce qui existe
 node pipeline/seed-contenu.mjs
+
+# ne créer que les modules encore absents de la base (le mode du déploiement)
+node pipeline/seed-contenu.mjs --si-vide
+
+# récupérer les captures publiées par les dépôts modules
+node pipeline/sync-captures.mjs
 ```
 
 ### La console d'administration
@@ -306,7 +312,11 @@ liens et la phrase d'onboarding, eux, ne sont pas touchés par l'ingestion.
 2. Copier `examples/module-publish.yml` dans le dépôt du module, sous
    `.github/workflows/publish-landing.yml`, et y créer le secret
    `LANDING_DISPATCH_TOKEN`.
-3. Pousser. La landing est prévenue et régénère la fiche toute seule.
+3. Rédiger sa fiche dans `pipeline/contenu-initial.mjs`, avec le **même
+   `slug`** que dans `modules.json` — c'est par lui que les captures et les
+   liens inter-modules retrouvent leur module.
+4. Pousser. Le déploiement crée la fiche en base, et le dépôt module prévient
+   la landing à chaque push pour qu'elle la régénère.
 
 ---
 
