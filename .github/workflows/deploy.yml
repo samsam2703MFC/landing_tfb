@@ -229,7 +229,10 @@ jobs:
           done
 
           if [ "\$PRET" = "1" ]; then
-            CARTES=\$(curl -fsS "http://127.0.0.1:\$PORT_WEB\$BASE/" | grep -o 'carte carte--lien' | wc -l)
+            # Un compte de contrôle, pas une condition de réussite : `grep` qui
+            # ne trouve rien rend 1, et sous `pipefail` cela tuait le script
+            # alors que le site répondait. D'où le « || true ».
+            CARTES=\$( { curl -fsS "http://127.0.0.1:\$PORT_WEB\$BASE/" || true; } | grep -c 'class="module"' || true)
             echo "La landing répond sur \$BASE — \$CARTES modules affichés."
 
             # La console d'administration n'est ouverte que si le serveur porte
