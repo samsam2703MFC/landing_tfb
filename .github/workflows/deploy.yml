@@ -55,27 +55,30 @@ jobs:
               -o BatchMode=yes \
               "$SSH_USER@$SSH_HOST" bash -s <<EOF
           set -euo pipefail
-          DEPLOY_PATH='$DEPLOY_PATH'
-          BRANCHE='$BRANCHE'
-          DEPOT='$DEPOT'
+          # Noms volontairement distincts de ceux d'un .env : le fichier de
+          # configuration est sourcé plus bas et pourrait, sinon, écraser le
+          # chemin de déploiement en cours de route.
+          RACINE='$DEPLOY_PATH'
+          BRANCHE_CIBLE='$BRANCHE'
+          DEPOT_URL='$DEPOT'
 
           # Premier déploiement : le clone n'existe pas encore.
-          if [ ! -d "\$DEPLOY_PATH/.git" ]; then
-            echo "Clone initial dans \$DEPLOY_PATH"
-            mkdir -p "\$(dirname "\$DEPLOY_PATH")"
-            git clone "\$DEPOT" "\$DEPLOY_PATH"
+          if [ ! -d "\$RACINE/.git" ]; then
+            echo "Clone initial dans \$RACINE"
+            mkdir -p "\$(dirname "\$RACINE")"
+            git clone "\$DEPOT_URL" "\$RACINE"
           fi
 
-          cd "\$DEPLOY_PATH"
+          cd "\$RACINE"
           git fetch --prune origin
-          git checkout "\$BRANCHE" 2>/dev/null || git checkout -b "\$BRANCHE" "origin/\$BRANCHE"
-          git reset --hard "origin/\$BRANCHE"
+          git checkout "\$BRANCHE_CIBLE" 2>/dev/null || git checkout -b "\$BRANCHE_CIBLE" "origin/\$BRANCHE_CIBLE"
+          git reset --hard "origin/\$BRANCHE_CIBLE"
 
           # Les identifiants ne peuvent pas venir du dépôt. On dépose le
           # gabarit au premier passage, mais il reste à le remplir à la main.
           if [ ! -f infra/.env ]; then
             cp .env.example infra/.env
-            echo "infra/.env vient d'être créé dans \$DEPLOY_PATH à partir de .env.example. Renseigner les valeurs puis relancer le déploiement." >&2
+            echo "infra/.env vient d'être créé dans \$RACINE à partir de .env.example. Renseigner les valeurs puis relancer le déploiement." >&2
             exit 1
           fi
 
@@ -95,11 +98,11 @@ jobs:
             fi
           done
           if [ -n "\$absentes" ]; then
-            echo "Variables absentes ou vides dans \$DEPLOY_PATH/infra/.env :\$absentes" >&2
+            echo "Variables absentes ou vides dans \$RACINE/infra/.env :\$absentes" >&2
             exit 1
           fi
           if [ -n "\$restants" ]; then
-            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env :\$restants" >&2
+            echo "Valeurs encore à renseigner dans \$RACINE/infra/.env :\$restants" >&2
             exit 1
           fi
 
@@ -139,7 +142,7 @@ jobs:
           # --- Service systemd -------------------------------------------------
           NODE_BIN=\$(command -v node)
           echo "Exécutable Node : \$NODE_BIN"
-          sed -e "s#__DEPLOY_PATH__#\$DEPLOY_PATH#g" \
+          sed -e "s#__DEPLOY_PATH__#\$RACINE#g" \
               -e "s#__PORT__#\$PORT_WEB#g" \
               -e "s#__NODE__#\$NODE_BIN#g" \
               deploy/landing-tfb.service > /etc/systemd/system/landing-tfb.service
@@ -153,7 +156,7 @@ jobs:
           fi
           echo "--- unité installée ---"
           grep -E '^(WorkingDirectory|EnvironmentFile|Environment|ExecStart)=' /etc/systemd/system/landing-tfb.service
-          ls -l "\$DEPLOY_PATH/infra/.env"
+          ls -l "\$RACINE/infra/.env"
 
           systemctl daemon-reload
           systemctl enable landing-tfb > /dev/null 2>&1
