@@ -23,14 +23,18 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      # On échoue tôt et clairement plutôt que sur un « cd '' » incompréhensible.
-      - name: Vérifier que les secrets sont renseignés
+      # Tous les prérequis sont contrôlés d'un coup : on veut connaître la
+      # liste complète de ce qui bloque, pas la découvrir un run à la fois.
+      - name: Vérifier les secrets et la clé SSH
         env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
+          bloquant=0
+
           manquants=""
           [ -n "${SSH_HOST:-}" ]    || manquants="$manquants SSH_HOST"
           [ -n "${SSH_USER:-}" ]    || manquants="$manquants SSH_USER"
@@ -38,27 +42,26 @@ jobs:
           [ -n "${DEPLOY_PATH:-}" ] || manquants="$manquants DEPLOY_PATH"
           if [ -n "$manquants" ]; then
             echo "::error::Secrets absents ou vides :$manquants — les créer dans Paramètres → Secrets and variables → Actions."
-            exit 1
+            bloquant=1
           fi
 
-      - name: Préparer la clé SSH
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-        run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          # `tr -d '\r'` : une clé copiée depuis Windows contient des CRLF que
-          # libcrypto refuse de lire.
-          printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
-          chmod 600 ~/.ssh/id_deploy
-
-          # Diagnostic explicite si la clé n'est pas exploitable.
-          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
-            echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible. Attendu : le contenu complet du fichier (ex. ~/.ssh/id_ed25519), de « -----BEGIN OPENSSH PRIVATE KEY----- » à « -----END OPENSSH PRIVATE KEY----- », sans passphrase et sans format PuTTY (.ppk)."
-            exit 1
+          # La clé est écrite et testée même si un autre secret manque, pour
+          # que le log liste tous les problèmes en une seule fois.
+          if [ -n "${SSH_KEY:-}" ]; then
+            mkdir -p ~/.ssh
+            # `tr -d '\r'` : une clé copiée depuis Windows contient des CRLF
+            # que libcrypto refuse de lire.
+            printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+            chmod 600 ~/.ssh/id_deploy
+            if ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
+              echo "Clé SSH lue correctement ($(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}'))."
+            else
+              echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible. Attendu : le contenu complet du fichier privé (ex. ~/.ssh/id_ed25519), de « -----BEGIN OPENSSH PRIVATE KEY----- » à « -----END OPENSSH PRIVATE KEY----- ». Ni la clé publique .pub, ni un fichier PuTTY .ppk, ni une clé protégée par passphrase."
+              bloquant=1
+            fi
           fi
+
+          [ "$bloquant" -eq 0 ] || exit 1
 
           ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
 
