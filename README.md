@@ -142,6 +142,10 @@ docker compose up -d --build
 C'est ce répertoire que le workflow de déploiement met à jour. Pour en utiliser
 un autre, créer le secret `DEPLOY_PATH`.
 
+Le clone est fait automatiquement par le workflow s'il n'existe pas encore :
+seule la création de `infra/.env` reste manuelle, puisqu'il contient des
+identifiants qui n'ont pas leur place dans le dépôt.
+
 Directus crée ses propres tables système au premier démarrage, puis le compte
 administrateur. Vérifier : `https://cms.mondomaine.fr` doit afficher l'écran de
 connexion.
