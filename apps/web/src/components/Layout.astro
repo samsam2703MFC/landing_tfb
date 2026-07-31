@@ -26,7 +26,12 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     <meta property="og:title" content={titreComplet} />
     {description && <meta property="og:description" content={description} />}
     <meta property="og:type" content="website" />
+    <meta property="og:image" content={lien('/brand/logo-mark.png')} />
     <meta name="theme-color" content="#0c1329" />
+
+    <!-- La marque : même fichier pour l'onglet, l'écran d'accueil et le partage. -->
+    <link rel="icon" type="image/png" href={lien('/brand/logo-mark.png')} />
+    <link rel="apple-touch-icon" href={lien('/brand/logo-mark.png')} />
 
     <style is:global>
       /* ── Couleurs de levier ──────────────────────────────────────────────
@@ -376,7 +381,7 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
         gap: var(--space-6); min-height: 66px;
       }
       .entete__marque {
-        display: flex; align-items: baseline; gap: 8px;
+        display: flex; align-items: center; gap: var(--space-3);
         font-family: var(--font-display, inherit);
         font-weight: var(--weight-bold, 800);
         letter-spacing: -0.02em;
@@ -385,6 +390,10 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
       }
       .entete__marque:hover { text-decoration: none; }
       .entete__marque b { color: var(--brand); }
+      .marque__logo { display: block; width: 34px; height: 34px; }
+      .pied .marque__logo { width: 28px; height: 28px; }
+      .pied__marque { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-2); }
+      .pied__marque strong { margin-bottom: 0; }
       .entete__nav { display: flex; gap: var(--space-5); align-items: center; flex-wrap: wrap; }
       .entete__nav a { color: var(--text-secondary); font-size: var(--text-sm, 0.94rem); text-decoration: none; }
       .entete__nav a:hover { color: var(--text-brand); text-decoration: none; }
@@ -421,7 +430,10 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
   <body>
     <header class="entete">
       <div class="contenant entete__barre">
-        <a class="entete__marque" href={lien('/')}>The Franchise <b>Buddy</b></a>
+        <a class="entete__marque" href={lien('/')}>
+          <img class="marque__logo" src={lien('/brand/logo-mark.png')} alt="" width="34" height="34" />
+          <span>The Franchise <b>Buddy</b></span>
+        </a>
         <nav class="entete__nav">
           <a href={lien('/#problemes')}>Problèmes</a>
           <a href={lien('/#modules')}>Modules</a>
@@ -438,7 +450,10 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     <footer class="pied">
       <div class="contenant pied__colonnes">
         <div>
-          <strong>The Franchise Buddy</strong>
+          <div class="pied__marque">
+            <img class="marque__logo" src={lien('/brand/logo-mark.png')} alt="" width="28" height="28" />
+            <strong>The Franchise Buddy</strong>
+          </div>
           <p>Le contenu de ce site est généré à partir du code source des modules.</p>
         </div>
         {modules.length > 0 && (
