@@ -23,17 +23,20 @@ Environment=NODE_ENV=production
 Environment=HOST=0.0.0.0
 Environment=PORT=__PORT__
 
-ExecStart=/usr/bin/env node __DEPLOY_PATH__/apps/web/dist/server/entry.mjs
+# Chemin absolu résolu au déploiement : le PATH d'un service systemd n'est pas
+# celui d'un shell de connexion.
+ExecStart=__NODE__ __DEPLOY_PATH__/apps/web/dist/server/entry.mjs
 Restart=on-failure
 RestartSec=5
 
-# Durcissement raisonnable. On évite ProtectSystem=strict : l'adaptateur Node
-# d'Astro écrit ses sessions sur disque, et un /var en lecture seule
-# provoquerait une panne difficile à relier à sa cause.
+# Durcissement volontairement limité :
+#  - pas de ProtectSystem=strict, l'adaptateur Node d'Astro écrit ses sessions
+#    sur disque et un /var en lecture seule provoquerait une panne obscure ;
+#  - pas de ProtectHome, Node peut être installé sous /root (nvm) et deviendrait
+#    alors introuvable, avec pour seul message « unavailable resources ».
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=full
-ProtectHome=true
 
 StandardOutput=journal
 StandardError=journal

@@ -137,12 +137,23 @@ jobs:
           npm --prefix apps/web run build
 
           # --- Service systemd -------------------------------------------------
+          NODE_BIN=\$(command -v node)
+          echo "Exécutable Node : \$NODE_BIN"
           sed -e "s#__DEPLOY_PATH__#\$DEPLOY_PATH#g" \
               -e "s#__PORT__#\$PORT_WEB#g" \
+              -e "s#__NODE__#\$NODE_BIN#g" \
               deploy/landing-tfb.service > /etc/systemd/system/landing-tfb.service
           systemctl daemon-reload
           systemctl enable landing-tfb > /dev/null 2>&1
-          systemctl restart landing-tfb
+
+          # Sans « || true », set -e couperait ici et les diagnostics ci-dessous
+          # ne seraient jamais affichés.
+          if ! systemctl restart landing-tfb; then
+            echo "Le service a refusé de démarrer :" >&2
+            systemctl status landing-tfb --no-pager -l | head -25 >&2
+            journalctl -u landing-tfb -n 40 --no-pager >&2
+            exit 1
+          fi
 
           # Laisser le temps au serveur d'ouvrir son port avant de conclure.
           for essai in 1 2 3 4 5 6 7 8 9 10; do
