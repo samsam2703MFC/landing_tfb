@@ -21,7 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { genererContenuModule, modele } from './lib/ai.mjs';
-import { chargerDepot } from './lib/repo.mjs';
+import { chargerDepot, jetonGithub } from './lib/repo.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -67,7 +67,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   const depot = await chargerDepot({
     repo: entree.repo,
     ref: branche,
-    token: process.env.GH_INGEST_TOKEN,
+    token: jetonGithub(),
   });
   console.log(`   dépôt lu : ${depot.arbre.length} fichiers, ${depot.extraits.length} extraits, sha ${depot.sha.slice(0, 8)}`);
 

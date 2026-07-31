@@ -40,6 +40,17 @@ const DIGEST_MAX = 140000;             // budget total d'extraits de code
 const README_MAX = 20000;
 const NB_FICHIERS_MAX = 40;
 
+/**
+ * Le jeton, seulement s'il en est vraiment un.
+ * Un `.env` hérité peut contenir la valeur du gabarit ; l'envoyer ferait
+ * refuser par GitHub des dépôts publics parfaitement lisibles sans jeton.
+ */
+export function jetonGithub() {
+  const brut = (process.env.GH_INGEST_TOKEN || '').trim();
+  if (!brut || /change-moi|^ghp_change|^xxx/i.test(brut) || brut.length < 20) return null;
+  return brut;
+}
+
 /** Erreur d'ingestion portant un code exploitable par l'appelant. */
 export class ErreurDepot extends Error {
   constructor(code, message) {
@@ -49,16 +60,20 @@ export class ErreurDepot extends Error {
 }
 
 /** Appel à l'API GitHub, avec jeton optionnel. */
-async function appelGithub(chemin, token) {
+async function appelGithub(chemin, token, sansJeton = false) {
   const reponse = await fetch(`${API}${chemin}`, {
     headers: {
       Accept: 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'landing-tfb-pipeline',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token && !sansJeton ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
 
+  // Un jeton refusé ne doit pas masquer un dépôt public : on réessaie nu.
+  if (reponse.status === 401 && token && !sansJeton) {
+    return appelGithub(chemin, token, true);
+  }
   if (reponse.status === 404) return { absent: true };
   if (reponse.status === 409) throw new ErreurDepot('depot_vide', 'Dépôt vide (aucun commit).');
   if (reponse.status === 403 || reponse.status === 429) {

@@ -20,6 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ouvrir, table } from './lib/db.mjs';
+import { jetonGithub } from './lib/repo.mjs';
 import { chargerRegistre } from './ingest.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -27,15 +28,17 @@ const RACINE_PUBLIQUE = resolve(ICI, '..', 'apps', 'web', 'public', 'captures');
 const API = 'https://api.github.com';
 
 /** Appel GitHub, jeton optionnel. */
-async function github(chemin, token, brut = false) {
+async function github(chemin, token, brut = false, sansJeton = false) {
   const reponse = await fetch(`${API}${chemin}`, {
     headers: {
       Accept: brut ? 'application/vnd.github.raw' : 'application/vnd.github+json',
       'X-GitHub-Api-Version': '2022-11-28',
       'User-Agent': 'landing-tfb-pipeline',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(token && !sansJeton ? { Authorization: `Bearer ${token}` } : {}),
     },
   });
+  // Un jeton refusé ne doit pas masquer un dépôt public : on réessaie nu.
+  if (reponse.status === 401 && token && !sansJeton) return github(chemin, token, brut, true);
   if (reponse.status === 404) return null;
   if (!reponse.ok) throw new Error(`GitHub ${chemin} → ${reponse.status}`);
   return brut ? Buffer.from(await reponse.arrayBuffer()) : reponse.json();
@@ -64,7 +67,7 @@ function titre(fichier) {
 
 async function principal() {
   const force = process.argv.includes('--force');
-  const token = process.env.GH_INGEST_TOKEN;
+  const token = jetonGithub();
   const registre = await chargerRegistre();
   const db = await ouvrir();
 
