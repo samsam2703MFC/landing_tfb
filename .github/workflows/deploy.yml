@@ -86,7 +86,7 @@ jobs:
           # ignorées : seules ces sept variables sont examinées.
           absentes=''
           restants=''
-          for cle in DB_CLIENT DB_HOST DB_PORT DB_LOGIN DB_NAME DB_PASS SITE_DOMAIN; do
+          for cle in DB_CLIENT DB_HOST DB_PORT DB_LOGIN DB_NAME DB_PASS; do
             valeur=\$(grep -E "^\$cle=" infra/.env | head -n 1 | cut -d= -f2- || true)
             if [ -z "\$valeur" ]; then
               absentes="\$absentes \$cle"
@@ -103,14 +103,23 @@ jobs:
             exit 1
           fi
 
-          # Le domaine d'exemple ferait échouer Caddy à l'obtention du certificat.
-          if grep -qE '^SITE_DOMAIN=.*example\.(com|org|net)' infra/.env; then
-            echo "SITE_DOMAIN vaut encore le domaine d'exemple dans \$DEPLOY_PATH/infra/.env. Mettre le vrai domaine, sans https ni barre oblique." >&2
-            exit 1
+          cd infra
+
+          # Sans vrai domaine, Caddy sert en clair sur « :80 » plutôt que
+          # d'échouer à obtenir un certificat pour un domaine d'exemple.
+          DOMAINE=\$(grep -E '^SITE_DOMAIN=' .env | head -n 1 | cut -d= -f2- | tr -d '"'"'"' ')
+          case "\$DOMAINE" in
+            ''|*example.com|*example.org|*example.net) ADRESSE=':80' ;;
+            *[!0-9.]*) ADRESSE="\$DOMAINE" ;;
+            *) ADRESSE=':80' ;;
+          esac
+          if [ "\$ADRESSE" = ':80' ]; then
+            echo "Aucun domaine exploitable dans SITE_DOMAIN — la landing sera servie en HTTP sur l'IP du serveur."
+          else
+            echo "Caddy servira https://\$ADRESSE"
           fi
 
-          cd infra
-          docker compose up -d --build
+          SITE_ADDRESS="\$ADRESSE" docker compose up -d --build
 
           # Les tables sont créées à chaque déploiement : le script ne crée que
           # ce qui manque, donc une évolution du schéma est appliquée toute

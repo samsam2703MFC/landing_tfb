@@ -36,10 +36,13 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      # Ports par défaut volontairement décalés : un serveur web occupe
+      # souvent déjà 80 et 443. Mettre HTTP_PORT=80 et HTTPS_PORT=443 dans
+      # .env dès qu'un domaine est configuré, pour l'HTTPS automatique.
+      - "${HTTP_PORT:-8090}:80"
+      - "${HTTPS_PORT:-8443}:443"
     environment:
-      SITE_DOMAIN: ${SITE_DOMAIN}
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
       ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

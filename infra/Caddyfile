@@ -7,7 +7,9 @@
 	email {$ACME_EMAIL:admin@localhost}
 }
 
-{$SITE_DOMAIN} {
+# SITE_ADDRESS vaut le domaine (HTTPS automatique) ou « :80 » quand aucun
+# domaine n'est configuré — le site est alors servi en clair sur l'IP.
+{$SITE_ADDRESS::80} {
 	encode zstd gzip
 
 	header {
