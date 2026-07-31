@@ -59,7 +59,25 @@ jobs:
             if ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
               echo "Clé SSH lue correctement ($(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}'))."
             else
-              echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible. Attendu : le contenu complet du fichier privé (ex. ~/.ssh/id_ed25519), de « -----BEGIN OPENSSH PRIVATE KEY----- » à « -----END OPENSSH PRIVATE KEY----- ». Ni la clé publique .pub, ni un fichier PuTTY .ppk, ni une clé protégée par passphrase."
+              # On identifie la nature du contenu sans jamais l'afficher :
+              # seul le verdict sort dans le log.
+              lignes=$(wc -l < ~/.ssh/id_deploy)
+              premiere=$(head -n 1 ~/.ssh/id_deploy)
+              case "$premiere" in
+                ssh-rsa*|ssh-ed25519*|ecdsa-sha2*|sk-ssh*)
+                  diagnostic="c'est la clé PUBLIQUE. Copier le fichier sans l'extension .pub." ;;
+                PuTTY-User-Key-File*)
+                  diagnostic="c'est un fichier PuTTY (.ppk). Le convertir : puttygen cle.ppk -O private-openssh -o cle_openssh" ;;
+                -----BEGIN*PRIVATE*KEY-----)
+                  if [ "$lignes" -le 2 ]; then
+                    diagnostic="les retours à la ligne ont été perdus (tout tient sur une ligne). Recoller le fichier tel quel, sans le reformater."
+                  else
+                    diagnostic="l'en-tête est correct mais la clé reste illisible : corps tronqué, ou clé protégée par une passphrase (le déploiement en exige une sans passphrase)."
+                  fi ;;
+                *)
+                  diagnostic="le contenu ne commence par aucun en-tête de clé connu (${lignes} ligne(s) au total)." ;;
+              esac
+              echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible : $diagnostic"
               bloquant=1
             fi
           fi
