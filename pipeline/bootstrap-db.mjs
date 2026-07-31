@@ -130,7 +130,37 @@ async function principal() {
   }
 }
 
+/** Un refus d'accès est de loin l'erreur la plus fréquente : on donne la main. */
+function conseil(message) {
+  if (!/access denied|authentication failed|password/i.test(message)) return null;
+
+  const base = process.env.DB_NAME || 'tfb_landing';
+  const login = process.env.DB_LOGIN || 'tfb_landing';
+  const collation = estPostgres() ? '' : ' CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci';
+
+  if (estPostgres()) {
+    return [
+      "Le compte n'existe pas ou le mot de passe ne correspond pas. Depuis psql en superutilisateur :",
+      `  CREATE DATABASE ${base};`,
+      `  CREATE USER ${login} WITH PASSWORD '<le DB_PASS du .env>';`,
+      `  GRANT ALL PRIVILEGES ON DATABASE ${base} TO ${login};`,
+    ].join('\n');
+  }
+
+  return [
+    "Le compte n'existe pas ou le mot de passe ne correspond pas. Depuis mysql en root :",
+    `  CREATE DATABASE IF NOT EXISTS \`${base}\`${collation};`,
+    `  CREATE USER IF NOT EXISTS '${login}'@'localhost' IDENTIFIED BY '<le DB_PASS du .env>';`,
+    `  ALTER USER '${login}'@'localhost' IDENTIFIED BY '<le DB_PASS du .env>';`,
+    `  GRANT ALL PRIVILEGES ON \`${base}\`.* TO '${login}'@'localhost';`,
+    '  FLUSH PRIVILEGES;',
+    "Sinon, corriger DB_LOGIN, DB_NAME ou DB_PASS dans infra/.env pour qu'ils désignent un compte existant.",
+  ].join('\n');
+}
+
 principal().catch((err) => {
   console.error(`\n✗ Bootstrap interrompu : ${err.message}`);
+  const aide = conseil(err.message);
+  if (aide) console.error(`\n${aide}`);
   process.exit(1);
 });
