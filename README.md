@@ -67,7 +67,8 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/pages/modules/[slug].astro
 │   └── Dockerfile
 ├── deploy/
-│   └── landing-tfb.service       # gabarit du service systemd
+│   ├── landing-tfb.service       # gabarit du service systemd
+│   └── apache-landing.conf       # gabarit du montage sous /landing_tfb/
 ├── infra/                        # variante conteneurs, facultative
 │   ├── docker-compose.yml        # landing + Caddy
 │   └── Caddyfile                 # HTTPS automatique
@@ -148,6 +149,7 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | `DB_HOST`, `DB_PORT` | accès à la base (`127.0.0.1` si elle tourne sur le serveur) |
 | `DB_LOGIN`, `DB_NAME`, `DB_PASS` | identifiants de la base |
 | `DB_PREFIX` | *(facultatif)* préfixe des tables, `landing_` par défaut |
+| `BASE_PATH` | chemin de montage, `/landing_tfb` par défaut — `/` pour un domaine dédié |
 | `SITE_DOMAIN` | domaine, vide tant qu'aucun DNS ne pointe vers le serveur |
 | `HTTP_PORT` | port d'écoute de la landing, `8090` par défaut |
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
@@ -193,7 +195,10 @@ Relancer le workflow. Il fait alors tout le reste, sans intervention :
 3. charge les 8 fiches si la base est vide
 4. construit la landing et (re)démarre le service `landing-tfb`
 
-La landing répond sur `http://<serveur>:8090`. Vérifier :
+La landing répond sur `https://<serveur>/landing_tfb/`, à côté des autres
+applications du serveur : le déploiement dépose un fichier dans
+`conf-available` d'Apache et l'active, sans toucher aux vhosts existants.
+Vérifier :
 
 ```bash
 systemctl status landing-tfb

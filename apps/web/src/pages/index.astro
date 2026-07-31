@@ -5,6 +5,7 @@
  */
 import Layout from '../components/Layout.astro';
 import { chargerModules, chargerSite, grouperModules } from '../lib/db.mjs';
+import { lien } from '../lib/lien.mjs';
 
 const [site, modules] = await Promise.all([chargerSite(), chargerModules()]);
 const groupes = grouperModules(modules);
@@ -33,9 +34,9 @@ const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`
         <p style="font-size: 1.2rem; color: var(--encre-douce);">{sousTitre}</p>
         {paragraphes.map((paragraphe) => <p>{paragraphe}</p>)}
         <p style="margin-top: 28px;">
-          <a class="bouton" href={ctaUrl}>{ctaTexte}</a>
+          <a class="bouton" href={ctaUrl.startsWith("#") ? lien("/" + ctaUrl) : ctaUrl}>{ctaTexte}</a>
           {modules.length > 0 && (
-            <a class="bouton bouton--fantome" href="#modules" style="margin-left: 10px;">
+            <a class="bouton bouton--fantome" href={lien("/#modules")} style="margin-left: 10px;">
               Voir les {modules.length} modules
             </a>
           )}
@@ -122,7 +123,7 @@ const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`
             <p class="etiquette" style="margin-bottom: 16px;">{groupe.nom}</p>
             <div class="grille">
               {groupe.modules.map((module) => (
-                <a class="carte carte--lien" href={`/modules/${module.slug}`}>
+                <a class="carte carte--lien" href={lien(`/modules/${module.slug}`)}>
                   <h3>{module.nom || module.slug}</h3>
                   <p>{module.accroche}</p>
                   {module.fonctions?.length > 0 && (

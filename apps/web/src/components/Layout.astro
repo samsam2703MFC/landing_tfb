@@ -4,6 +4,8 @@
  * Mermaid côté navigateur (les diagrammes sont stockés en texte dans Directus
  * et rendus dans le navigateur, jamais au build).
  */
+import { lien } from '../lib/lien.mjs';
+
 const { titre, description, modules = [] } = Astro.props;
 
 const titreComplet = titre ? `${titre} — ERP réseau` : 'ERP réseau';
@@ -219,12 +221,12 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
   <body>
     <header class="entete">
       <div class="contenant entete__barre">
-        <a class="entete__marque" href="/">ERP réseau</a>
+        <a class="entete__marque" href={lien("/")}>ERP réseau</a>
         <nav class="entete__nav">
-          <a href="/#problemes">Problèmes</a>
-          <a href="/#reponses">Réponses</a>
-          <a href="/#modules">Modules</a>
-          <a class="bouton" href="/#contact">Nous contacter</a>
+          <a href={lien("/#problemes")}>Problèmes</a>
+          <a href={lien("/#reponses")}>Réponses</a>
+          <a href={lien("/#modules")}>Modules</a>
+          <a class="bouton" href={lien("/#contact")}>Nous contacter</a>
         </nav>
       </div>
     </header>
@@ -245,13 +247,13 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
           <div>
             <strong>Modules</strong>
             {modules.map((module) => (
-              <a href={`/modules/${module.slug}`}>{module.nom || module.slug}</a>
+              <a href={lien(`/modules/${module.slug}`)}>{module.nom || module.slug}</a>
             ))}
           </div>
         )}
         <div>
           <strong>Contact</strong>
-          <a href="/#contact">Demander une démonstration</a>
+          <a href={lien("/#contact")}>Demander une démonstration</a>
         </div>
       </div>
     </footer>

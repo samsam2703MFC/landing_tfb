@@ -129,6 +129,10 @@ jobs:
           . ./infra/.env
           set +a
           PORT_WEB="\${HTTP_PORT:-8090}"
+          # Chemin de montage : même défaut que .env.example, pour qu'un .env
+          # antérieur à cette option continue de fonctionner.
+          BASE="\${BASE_PATH:-/landing_tfb}"
+          export BASE_PATH="\$BASE"
 
           # --- Base : tables puis contenu de départ --------------------------
           npm --prefix pipeline ci --omit=dev --no-audit --no-fund
@@ -136,6 +140,9 @@ jobs:
           node pipeline/seed-contenu.mjs --si-vide
 
           # --- Construction de la landing ------------------------------------
+          # BASE_PATH est lu par astro.config.mjs au build : les liens et les
+          # ressources sont figés avec ce préfixe.
+          echo "Chemin de montage : \$BASE"
           npm --prefix apps/web ci --no-audit --no-fund
           npm --prefix apps/web run build
 
@@ -171,13 +178,44 @@ jobs:
           fi
 
           # Laisser le temps au serveur d'ouvrir son port avant de conclure.
+          PRET=0
           for essai in 1 2 3 4 5 6 7 8 9 10; do
-            if curl -fsS -o /dev/null "http://127.0.0.1:\$PORT_WEB/"; then
-              echo "La landing répond sur le port \$PORT_WEB."
-              exit 0
+            if curl -fsS -o /dev/null "http://127.0.0.1:\$PORT_WEB\$BASE/"; then
+              PRET=1
+              break
             fi
             sleep 2
           done
+
+          if [ "\$PRET" = "1" ]; then
+            CARTES=\$(curl -fsS "http://127.0.0.1:\$PORT_WEB\$BASE/" | grep -o 'carte carte--lien' | wc -l)
+            echo "La landing répond sur \$BASE — \$CARTES modules affichés."
+
+            # --- Montage dans Apache -----------------------------------------
+            # Déposé en conf-available : la landing s'ajoute aux hôtes déjà
+            # servis, y compris le catch-all sur l'IP, sans toucher à leurs
+            # fichiers de configuration.
+            if command -v apache2ctl > /dev/null 2>&1 && [ -d /etc/apache2/conf-available ]; then
+              sed -e "s#__BASE__#\$BASE#g" -e "s#__PORT__#\$PORT_WEB#g" \
+                  deploy/apache-landing.conf > /etc/apache2/conf-available/landing-tfb.conf
+              a2enmod proxy proxy_http > /dev/null 2>&1 || true
+              a2enconf landing-tfb > /dev/null 2>&1 || true
+
+              # Le vhost au domaine d'exemple, s'il traîne d'un essai précédent.
+              if [ -f /etc/apache2/sites-enabled/landing-tfb.conf ] \
+                 && grep -q 'votredomaine' /etc/apache2/sites-enabled/landing-tfb.conf; then
+                a2dissite landing-tfb > /dev/null 2>&1 || true
+              fi
+
+              if apache2ctl configtest > /dev/null 2>&1; then
+                systemctl reload apache2
+                echo "Apache : landing montée sous \$BASE/"
+              else
+                echo "::warning::apache2ctl configtest en échec — rechargement ignoré, la configuration d'Apache n'a pas été appliquée."
+              fi
+            fi
+            exit 0
+          fi
 
           echo "La landing ne répond pas sur le port \$PORT_WEB :" >&2
           systemctl status landing-tfb --no-pager -l | head -20 >&2

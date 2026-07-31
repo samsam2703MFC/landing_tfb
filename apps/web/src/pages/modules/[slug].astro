@@ -6,6 +6,7 @@
 import { marked } from 'marked';
 import Layout from '../../components/Layout.astro';
 import { chargerModule, chargerModules } from '../../lib/db.mjs';
+import { lien } from '../../lib/lien.mjs';
 
 const { slug } = Astro.params;
 const module = await chargerModule(slug);
@@ -30,7 +31,7 @@ const stack = module.stack || [];
   <section class="section" style="border-top: 0;">
     <div class="contenant">
       <p style="margin-bottom: 20px;">
-        <a href="/#modules" style="text-decoration: none; color: var(--encre-douce);">← Tous les modules</a>
+        <a href={lien("/#modules")} style="text-decoration: none; color: var(--encre-douce);">← Tous les modules</a>
       </p>
       {module.groupe && <p class="etiquette" style="margin-bottom: 14px;">{module.groupe}</p>}
       <h1 style="max-width: 20ch;">{module.nom || module.slug}</h1>
@@ -169,14 +170,14 @@ const stack = module.stack || [];
         </div>
         <div class="grille">
           {autres.map((autre) => (
-            <a class="carte carte--lien" href={`/modules/${autre.slug}`}>
+            <a class="carte carte--lien" href={lien(`/modules/${autre.slug}`)}>
               <h3>{autre.nom || autre.slug}</h3>
               <p>{autre.accroche}</p>
             </a>
           ))}
         </div>
         <p style="margin-top: 32px;">
-          <a class="bouton" href="/#contact">Demander une démonstration</a>
+          <a class="bouton" href={lien("/#contact")}>Demander une démonstration</a>
         </p>
       </div>
     </section>
