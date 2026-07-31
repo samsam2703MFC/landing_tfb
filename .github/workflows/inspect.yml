@@ -4,6 +4,13 @@ name: Inspecter la base
 # Uniquement des SELECT : rien n'est modifié.
 on:
   workflow_dispatch:
+  # Un workflow qui n'existe que sur une branche de travail n'est pas
+  # déclenchable à la main tant qu'il n'a jamais tourné : ce déclencheur sur
+  # ses propres fichiers le fait exister aux yeux de GitHub.
+  push:
+    paths:
+      - '.github/workflows/inspect.yml'
+      - 'pipeline/inspect-db.mjs'
 
 jobs:
   inspecter:
