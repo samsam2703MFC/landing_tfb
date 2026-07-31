@@ -82,19 +82,30 @@ jobs:
           # Seules ces variables sont indispensables au démarrage. Les autres
           # (ACME_EMAIL, CACHE_TTL_MS, clés d'ingestion) ont une valeur par
           # défaut dans le compose ou ne servent qu'au pipeline.
+          # Les lignes héritées d'une version précédente du gabarit sont
+          # ignorées : seules ces sept variables sont examinées.
           absentes=''
+          restants=''
           for cle in DB_CLIENT DB_HOST DB_PORT DB_LOGIN DB_NAME DB_PASS SITE_DOMAIN; do
-            grep -qE "^\$cle=." infra/.env || absentes="\$absentes \$cle"
+            valeur=\$(grep -E "^\$cle=" infra/.env | head -n 1 | cut -d= -f2- || true)
+            if [ -z "\$valeur" ]; then
+              absentes="\$absentes \$cle"
+            elif printf '%s' "\$valeur" | grep -q 'change-moi'; then
+              restants="\$restants \$cle"
+            fi
           done
           if [ -n "\$absentes" ]; then
             echo "Variables absentes ou vides dans \$DEPLOY_PATH/infra/.env :\$absentes" >&2
             exit 1
           fi
-
-          # Un « change-moi » oublié empêcherait la connexion à la base.
-          restants=\$(grep -E '^[A-Z_]+=.*change-moi' infra/.env | cut -d= -f1 | tr '\n' ' ')
           if [ -n "\$restants" ]; then
-            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env : \$restants" >&2
+            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env :\$restants" >&2
+            exit 1
+          fi
+
+          # Le domaine d'exemple ferait échouer Caddy à l'obtention du certificat.
+          if grep -qE '^SITE_DOMAIN=.*example\.(com|org|net)' infra/.env; then
+            echo "SITE_DOMAIN vaut encore le domaine d'exemple dans \$DEPLOY_PATH/infra/.env. Mettre le vrai domaine, sans https ni barre oblique." >&2
             exit 1
           fi
 
