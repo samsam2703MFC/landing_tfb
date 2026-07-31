@@ -71,12 +71,20 @@ export async function compteurs() {
   );
   const [fonctions] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('fonctions')}`);
   const [captures] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('captures')}`);
+  const [textes] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('textes')}`);
+  const [langues] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('langues')} WHERE publiee = ?`, [vrai(true)]);
+  const [leads] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('leads')} WHERE traite = ?`, [vrai(false)]);
+  const [clients] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('clients')}`);
   const nombre = (ligne) => Number(ligne?.total ?? ligne?.TOTAL ?? 0);
   return {
     modules: nombre(modules),
     actifs: nombre(actifs),
     fonctions: nombre(fonctions),
     captures: nombre(captures),
+    textes: nombre(textes),
+    langues: nombre(langues),
+    leads: nombre(leads),
+    clients: nombre(clients),
   };
 }
 
@@ -338,4 +346,148 @@ export function lireLiens(formulaire) {
     });
   }
   return liens;
+}
+
+// ---------------------------------------------------------------------------
+// Le contenu éditorial : textes, réseaux, langues, demandes reçues
+// ---------------------------------------------------------------------------
+
+/** Les textes des pages, groupés par section dans l'ordre de la maquette. */
+export async function listerTextes() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('textes')} ORDER BY ordre, cle`);
+  const sections = new Map();
+  for (const l of lignes) {
+    const nom = l.section || 'Divers';
+    if (!sections.has(nom)) sections.set(nom, []);
+    sections.get(nom).push(l);
+  }
+  return [...sections.entries()].map(([nom, textes]) => ({ nom, textes }));
+}
+
+/** Enregistre d'un coup les textes modifiés. */
+export async function enregistrerTextes(formulaire) {
+  const db = await connexion();
+  const ids = formulaire.getAll('texte_id');
+  const valeurs = formulaire.getAll('texte_valeur');
+  let ecrits = 0;
+  for (let i = 0; i < ids.length; i += 1) {
+    await db.executer(
+      `UPDATE ${table('textes')} SET valeur = ? WHERE id = ?`,
+      [String(valeurs[i] ?? ''), Number(ids[i])],
+    );
+    ecrits += 1;
+  }
+  viderCache();
+  return ecrits;
+}
+
+/** Les demandes de démonstration, les plus récentes d'abord. */
+export async function listerLeads() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('leads')} ORDER BY recu_le DESC, id DESC`);
+  return lignes.map((l) => ({ ...l, traite: Boolean(l.traite) }));
+}
+
+/** Marque une demande comme traitée, ou la remet en attente. */
+export async function marquerLead(id, traite) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('leads')} SET traite = ? WHERE id = ?`, [vrai(traite), Number(id)]);
+  viderCache();
+}
+
+/** Supprime une demande — une fois traitée, elle n'a pas à traîner. */
+export async function supprimerLead(id) {
+  const db = await connexion();
+  await db.executer(`DELETE FROM ${table('leads')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/** Les réseaux du bandeau, publiés ou non. */
+export async function listerClients() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('clients')} ORDER BY ordre, nom`);
+  return lignes.map((c) => ({ ...c, actif: Boolean(c.actif) }));
+}
+
+/** Ajoute un réseau au bandeau. */
+export async function ajouterClient(valeurs) {
+  const nom = String(valeurs.nom || '').trim();
+  if (!nom) throw new Error('Le nom du réseau est obligatoire.');
+  const db = await connexion();
+  await db.executer(
+    `INSERT INTO ${table('clients')} (nom, note, actif, ordre) VALUES (?, ?, ?, ?)`,
+    [nom.slice(0, 160), String(valeurs.note || '').trim().slice(0, 255) || null, vrai(true), Number(valeurs.ordre) || 100],
+  );
+  viderCache();
+}
+
+/** Enregistre un réseau existant. */
+export async function enregistrerClient(id, valeurs) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('clients')} SET nom = ?, note = ?, actif = ?, ordre = ? WHERE id = ?`,
+    [
+      String(valeurs.nom || '').trim().slice(0, 160),
+      String(valeurs.note || '').trim().slice(0, 255) || null,
+      vrai(valeurs.actif),
+      Number(valeurs.ordre) || 100,
+      Number(id),
+    ],
+  );
+  viderCache();
+}
+
+/** Retire un réseau du bandeau. */
+export async function supprimerClient(id) {
+  const db = await connexion();
+  await db.executer(`DELETE FROM ${table('clients')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/** Les langues prévues, avec leur état de publication. */
+export async function listerLangues() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('langues')} ORDER BY ordre, code`);
+  return lignes.map((l) => ({ ...l, rtl: Boolean(l.rtl), defaut: Boolean(l.defaut), publiee: Boolean(l.publiee) }));
+}
+
+/**
+ * Publie ou retire une langue. La langue par défaut ne se dépublie pas : le
+ * site n'aurait plus rien à servir.
+ */
+export async function basculerLangue(code, publiee) {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT defaut FROM ${table('langues')} WHERE code = ? LIMIT 1`, [String(code)]);
+  if (lignes.length === 0) throw new Error(`Langue « ${code} » inconnue.`);
+  if (Boolean(lignes[0].defaut) && !publiee) {
+    throw new Error('La langue par défaut ne peut pas être retirée : le site n’aurait plus rien à servir.');
+  }
+  await db.executer(`UPDATE ${table('langues')} SET publiee = ? WHERE code = ?`, [vrai(publiee), String(code)]);
+  viderCache();
+}
+
+/** Enregistre famille, icône, ordre et leviers d'un module, depuis la table. */
+export async function enregistrerLigneModule(slug, valeurs) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ? WHERE slug = ?`,
+    [
+      String(valeurs.groupe || '').trim() || null,
+      String(valeurs.icone || '').trim() || null,
+      Number(valeurs.ordre) || 100,
+      json(valeurs.leviers),
+      String(slug),
+    ],
+  );
+  viderCache();
+}
+
+/** Les familles réellement utilisées, plus celles prévues par la maquette. */
+export async function famillesConnues() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT DISTINCT groupe FROM ${table('modules')} WHERE groupe IS NOT NULL`);
+  const vues = lignes.map((l) => l.groupe).filter(Boolean);
+  const attendues = ['Vente', 'Pilotage', 'Approvisionnement', 'Terrain', 'Développement'];
+  return [...new Set([...attendues, ...vues])].sort();
 }

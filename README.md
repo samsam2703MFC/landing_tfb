@@ -97,7 +97,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 
 ## Le modèle de données
 
-Quatre tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
+Neuf tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
 la base sans risque de collision — le préfixe se change avec `DB_PREFIX`. Elles
 sont créées par `bootstrap-db.mjs`, qui ajoute aussi les colonnes manquantes
 d'une table déjà en place, et sont interrogeables directement en SQL.
@@ -108,6 +108,11 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_fonctions` | une ligne par fonction : `module_id`, `cle`, `nom`, `description`, `benefice`, `icone`, `leviers`, `ordre` |
 | `landing_captures` | une ligne par copie d'écran : `module_id`, `fonction_cle`, `fichier`, `titre`, `ordre` |
 | `landing_site` | une seule ligne : le contenu de la page d'accueil (`titre`, `accroche`, `problemes`, `reponses`, `mermaid`, `cta_*`, `meta_description`) |
+| `landing_textes` | le discours éditorial des pages : chapeaux de section, libellés de bouton, phrases d'accompagnement — **rien n'est écrit en dur dans les gabarits** |
+| `landing_questions` | les questions de l'onboarding et les modules qu'elles déclenchent |
+| `landing_leads` | les demandes de démonstration reçues par le formulaire |
+| `landing_clients` | les réseaux affichés sur la landing — vide, le bandeau ne s'affiche pas |
+| `landing_langues` | les neuf langues prévues et leur état de publication |
 
 Les colonnes `problemes`, `benefices`, `stack`, `mots_cles`, `leviers`,
 `liens` et `reponses` sont de type JSON.

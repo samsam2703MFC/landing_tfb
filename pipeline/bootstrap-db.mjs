@@ -107,6 +107,60 @@ function modele(pg) {
       ],
     },
     {
+      // Le discours éditorial des pages : chapeaux de section, libellés de
+      // bouton, phrases d'accompagnement. Tout ce qui était écrit en dur dans
+      // les gabarits vit ici, et se modifie dans la console.
+      nom: table('textes'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(120)} NOT NULL UNIQUE`],
+        ['valeur', t.texte],
+        ['section', t.chaine(60)],
+        ['aide', t.chaine(255)],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Les demandes de démonstration reçues par le formulaire de contact.
+      nom: table('leads'),
+      colonnes: [
+        ['id', t.id],
+        ['nom', t.chaine(160)],
+        ['reseau', t.chaine(200)],
+        ['email', t.chaine(200)],
+        ['situation', t.texte],
+        ['source', t.chaine(80)],
+        ['traite', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['recu_le', t.horodatage],
+      ],
+    },
+    {
+      // Les réseaux affichés sur la landing. Vide, le bandeau ne s'affiche
+      // pas — mieux vaut rien que des noms inventés.
+      nom: table('clients'),
+      colonnes: [
+        ['id', t.id],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['note', t.chaine(255)],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Les langues prévues. `part` dit où en est la traduction ; tant
+      // qu'elle n'est pas faite, la langue reste non publiée.
+      nom: table('langues'),
+      colonnes: [
+        ['id', t.id],
+        ['code', `${t.chaine(8)} NOT NULL UNIQUE`],
+        ['nom', t.chaine(80)],
+        ['rtl', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['defaut', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['publiee', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
       nom: table('site'),
       colonnes: [
         ['id', t.id],

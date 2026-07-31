@@ -1,0 +1,149 @@
+---
+/**
+ * Les réseaux affichés sur la landing.
+ *
+ * Le bandeau « Des réseaux qui travaillent avec TFB » ne s'affiche que si
+ * cette table contient des lignes actives. Tant qu'elle est vide, la section
+ * disparaît — un bandeau de références inventées vaut moins que pas de
+ * bandeau.
+ */
+import Console from '../../components/Console.astro';
+import { lien } from '../../lib/lien.mjs';
+import {
+  ajouterClient,
+  compteurs,
+  enregistrerClient,
+  listerClients,
+  supprimerClient,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    let note = '';
+    if (action === 'ajout') {
+      await ajouterClient({ nom: f.get('nom'), note: f.get('note'), ordre: f.get('ordre') });
+      note = 'Réseau ajouté.';
+    } else if (action === 'suppression') {
+      await supprimerClient(f.get('id'));
+      note = 'Réseau retiré.';
+    } else {
+      await enregistrerClient(f.get('id'), {
+        nom: f.get('nom'),
+        note: f.get('note'),
+        actif: f.get('actif') === 'on',
+        ordre: f.get('ordre'),
+      });
+      note = 'Réseau enregistré.';
+    }
+    return Astro.redirect(`${BASE}/admin/clients?ok=${encodeURIComponent(note)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let clients = [];
+let chiffres = {};
+try {
+  clients = await listerClients();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const affiches = clients.filter((c) => c.actif).length;
+---
+
+<Console
+  titre="Réseaux clients"
+  fil="TFB Admin · Réseau · Réseaux clients"
+  actif="clients"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <a slot="actions" class="bouton bouton--sobre" href={lien('/#clients')} target="_blank">Voir le bandeau</a>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Réseaux affichés</h2>
+        <p>
+          <span class="jeton">landing_clients</span> — le bandeau de la page d'accueil.
+          Vide, il ne s'affiche pas du tout.
+        </p>
+      </div>
+    </div>
+
+    {clients.length > 0 && (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th>Réseau</th><th>Note interne</th><th class="a-droite">Ordre</th><th>Affiché</th><th></th></tr>
+          </thead>
+          <tbody>
+            {clients.map((c) => (
+              <tr>
+                <td colspan="5" style="padding:0">
+                  <form method="post" style="display:grid;grid-template-columns:minmax(12rem,1fr) minmax(12rem,1.4fr) 6rem 8rem auto;gap:12px;align-items:center;padding:11px 16px">
+                    <input type="hidden" name="id" value={c.id} />
+                    <input type="text" name="nom" value={c.nom} />
+                    <input type="text" name="note" value={c.note || ''} placeholder="Ne s'affiche pas sur le site" />
+                    <input type="number" name="ordre" min="1" value={c.ordre ?? 100} />
+                    <label style="display:flex;align-items:center;gap:8px;font:var(--type-body-sm)">
+                      <input type="checkbox" name="actif" checked={c.actif} style="inline-size:auto" />
+                      Affiché
+                    </label>
+                    <div class="actions">
+                      <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
+                      <button
+                        class="bouton bouton--danger bouton--sm"
+                        type="submit"
+                        name="action"
+                        value="suppression"
+                        onclick="return confirm('Retirer ce réseau du bandeau ?')"
+                      >Retirer</button>
+                    </div>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="bloc__corps">
+      <form method="post" class="repet__item">
+        <input type="hidden" name="action" value="ajout" />
+        <div class="duo">
+          <div class="champ">
+            <label>Nom du réseau</label>
+            <input type="text" name="nom" required placeholder="L'Atelier By" />
+          </div>
+          <div class="champ">
+            <label>Note interne</label>
+            <input type="text" name="note" placeholder="Ne s'affiche pas sur le site" />
+          </div>
+          <div class="champ">
+            <label>Ordre</label>
+            <input type="number" name="ordre" min="1" value="100" />
+          </div>
+        </div>
+        <div class="actions">
+          <button class="bouton bouton--marque bouton--sm" type="submit">Ajouter ce réseau</button>
+        </div>
+      </form>
+    </div>
+
+    <div class="bloc__pied">
+      {clients.length} réseau(x), {affiches} affiché(s).
+      {clients.length === 0 && " Le bandeau reste masqué tant qu'aucun réseau n'est saisi."}
+    </div>
+  </section>
+</Console>

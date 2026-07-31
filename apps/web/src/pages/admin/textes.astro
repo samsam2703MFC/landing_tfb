@@ -1,0 +1,88 @@
+---
+/**
+ * Le discours éditorial des pages, modifiable sans redéploiement.
+ *
+ * Chaque ligne est un texte que les gabarits appellent par sa clé : chapeau
+ * de section, libellé de bouton, phrase d'accompagnement. Vider une valeur ne
+ * casse rien — la page retombe sur celle du dépôt.
+ */
+import Console from '../../components/Console.astro';
+import { compteurs, enregistrerTextes, listerTextes } from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const n = await enregistrerTextes(await Astro.request.formData());
+    return Astro.redirect(`${BASE}/admin/textes?ok=${encodeURIComponent(`${n} texte(s) enregistrés.`)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let sections = [];
+let chiffres = {};
+try {
+  sections = await listerTextes();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const total = sections.reduce((n, s) => n + s.textes.length, 0);
+---
+
+<Console
+  titre="Textes"
+  fil="TFB Admin · Contenu landing · Textes"
+  actif="textes"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <form method="post">
+    <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer les {total} textes</button>
+
+    {sections.map((section) => (
+      <section class="bloc" style="margin-block-end:24px">
+        <div class="bloc__tete">
+          <div>
+            <h2>{section.nom}</h2>
+            <p>{section.textes.length} texte(s) — vider un champ le fait retomber sur la valeur du dépôt.</p>
+          </div>
+        </div>
+        <div class="roule">
+          <table>
+            <thead>
+              <tr><th style="inline-size:22rem">Clé</th><th>Texte affiché</th></tr>
+            </thead>
+            <tbody>
+              {section.textes.map((texte) => (
+                <tr>
+                  <td>
+                    <code class="slug">{texte.cle}</code>
+                    {texte.aide && <span class="champ__aide">{texte.aide}</span>}
+                  </td>
+                  <td>
+                    <input type="hidden" name="texte_id" value={texte.id} />
+                    {String(texte.valeur || '').length > 90 ? (
+                      <textarea name="texte_valeur" rows="3">{texte.valeur || ''}</textarea>
+                    ) : (
+                      <input type="text" name="texte_valeur" value={texte.valeur || ''} />
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    ))}
+
+    <div class="actions">
+      <button class="bouton bouton--marque" type="submit">Enregistrer les {total} textes</button>
+    </div>
+  </form>
+</Console>

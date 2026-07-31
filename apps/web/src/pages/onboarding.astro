@@ -15,10 +15,11 @@ import Layout from '../components/Layout.astro';
 import Icone from '../components/Icone.astro';
 import Pastille from '../components/Pastille.astro';
 import { chargerParcours, chargerQuestions } from '../lib/db.mjs';
+import { textes } from '../lib/textes.mjs';
 import { leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const [modules, questions] = await Promise.all([chargerParcours(), chargerQuestions()]);
+const [t, modules, questions] = await Promise.all([textes(), chargerParcours(), chargerQuestions()]);
 
 /** Pour chaque module, les clés de question qui le déclenchent. */
 const declencheurs = new Map(modules.map((m) => [m.slug, []]));
@@ -60,12 +61,9 @@ function capturesDe(module) {
   <!-- ── L'accroche ──────────────────────────────────────────────────── -->
   <section class="bande bande--sombre" style="padding:64px 40px 56px">
     <div class="dedans" style="max-width:880px;display:flex;flex-direction:column;gap:16px">
-      <span class="oeil oeil--clair">Onboarding</span>
-      <h1 class="h-grand" style="color:#fff">De quoi votre réseau a-t-il besoin ?</h1>
-      <p class="chapo chapo--clair" style="max-width:58ch">
-        Cochez ce qui vous ressemble — problèmes d'abord, besoins ensuite.
-        Votre système s'assemble en bas de page, module par module.
-      </p>
+      <span class="oeil oeil--clair">{t('onboarding.oeil')}</span>
+      <h1 class="h-grand" style="color:#fff">{t('onboarding.titre')}</h1>
+      <p class="chapo chapo--clair" style="max-width:58ch">{t('onboarding.chapo')}</p>
     </div>
   </section>
 
@@ -90,12 +88,10 @@ function capturesDe(module) {
 
       <div class="questions__actions">
         <a class="bouton bouton--marque" href="#systeme">
-          Voir mon système
+          {t('onboarding.cta')}
           <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
         </a>
-        <span class="questions__note">
-          Rien n'est envoyé : la sélection ne quitte pas votre navigateur.
-        </span>
+        <span class="questions__note">{t('onboarding.note')}</span>
       </div>
     </div>
   </section>
@@ -104,14 +100,11 @@ function capturesDe(module) {
   <section class="bande" id="systeme" style="padding-block:40px 96px">
     <div class="dedans etroit">
       <div class="systeme__tete">
-        <span class="oeil">Votre système</span>
+        <span class="oeil">{t('onboarding.systeme.oeil')}</span>
         <span class="fb-num systeme__compte">sur {modules.length} modules</span>
       </div>
 
-      <p class="systeme__vide">
-        Rien encore — cochez au moins un besoin ci-dessus, les modules
-        correspondants apparaîtront ici.
-      </p>
+      <p class="systeme__vide">{t('onboarding.systeme.vide')}</p>
 
       <div class="fil">
         {modules.map((m, i) => {
@@ -158,7 +151,7 @@ function capturesDe(module) {
                           ) : (
                             <span class="composant__sans">
                               <Icone nom="image" taille={14} />
-                              <code>capture à venir</code>
+                              <code>{t('onboarding.systeme.sans_capture')}</code>
                             </span>
                           )}
                         </div>
@@ -174,7 +167,7 @@ function capturesDe(module) {
                     );
                   })}
 
-                  <a class="fil__fiche" href={lien(`/modules/${m.slug}`)}>Voir la fiche complète →</a>
+                  <a class="fil__fiche" href={lien(`/modules/${m.slug}`)}>{t('onboarding.systeme.fiche')}</a>
                 </div>
               </details>
             </div>
@@ -183,9 +176,9 @@ function capturesDe(module) {
       </div>
 
       <div class="systeme__appel">
-        <span>On regarde votre système ensemble, sur vos cas réels ?</span>
+        <span>{t('onboarding.appel')}</span>
         <a class="bouton bouton--chaud" href={lien('/#contact')}>
-          Demander une démonstration
+          {t('nav.demo')}
           <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
         </a>
       </div>

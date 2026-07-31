@@ -21,6 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
+import { LANGUES, TEXTES } from './contenu-textes.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +118,43 @@ async function ecrireEnBase({ siVide = false } = {}) {
         `${cree ? '✓ créé  ' : '· maj   '} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions`,
       );
     }
+
+    // Les textes éditoriaux. En mode « complète » on n'écrase pas ceux qui
+    // ont déjà été retouchés dans la console : seules les clés absentes
+    // arrivent, ce qui permet d'en ajouter sans perdre les corrections.
+    let textesEcrits = 0;
+    const clesConnues = new Set(
+      (await db.requete(`SELECT cle FROM ${table('textes')}`)).map((l) => l.cle),
+    );
+    for (const [rang, texte] of TEXTES.entries()) {
+      if (siVide && clesConnues.has(texte.cle)) continue;
+      await upsert(db, table('textes'), 'cle', texte.cle, {
+        valeur: texte.valeur,
+        section: texte.section,
+        aide: texte.aide || null,
+        ordre: rang + 1,
+      });
+      textesEcrits += 1;
+    }
+    console.log(`✓ ${textesEcrits} texte(s) éditoriaux sur ${TEXTES.length}`);
+
+    // Les langues prévues. Leur état de publication se règle dans la console :
+    // on ne le réécrit jamais par-dessus.
+    for (const [rang, langue] of LANGUES.entries()) {
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('langues')} WHERE code = ? LIMIT 1`,
+        [langue.code],
+      );
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('langues'), 'code', langue.code, {
+        nom: langue.nom,
+        rtl: langue.rtl,
+        defaut: langue.defaut,
+        publiee: langue.publiee,
+        ordre: rang + 1,
+      });
+    }
+    console.log(`✓ ${LANGUES.length} langues`);
 
     // Les questions de l'onboarding, repérées par leur clé.
     for (const [rang, question] of QUESTIONS.entries()) {

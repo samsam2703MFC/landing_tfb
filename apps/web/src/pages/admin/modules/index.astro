@@ -10,7 +10,22 @@ import Icone from '../../../components/Icone.astro';
 import Pastille from '../../../components/Pastille.astro';
 import { lien } from '../../../lib/lien.mjs';
 import { leviersDe } from '../../../lib/leviers.mjs';
-import { basculerModule, compteurs, listerModules } from '../../../lib/admin/donnees.mjs';
+import {
+  basculerModule,
+  compteurs,
+  enregistrerLigneModule,
+  famillesConnues,
+  listerModules,
+} from '../../../lib/admin/donnees.mjs';
+import { LEVIERS, titreLevier } from '../../../lib/leviers.mjs';
+
+/** Les icônes proposées, prises dans le jeu embarqué. */
+const ICONES = [
+  'shopping-cart', 'layout-dashboard', 'store', 'building-2', 'chef-hat', 'clipboard-check',
+  'truck', 'monitor', 'handshake', 'credit-card', 'megaphone', 'utensils', 'graduation-cap',
+  'receipt', 'wallet', 'percent', 'layers', 'bar-chart', 'package', 'map-pin', 'users',
+  'book-open', 'qr-code', 'smartphone', 'bot', 'chart-line',
+];
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -19,12 +34,25 @@ if (Astro.request.method === 'POST') {
   try {
     const f = await Astro.request.formData();
     const slug = String(f.get('slug') || '');
-    const actif = f.get('actif') === '1';
-    await basculerModule(slug, actif);
-    return Astro.redirect(
-      `${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} ${actif ? 'affiché' : 'masqué'}.`)}`,
-      303,
-    );
+
+    // Deux actions sur la même table : basculer la publication, ou
+    // enregistrer la ligne modifiée sur place.
+    if (String(f.get('action')) === 'publication') {
+      const actif = f.get('actif') === '1';
+      await basculerModule(slug, actif);
+      return Astro.redirect(
+        `${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} ${actif ? 'publié' : 'masqué'}.`)}`,
+        303,
+      );
+    }
+
+    await enregistrerLigneModule(slug, {
+      groupe: f.get('groupe'),
+      icone: f.get('icone'),
+      ordre: f.get('ordre'),
+      leviers: f.getAll('leviers').map(String),
+    });
+    return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} enregistré.`)}`, 303);
   } catch (err) {
     erreur = err.message;
   }
@@ -34,9 +62,11 @@ const message = Astro.url.searchParams.get('ok');
 
 let modules = [];
 let chiffres = {};
+let familles = [];
 try {
   modules = await listerModules();
   chiffres = await compteurs();
+  familles = await famillesConnues();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
@@ -67,54 +97,73 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
       <table>
         <thead>
           <tr>
-            <th>Module</th>
-            <th>Famille</th>
-            <th>Leviers</th>
-            <th class="a-droite">Ordre</th>
-            <th class="a-droite">Composants</th>
-            <th class="a-droite">Captures</th>
-            <th>Statut</th>
-            <th></th>
+            <th colspan="8" style="padding:0">
+              <span class="ligne-module ligne-module--entete">
+                <span>Module</span>
+                <span>Icône</span>
+                <span>Famille</span>
+                <span>Leviers</span>
+                <span>Ordre</span>
+                <span>Comp.</span>
+                <span>Capt.</span>
+                <span>Statut</span>
+                <span></span>
+              </span>
+            </th>
           </tr>
         </thead>
         <tbody>
           {modules.map((m) => (
             <tr>
-              <td>
-                <span style="display:flex;align-items:center;gap:10px">
-                  <span style="display:inline-flex;align-items:center;justify-content:center;inline-size:26px;block-size:26px;border-radius:6px;background:var(--plum-50);color:var(--plum-600);flex:none">
-                    <Icone nom={m.icone || 'layers'} taille={14} />
+              <td colspan="8" style="padding:0">
+                <form method="post" class="ligne-module">
+                  <input type="hidden" name="slug" value={m.slug} />
+
+                  <div class="ligne-module__nom">
+                    <a href={lien(`/admin/modules/${m.slug}`)}><strong>{m.nom || m.slug}</strong></a>
+                    <code class="slug">{m.slug}</code>
+                  </div>
+
+                  <label class="ligne-module__icone" title="Icône du module">
+                    <span class="apercu"><Icone nom={m.icone || 'layers'} taille={16} /></span>
+                    <select name="icone">
+                      {ICONES.map((i) => <option value={i} selected={i === m.icone}>{i}</option>)}
+                    </select>
+                  </label>
+
+                  <select name="groupe" title="Famille" aria-label="Famille">
+                    {familles.map((g) => <option value={g} selected={g === m.groupe}>{g}</option>)}
+                  </select>
+
+                  <span class="choix-leviers">
+                    {LEVIERS.map((l) => (
+                      <label class="choix-levier" title={titreLevier(l)} style={`--fond:${l.fond};--encre:${l.encre}`}>
+                        <input type="checkbox" name="leviers" value={l.cle} checked={(m.leviers || []).includes(l.cle)} />
+                        <span>{l.lettre}</span>
+                      </label>
+                    ))}
                   </span>
-                  <a href={lien(`/admin/modules/${m.slug}`)}><strong>{m.nom || m.slug}</strong></a>
-                </span>
-                <code class="slug" style="margin-inline-start:36px">{m.slug}</code>
-              </td>
-              <td>{m.groupe || '—'}</td>
-              <td>
-                <span class="pastilles">
-                  {leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}
-                  {(m.leviers || []).length === 0 && '—'}
-                </span>
-              </td>
-              <td class="a-droite num">{m.ordre}</td>
-              <td class="a-droite num">{m.nb_fonctions}</td>
-              <td class="a-droite num" style={m.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
-                {m.nb_captures}
-              </td>
-              <td>
-                <span class={m.actif ? 'etat etat--on' : 'etat'}>{m.actif ? 'Publié' : 'Masqué'}</span>
-              </td>
-              <td>
-                <div class="actions">
-                  <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/modules/${m.slug}`)}>Modifier</a>
-                  <form method="post">
-                    <input type="hidden" name="slug" value={m.slug} />
+
+                  <input class="ligne-module__ordre num" type="number" name="ordre" min="1" value={m.ordre ?? 100} title="Ordre" aria-label="Ordre" />
+
+                  <span class="num ligne-module__compte">{m.nb_fonctions}</span>
+                  <span class="num ligne-module__compte" style={m.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
+                    {m.nb_captures}
+                  </span>
+
+                  <span class={m.actif ? 'etat etat--on' : 'etat'}>{m.actif ? 'publié' : 'masqué'}</span>
+
+                  <span class="actions">
+                    <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
+                    <button
+                      class="bouton bouton--sobre bouton--sm"
+                      type="submit"
+                      name="action"
+                      value="publication"
+                    >{m.actif ? 'Masquer' : 'Publier'}</button>
                     <input type="hidden" name="actif" value={m.actif ? '0' : '1'} />
-                    <button class="bouton bouton--sobre bouton--sm" type="submit">
-                      {m.actif ? 'Masquer' : 'Publier'}
-                    </button>
-                  </form>
-                </div>
+                  </span>
+                </form>
               </td>
             </tr>
           ))}
@@ -123,8 +172,47 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
     </div>
 
     <div class="bloc__pied">
-      {modules.length} module(s), {total} composants. Un module s'ajoute au dépôt, pas ici : une ligne dans
-      <span class="jeton">modules.json</span> et sa fiche dans <span class="jeton">pipeline/contenu-initial.mjs</span>.
+      {modules.length} module(s), {total} composants. Famille, icône, leviers et ordre se modifient
+      directement ici. Le reste de la fiche — accroche, description, liens — est derrière le nom du module.
+      Un module s'ajoute au dépôt, pas ici : une ligne dans <span class="jeton">modules.json</span> et sa
+      fiche dans <span class="jeton">pipeline/contenu-initial.mjs</span>.
     </div>
   </section>
 </Console>
+
+<style is:global>
+  /* Une ligne de module est un formulaire : la grille tient les colonnes
+     alignées entre l'en-tête et les lignes, sans table imbriquée. */
+  .ligne-module {
+    display: grid;
+    grid-template-columns:
+      minmax(10rem, 1.3fr) 11rem 10rem 9rem 4.5rem 3.5rem 3.5rem 5.5rem auto;
+    gap: 12px;
+    align-items: center;
+    padding: 11px 16px;
+    inline-size: 100%;
+  }
+  .ligne-module--entete {
+    padding-block: 0;
+    font: 600 var(--text-xs) / 1 var(--font-sans);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--slate-400);
+  }
+  .ligne-module__nom { min-inline-size: 0; }
+  /* Les six pastilles tiennent sur une ligne : c'est ce qui rend la colonne
+     lisible d'un coup d'œil, module après module. */
+  .ligne-module .choix-leviers { flex-wrap: nowrap; }
+  .ligne-module__nom a { text-decoration: none; }
+  .ligne-module__icone { display: flex; align-items: center; gap: 8px; }
+  .ligne-module__icone .apercu {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 26px; block-size: 26px; border-radius: 6px;
+    background: var(--plum-50); color: var(--plum-600); flex: none;
+  }
+  .ligne-module__icone select { font-family: var(--font-mono); font-size: var(--text-xs); }
+  .ligne-module__ordre { text-align: end; }
+  .ligne-module__compte { text-align: end; color: var(--slate-600); }
+  @media (max-width: 1200px) {
+    .ligne-module { grid-template-columns: 1fr 1fr; }
+    .ligne-module--entete { display: none; }
+  }
+</style>

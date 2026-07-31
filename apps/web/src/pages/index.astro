@@ -10,16 +10,22 @@ import Layout from '../components/Layout.astro';
 import Icone from '../components/Icone.astro';
 import Pastille from '../components/Pastille.astro';
 import Reseau from '../components/Reseau.astro';
-import { chargerCaptures, chargerParcours, chargerSite } from '../lib/db.mjs';
+import { chargerCaptures, chargerClients, chargerParcours, chargerSite } from '../lib/db.mjs';
+import { textes } from '../lib/textes.mjs';
 import { LEVIERS, leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const [site, modules, captures] = await Promise.all([
+const [t, site, modules, captures, clients] = await Promise.all([
+  textes(),
   chargerSite(),
   // Le parcours complet : on a besoin des fonctions pour l'icône et le compte.
   chargerParcours(),
   chargerCaptures(8),
+  chargerClients(),
 ]);
+
+// Le formulaire renvoie ici avec ?envoye=1 après enregistrement de la demande.
+const envoye = Astro.url.searchParams.get('envoye') === '1';
 
 const titre = site?.titre || "La valeur d'un réseau, c'est sa capacité à être transmis";
 const sousTitre =
@@ -42,7 +48,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
   <!-- ── L'accroche ──────────────────────────────────────────────────── -->
   <section class="hero">
     <div class="dedans hero__dedans" data-monte>
-      <span class="oeil oeil--clair">ERP pour réseaux de franchise</span>
+      <span class="oeil oeil--clair">{t('accueil.oeil')}</span>
       <h1 class="h-geant hero__titre">{titre}</h1>
       <p class="chapo chapo--clair hero__chapo">{sousTitre}</p>
       <div class="hero__actions">
@@ -50,7 +56,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
           {ctaTexte}
           <Icone nom="arrow-right" taille={16} classe="icone--miroir" />
         </a>
-        <a class="bouton bouton--inverse bouton--lg" href={lien('/#modules')}>Parcourir les modules</a>
+        <a class="bouton bouton--inverse bouton--lg" href={lien('/#modules')}>{t('accueil.cta_secondaire')}</a>
       </div>
     </div>
   </section>
@@ -62,8 +68,8 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
         <details class="pli" open>
           <summary class="pli__tete">
             <span class="pli__intitule">
-              <span class="oeil">Vos problèmes d'abord</span>
-              <span class="h-bloc">Ce qu'un franchiseur ne voit pas lui coûte le plus</span>
+              <span class="oeil">{t('accueil.problemes.oeil')}</span>
+              <span class="h-bloc">{t('accueil.problemes.titre')}</span>
             </span>
             <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
           </summary>
@@ -82,8 +88,8 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
         <details class="pli">
           <summary class="pli__tete">
             <span class="pli__intitule">
-              <span class="oeil">Nos réponses</span>
-              <span class="h-bloc">Ce que l'outil rend démontrable</span>
+              <span class="oeil">{t('accueil.reponses.oeil')}</span>
+              <span class="h-bloc">{t('accueil.reponses.titre')}</span>
             </span>
             <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
           </summary>
@@ -106,11 +112,11 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     <section class="bande bande--sombre" id="flux">
       <div class="dedans">
         <div class="entete-section" data-monte>
-          <span class="oeil oeil--clair">Vue d'ensemble</span>
-          <h2 class="h-section" style="color:#fff">Comment l'information circule</h2>
+          <span class="oeil oeil--clair">{t('accueil.flux.oeil')}</span>
+          <h2 class="h-section" style="color:#fff">{t('accueil.flux.titre')}</h2>
           <p class="chapo chapo--clair">
-            {modules.length} modules, une seule donnée. Choisissez-en un : ses échanges s'allument.
-            <a href={lien('/onboarding')} style="color:var(--teal-300)"> Suivre le fil d'onboarding →</a>
+            {t('accueil.flux.chapo')}
+            <a href={lien('/onboarding')} style="color:var(--teal-300)"> {t('accueil.flux.lien')}</a>
           </p>
         </div>
         <Reseau modules={modules} />
@@ -122,12 +128,9 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
   <section class="bande" id="leviers">
     <div class="dedans">
       <div class="entete-section" data-monte>
-        <span class="oeil">L'ossature</span>
-        <h2 class="h-section">Six leviers pour lire tout le réseau</h2>
-        <p class="chapo">
-          Chaque module et chaque entrée de menu est rattachée à un ou deux leviers.
-          Trois font le chiffre, trois font le coût.
-        </p>
+        <span class="oeil">{t('accueil.leviers.oeil')}</span>
+        <h2 class="h-section">{t('accueil.leviers.titre')}</h2>
+        <p class="chapo">{t('accueil.leviers.chapo')}</p>
       </div>
       <div class="leviers">
         {LEVIERS.map((l) => (
@@ -143,12 +146,12 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
           </div>
         ))}
         <div class="leviers__note">
-          <span>En pastille sur chaque module et chaque entrée de menu :</span>
+          <span>{t('accueil.leviers.note')}</span>
           <span class="pastilles">
             <Pastille levier={LEVIERS[0]} />
             <Pastille levier={LEVIERS[3]} />
           </span>
-          <span>chaque levier garde sa couleur — la lettre fait l'identité</span>
+          <span>{t('accueil.leviers.note2')}</span>
         </div>
       </div>
     </div>
@@ -159,12 +162,12 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     <div class="dedans">
       <div class="entete-modules">
         <div class="entete-section" data-monte>
-          <span class="oeil">Les modules</span>
+          <span class="oeil">{t('accueil.modules.oeil')}</span>
           <h2 class="h-section">
             {modules.length} modules, {familles.length} famille{familles.length > 1 ? 's' : ''}
           </h2>
         </div>
-        <a href={lien('/onboarding')} class="entete-modules__lien">Suivre le fil d'onboarding</a>
+        <a href={lien('/onboarding')} class="entete-modules__lien">{t('accueil.modules.lien')}</a>
       </div>
 
       <div class="grille-modules">
@@ -196,12 +199,9 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     <section class="bande bande--serree" id="ecrans">
       <div class="dedans">
         <div class="entete-section" data-monte style="margin-block-end:24px">
-          <span class="oeil">À l'écran</span>
-          <h2 class="h-section">Le produit tel qu'il tourne</h2>
-          <p class="chapo">
-            Des copies d'écran des applications en service, reprises directement dans les dépôts.
-            Pas de maquette.
-          </p>
+          <span class="oeil">{t('accueil.ecrans.oeil')}</span>
+          <h2 class="h-section">{t('accueil.ecrans.titre')}</h2>
+          <p class="chapo">{t('accueil.ecrans.chapo')}</p>
         </div>
         <ul class="captures">
           {captures.map((c) => (
@@ -220,38 +220,54 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     </section>
   )}
 
+  <!-- ── Les réseaux qui travaillent avec nous ───────────────────────── -->
+  {clients.length > 0 && (
+    <section class="bande bande--serree" id="clients">
+      <div class="dedans bandeau">
+        <span class="bandeau__oeil">{t('accueil.clients.oeil')}</span>
+        {clients.map((c) => (
+          <span class="bandeau__nom" title={c.note || undefined}>{c.nom}</span>
+        ))}
+      </div>
+    </section>
+  )}
+
   <!-- ── Contact ─────────────────────────────────────────────────────── -->
   <section class="bande" id="contact">
     <div class="dedans">
       <div class="contact">
         <div class="contact__discours" data-monte>
           <h2 class="h-grand" style="color:#fff">{ctaTexte}</h2>
-          <p class="chapo chapo--clair" style="max-width:44ch">
-            Une heure, sur vos cas réels : vos boutiques, votre catalogue, vos tournées.
-            Nous revenons vers vous sous un jour ouvré.
-          </p>
+          <p class="chapo chapo--clair" style="max-width:44ch">{t('accueil.contact.chapo')}</p>
           <p class="contact__mail">
             <Icone nom="mail" taille={16} />
-            <span class="fb-num">contact@thefranchisebuddy.eu</span>
+            <span class="fb-num">{t('accueil.contact.email')}</span>
           </p>
         </div>
 
+        {envoye ? (
+          <div class="contact__form contact__merci" data-monte>
+            <span class="contact__coche"><Icone nom="circle-check" taille={22} /></span>
+            <strong>{t('accueil.contact.merci_titre')}</strong>
+            <p class="texte">{t('accueil.contact.merci')}</p>
+          </div>
+        ) : (
         <form class="contact__form" method="post" action={lien('/contact')} data-monte>
           <label class="champ">
-            <span>Votre nom</span>
-            <input type="text" name="nom" placeholder="Prénom et nom" required />
+            <span>{t('accueil.contact.nom')}</span>
+            <input type="text" name="nom" placeholder={t('accueil.contact.nom_exemple')} required />
           </label>
           <label class="champ">
-            <span>Votre réseau</span>
-            <input type="text" name="reseau" placeholder="Enseigne, nombre de points de vente" required />
+            <span>{t('accueil.contact.reseau')}</span>
+            <input type="text" name="reseau" placeholder={t('accueil.contact.reseau_exemple')} required />
           </label>
           <label class="champ">
-            <span>E-mail</span>
-            <input type="email" name="email" placeholder="vous@enseigne.eu" required />
+            <span>{t('accueil.contact.email_libelle')}</span>
+            <input type="email" name="email" placeholder={t('accueil.contact.email_exemple')} required />
           </label>
           <label class="champ">
-            <span>Votre situation</span>
-            <textarea name="situation" rows="4" placeholder="Ce qui vous fait chercher un outil aujourd'hui"></textarea>
+            <span>{t('accueil.contact.situation')}</span>
+            <textarea name="situation" rows="4" placeholder={t('accueil.contact.situation_exemple')}></textarea>
           </label>
           <!-- Piège à robots : invisible, jamais rempli par un humain. -->
           <div aria-hidden="true" class="piege">
@@ -262,6 +278,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
             <Icone nom="arrow-right" taille={16} classe="icone--miroir" />
           </button>
         </form>
+        )}
       </div>
     </div>
   </section>
@@ -306,6 +323,21 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500);
   }
 
+  /* ── Bandeau des réseaux ───────────────────────────────────────────── */
+  .bandeau {
+    display: flex; align-items: center; gap: 32px; flex-wrap: wrap;
+    border-block-start: 1px solid var(--slate-100); padding-block-start: 32px;
+  }
+  .bandeau__oeil {
+    font: 400 var(--text-xs) / 1.4 var(--font-sans);
+    letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--slate-400);
+  }
+  .bandeau__nom {
+    display: inline-flex; align-items: center; block-size: 30px; padding-inline: 12px;
+    border: 1px dashed var(--slate-200); border-radius: var(--radius-sm);
+    font: 600 14px/1 var(--font-display); color: var(--slate-400);
+  }
+
   /* ── Contact ───────────────────────────────────────────────────────── */
   .contact {
     background: var(--gradient-plum-navy);
@@ -332,6 +364,13 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
   .champ textarea { resize: vertical; }
   .champ input:focus-visible, .champ textarea:focus-visible {
     outline: none; border-color: var(--plum-400); box-shadow: var(--shadow-focus);
+  }
+  .contact__merci { align-items: center; text-align: center; gap: 10px; padding: 40px 28px; }
+  .contact__merci strong { font: 600 var(--text-lg) / 1.3 var(--font-display); }
+  .contact__coche {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 44px; block-size: 44px; border-radius: 50%;
+    background: var(--green-100); color: var(--green-700);
   }
   .piege { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
 

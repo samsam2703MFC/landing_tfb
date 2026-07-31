@@ -271,6 +271,23 @@ export async function chargerParcours() {
   return modules;
 }
 
+/** Les textes éditoriaux, tels quels. Le repli est géré par lib/textes.mjs. */
+export async function chargerTextes() {
+  return (await lire('textes', `SELECT cle, valeur FROM ${table('textes')}`)) || [];
+}
+
+/** Les réseaux affichés sur la landing. Vide, le bandeau ne s'affiche pas. */
+export async function chargerClients() {
+  return (
+    (await lire('clients', `SELECT * FROM ${table('clients')} WHERE actif = ? ORDER BY ordre, nom`, [VRAI()])) || []
+  );
+}
+
+/** Les langues publiées, celles qu'on peut réellement servir. */
+export async function chargerLangues() {
+  return (await lire('langues', `SELECT * FROM ${table('langues')} ORDER BY ordre, code`)) || [];
+}
+
 /**
  * Les questions de l'onboarding, dans l'ordre. Chacune porte les slugs des
  * modules qu'elle déclenche.

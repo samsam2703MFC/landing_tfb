@@ -24,14 +24,23 @@ const {
 
 const RUBRIQUES = [
   {
-    titre: 'Contenu',
+    titre: 'Contenu landing',
     entrees: [
       { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
       { cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules },
       { cle: 'composants', href: '/admin/composants', libelle: 'Composants', icone: 'panels-top-left', compte: compteurs.fonctions },
       { cle: 'leviers', href: '/admin/leviers', libelle: 'Leviers', icone: 'tag', compte: 6 },
       { cle: 'captures', href: '/admin/captures', libelle: 'Captures', icone: 'image', compte: compteurs.captures },
-      { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'file-text' },
+      { cle: 'textes', href: '/admin/textes', libelle: 'Textes', icone: 'file-text', compte: compteurs.textes },
+      { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'panels-top-left' },
+      { cle: 'langues', href: '/admin/langues', libelle: 'Traductions', icone: 'languages', compte: compteurs.langues },
+    ],
+  },
+  {
+    titre: 'Réseau',
+    entrees: [
+      { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'users', compte: compteurs.leads },
+      { cle: 'clients', href: '/admin/clients', libelle: 'Réseaux clients', icone: 'building', compte: compteurs.clients },
     ],
   },
 ];

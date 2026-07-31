@@ -14,6 +14,7 @@ import Pastille from '../../components/Pastille.astro';
 import { chargerModule, chargerModules } from '../../lib/db.mjs';
 import { leviersDe } from '../../lib/leviers.mjs';
 import { lien } from '../../lib/lien.mjs';
+import { textes } from '../../lib/textes.mjs';
 
 const { slug } = Astro.params;
 const module = await chargerModule(slug);
@@ -22,6 +23,7 @@ if (!module) {
   return new Response('Module introuvable', { status: 404 });
 }
 
+const t = await textes();
 const modules = await chargerModules();
 const parSlug = new Map(modules.map((m) => [m.slug, m]));
 const autres = modules.filter((m) => m.slug !== module.slug);
@@ -52,7 +54,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
   <section class="fiche-tete">
     <div class="dedans">
       <nav class="miette">
-        <a href={lien('/#modules')}>Modules</a>
+        <a href={lien('/#modules')}>{t('nav.modules')}</a>
         <Icone nom="chevron-right" taille={14} classe="icone--miroir" />
         <span>{module.nom || module.slug}</span>
       </nav>
@@ -73,27 +75,27 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
   <section class="bande bande--serree">
     <div class="dedans trois">
       <div class="colonne">
-        <span class="oeil">Fait disparaître</span>
+        <span class="oeil">{t('module.problemes')}</span>
         <ul class="puces">
           {problemes.map((p) => (
             <li title={p.texte}><span class="puce puce--rouge"></span>{p.titre}</li>
           ))}
-          {problemes.length === 0 && <li class="colonne__vide">Non renseigné.</li>}
+          {problemes.length === 0 && <li class="colonne__vide">{t('module.vide')}</li>}
         </ul>
       </div>
 
       <div class="colonne">
-        <span class="oeil">Apporte</span>
+        <span class="oeil">{t('module.benefices')}</span>
         <ul class="puces">
           {benefices.map((b) => (
             <li title={b.texte}><span class="puce puce--verte"></span>{b.titre}</li>
           ))}
-          {benefices.length === 0 && <li class="colonne__vide">Non renseigné.</li>}
+          {benefices.length === 0 && <li class="colonne__vide">{t('module.vide')}</li>}
         </ul>
       </div>
 
       <div class="colonne">
-        <span class="oeil">Échange avec</span>
+        <span class="oeil">{t('module.liens')}</span>
         <ul class="puces">
           {liens.map((l) => (
             <li title={l.quoi}>
@@ -103,7 +105,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
               <a href={lien(`/modules/${l.slug}`)}>{l.nom}</a>
             </li>
           ))}
-          {liens.length === 0 && <li class="colonne__vide">Aucun échange déclaré.</li>}
+          {liens.length === 0 && <li class="colonne__vide">{t('module.sans_lien')}</li>}
         </ul>
         {module.public_cible && <p class="colonne__note">{module.public_cible}</p>}
       </div>
@@ -114,7 +116,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
   {captures.length > 0 && (
     <section class="bande bande--serree">
       <div class="dedans centre">
-        <span class="oeil">Les écrans</span>
+        <span class="oeil">{t('module.ecrans')}</span>
         <ul class="defile" role="list">
           {captures.map((c) => (
             <li class="defile__vue">
@@ -126,7 +128,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
           ))}
         </ul>
         {captures.length > 1 && (
-          <p class="defile__note">{captures.length} écrans — faites défiler horizontalement.</p>
+          <p class="defile__note">{captures.length} — {t('module.ecrans.note')}</p>
         )}
       </div>
     </section>
@@ -137,7 +139,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
     <section class="bande bande--serree">
       <div class="dedans">
         <div class="menu-tete">
-          <span class="oeil">Le menu</span>
+          <span class="oeil">{t('module.menu')}</span>
           <span class="fb-num menu-compte">{fonctions.length} entrées</span>
         </div>
         <div class="menu-grille">
@@ -160,7 +162,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
       {paragraphes.length > 0 && (
         <details class="pli">
           <summary class="pli__tete">
-            <span class="h-bloc">Le module en détail</span>
+            <span class="h-bloc">{t('module.detail')}</span>
             <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
           </summary>
           <div class="pli__corps pli__corps--prose">
@@ -174,7 +176,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
       {fonctions.length > 0 && (
         <details class="pli">
           <summary class="pli__tete">
-            <span class="h-bloc">À quoi sert chaque entrée</span>
+            <span class="h-bloc">{t('module.entrees')}</span>
             <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
           </summary>
           <div class="pli__corps pli__corps--prose">
@@ -200,7 +202,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
       {liens.length > 0 && (
         <details class="pli">
           <summary class="pli__tete">
-            <span class="h-bloc">Le flux, en clair</span>
+            <span class="h-bloc">{t('module.flux')}</span>
             <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
           </summary>
           <div class="pli__corps pli__corps--prose">
@@ -210,7 +212,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
                   <span class="fb-num entrees__num">{String(i + 1).padStart(2, '0')}</span>
                   <div>
                     <p class="entrees__nom">
-                      {l.sortant ? 'envoie vers' : 'reçoit de'}{' '}
+                      {l.sortant ? t('module.envoie') : t('module.recoit')}{' '}
                       <a href={lien(`/modules/${l.slug}`)}>{l.nom}</a>
                     </p>
                     <p class="texte">{l.quoi}</p>
@@ -229,7 +231,7 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
     <section class="bande bande--grise">
       <div class="dedans">
         <div class="entete-section" style="margin-block-end:24px">
-          <span class="oeil">Le reste du catalogue</span>
+          <span class="oeil">{t('module.autres.oeil')}</span>
           <h2 class="h-section">Les {autres.length} autres modules</h2>
         </div>
         <div class="grille-modules">

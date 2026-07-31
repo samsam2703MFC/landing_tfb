@@ -14,6 +14,8 @@
 import '../design-system/styles.css';
 import Icone from './Icone.astro';
 import { lien } from '../lib/lien.mjs';
+import { chargerLangues } from '../lib/db.mjs';
+import { textes } from '../lib/textes.mjs';
 
 const {
   titre,
@@ -27,10 +29,15 @@ const titreComplet = titre ? `${titre} — The Franchise Buddy` : 'The Franchise
 const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
 const largeur = large ? '1200px' : '1080px';
 
+const t = await textes();
+// Les langues publiées seulement : un sélecteur qui propose une langue non
+// traduite mentirait au visiteur.
+const langues = (await chargerLangues()).filter((l) => l.publiee);
+
 const NAV = [
-  { cle: 'accueil', libelle: 'Accueil', href: '/' },
-  { cle: 'modules', libelle: 'Modules', href: '/#modules' },
-  { cle: 'contact', libelle: 'Contact', href: '/#contact' },
+  { cle: 'accueil', libelle: t('nav.accueil'), href: '/' },
+  { cle: 'modules', libelle: t('nav.modules'), href: '/#modules' },
+  { cle: 'contact', libelle: t('nav.contact'), href: '/#contact' },
 ];
 ---
 
@@ -157,6 +164,17 @@ const NAV = [
         .entete { padding-inline: 20px; gap: 16px; }
         .entete__nav, .entete__droite .bouton { display: none; }
       }
+
+      .langues {
+        display: inline-flex; align-items: center; gap: 6px;
+        block-size: 34px; padding-inline: 10px;
+        border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+        color: var(--slate-500);
+      }
+      .langues a {
+        font: 600 11px/1 var(--font-mono); color: var(--slate-600); text-decoration: none;
+      }
+      .langues a:hover { color: var(--text-brand); text-decoration: none; }
 
       /* ── Pied ──────────────────────────────────────────────────────────── */
       .pied { background: var(--gradient-ink); color: #fff; padding: 56px 40px 32px; }
@@ -298,10 +316,18 @@ const NAV = [
       <div class="entete__droite">
         <a class="entete__onboarding" href={lien('/onboarding')} aria-current={actif === 'onboarding' ? 'page' : undefined}>
           <Icone nom="sparkles" taille={14} />
-          Onboarding
+          {t('nav.onboarding')}
         </a>
+        {langues.length > 1 && (
+          <span class="langues">
+            <Icone nom="globe" taille={14} />
+            {langues.map((l) => (
+              <a href={lien(l.defaut ? '/' : `/${l.code}/`)} lang={l.code}>{l.code.toUpperCase()}</a>
+            ))}
+          </span>
+        )}
         <a class="bouton bouton--chaud" href={lien('/#contact')}>
-          Demander une démonstration
+          {t('nav.demo')}
           <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
         </a>
       </div>
@@ -317,15 +343,15 @@ const NAV = [
           <img src={lien('/brand/logo-mark-inverse.png')} alt="" width="28" height="28" />
           <span class="pied__nom">The Franchise Buddy</span>
           <nav class="pied__nav">
-            <a href={lien('/onboarding')}>Onboarding</a>
-            <a href={lien('/#modules')}>Modules</a>
-            <a href={lien('/#leviers')}>Les 6 leviers</a>
-            <a href={lien('/#contact')}>Contact</a>
+            <a href={lien('/onboarding')}>{t('nav.onboarding')}</a>
+            <a href={lien('/#modules')}>{t('nav.modules')}</a>
+            <a href={lien('/#leviers')}>{t('pied.leviers')}</a>
+            <a href={lien('/#contact')}>{t('nav.contact')}</a>
           </nav>
         </div>
         <div class="pied__bas">
-          <span>© 2026 The Franchise Buddy — ERP pour réseaux de franchise</span>
-          <span style="margin-inline-start:auto">Le contenu de ce site est généré depuis le code source des modules.</span>
+          <span>{t('pied.mention')}</span>
+          <span style="margin-inline-start:auto">{t('pied.note')}</span>
         </div>
       </div>
     </footer>

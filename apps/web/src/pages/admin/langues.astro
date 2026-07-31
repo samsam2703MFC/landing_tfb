@@ -1,0 +1,96 @@
+---
+/**
+ * Les langues prévues et leur état de publication.
+ *
+ * Une langue n'apparaît dans le sélecteur du site que si elle est publiée.
+ * Tant que le contenu n'est pas traduit, la publier reviendrait à promettre
+ * une version qui n'existe pas : le tableau dit ce qu'il reste à faire.
+ */
+import Console from '../../components/Console.astro';
+import { basculerLangue, compteurs, listerLangues, listerTextes } from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    await basculerLangue(f.get('code'), f.get('publiee') === '1');
+    return Astro.redirect(`${BASE}/admin/langues?ok=${encodeURIComponent('Langue mise à jour.')}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let langues = [];
+let chiffres = {};
+let nbTextes = 0;
+try {
+  langues = await listerLangues();
+  chiffres = await compteurs();
+  nbTextes = (await listerTextes()).reduce((n, s) => n + s.textes.length, 0);
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const aTraduire = nbTextes + (chiffres.modules || 0) * 6 + (chiffres.fonctions || 0) * 3;
+---
+
+<Console
+  titre="Traductions"
+  fil="TFB Admin · Contenu landing · Traductions"
+  actif="langues"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Langues</h2>
+        <p>
+          <span class="jeton">landing_langues</span> — le sélecteur du site n'affiche que les langues publiées.
+        </p>
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr><th>Langue</th><th>Code</th><th>Sens</th><th>État</th><th></th></tr>
+        </thead>
+        <tbody>
+          {langues.map((l) => (
+            <tr>
+              <td><strong lang={l.code}>{l.nom}</strong>{l.defaut && <span class="slug">langue par défaut</span>}</td>
+              <td><code class="slug">{l.code}</code></td>
+              <td>{l.rtl ? 'de droite à gauche' : 'de gauche à droite'}</td>
+              <td>
+                <span class={l.publiee ? 'etat etat--on' : 'etat'}>{l.publiee ? 'publiée' : 'non traduite'}</span>
+              </td>
+              <td>
+                {!l.defaut && (
+                  <form method="post">
+                    <input type="hidden" name="code" value={l.code} />
+                    <input type="hidden" name="publiee" value={l.publiee ? '0' : '1'} />
+                    <button class="bouton bouton--sobre bouton--sm" type="submit">
+                      {l.publiee ? 'Retirer du site' : 'Publier'}
+                    </button>
+                  </form>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bloc__pied">
+      La traduction elle-même n'est pas encore faite : il y a
+      <strong> {nbTextes} textes éditoriaux</strong>, {chiffres.modules || 0} fiches de module et
+      {' '}{chiffres.fonctions || 0} composants à traduire par langue, soit de l'ordre de {aTraduire} chaînes.
+      Publier une langue avant sa traduction afficherait du français sous un drapeau étranger.
+    </div>
+  </section>
+</Console>
