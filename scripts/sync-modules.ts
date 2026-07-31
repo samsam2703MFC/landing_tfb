@@ -60,15 +60,45 @@ function parseArgs(argv: string[]): Options {
 
 /* ----------------------------------------------------------------- sources ---- */
 
-const authHeaders: Record<string, string> = process.env.GITHUB_TOKEN
-  ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
-  : {};
+const TOKEN = process.env.GITHUB_TOKEN ?? '';
 
-function rawUrl(repo: string, ref: string, file: string): string {
-  return `https://raw.githubusercontent.com/${repo}/${ref}/${file}`;
+/**
+ * Two ways to read a file from GitHub, and the difference matters.
+ *
+ * The Contents API honours a token, so it is the only way into a private repo.
+ * raw.githubusercontent does NOT: hand it an `Authorization` header it doesn't
+ * accept and it answers **404**, not 401 — a missing token looks exactly like a
+ * missing file, which is the worst possible failure mode for this script.
+ *
+ * So: with a token, ask the API. If the token turns out to be wrong or scoped
+ * elsewhere (401/403), fall back to unauthenticated raw, which is enough for a
+ * public repo. Never send the token to raw.
+ */
+let apiDisabled = false;
+
+async function fetchFromApi(repo: string, ref: string, file: string): Promise<Buffer | null | 'unauthorised'> {
+  const url = `https://api.github.com/repos/${repo}/contents/${file}?ref=${encodeURIComponent(ref)}`;
+  const res = await fetch(url, {
+    headers: {
+      Accept: 'application/vnd.github.raw',
+      'User-Agent': 'tfb-sync-modules',
+      Authorization: `Bearer ${TOKEN}`,
+    },
+  });
+  if (res.status === 401 || res.status === 403) return 'unauthorised';
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${repo}/${file} : HTTP ${res.status} (API)`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
-/** Reads one file from a repo — local clone when --from-disk, raw.githubusercontent otherwise. */
+async function fetchFromRaw(repo: string, ref: string, file: string): Promise<Buffer | null> {
+  const res = await fetch(`https://raw.githubusercontent.com/${repo}/${ref}/${file}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${repo}/${file} : HTTP ${res.status} (raw)`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+/** Reads one file from a repo — local clone when --from-disk, GitHub otherwise. */
 async function readRepoFile(repo: string, ref: string, file: string, opts: Options): Promise<Buffer | null> {
   if (opts.fromDisk) {
     // Clones are named after the repo, lowercased — that is how `git clone` lands them.
@@ -79,10 +109,14 @@ async function readRepoFile(repo: string, ref: string, file: string, opts: Optio
       return null;
     }
   }
-  const res = await fetch(rawUrl(repo, ref, file), { headers: authHeaders });
-  if (res.status === 404) return null;
-  if (!res.ok) throw new Error(`${repo}/${file} : HTTP ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+
+  if (TOKEN && !apiDisabled) {
+    const viaApi = await fetchFromApi(repo, ref, file);
+    if (viaApi !== 'unauthorised') return viaApi;
+    apiDisabled = true;
+    console.warn('  ! GITHUB_TOKEN refusé par l’API GitHub — lecture publique via raw pour la suite');
+  }
+  return fetchFromRaw(repo, ref, file);
 }
 
 /* ------------------------------------------------------------------ writes ---- */
