@@ -79,9 +79,27 @@ jobs:
             exit 1
           fi
 
-          restants=\$(grep -E '^[A-Z_]+=.*change-moi' infra/.env | cut -d= -f1 | tr '\n' ' ')
+          # On ne contrôle que les variables encore présentes dans le gabarit :
+          # un .env hérité d'une version précédente peut contenir des clés
+          # abandonnées, sans que cela empêche la pile de démarrer.
+          restants=''
+          absentes=''
+          for cle in \$(grep -E '^[A-Z_]+=' .env.example | cut -d= -f1); do
+            ligne=\$(grep -E "^\$cle=" infra/.env | head -n 1 || true)
+            if [ -z "\$ligne" ]; then
+              absentes="\$absentes \$cle"
+            elif printf '%s' "\$ligne" | grep -q 'change-moi'; then
+              restants="\$restants \$cle"
+            fi
+          done
+
+          if [ -n "\$absentes" ]; then
+            echo "Variables absentes de \$DEPLOY_PATH/infra/.env :\$absentes" >&2
+            echo "Le gabarit a évolué. Repartir de zéro : cp .env.example infra/.env puis le remplir." >&2
+            exit 1
+          fi
           if [ -n "\$restants" ]; then
-            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env : \$restants" >&2
+            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env :\$restants" >&2
             exit 1
           fi
 
