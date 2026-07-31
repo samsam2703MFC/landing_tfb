@@ -21,11 +21,11 @@ let poolPromesse = null;
  * Préfixe des tables, identique à celui du pipeline. `landing_` par défaut :
  * la base peut déjà contenir des tables d'un autre projet.
  */
-function table(nom) {
+export function table(nom) {
   return `${process.env.DB_PREFIX || 'landing_'}${nom}`;
 }
 
-function estPostgres() {
+export function estPostgres() {
   const client = (process.env.DB_CLIENT || 'mysql').toLowerCase();
   return client === 'pg' || client === 'postgres' || client === 'postgresql';
 }
@@ -53,14 +53,46 @@ function pool() {
     if (estPostgres()) {
       const { default: pg } = await import('pg');
       const p = new pg.Pool({ ...config, max: 5 });
-      return { requete: async (sql, params) => (await p.query(adapterMarqueurs(sql), params)).rows };
+      return {
+        requete: async (sql, params) => (await p.query(adapterMarqueurs(sql), params)).rows,
+        // `retour` nomme la colonne à récupérer après un INSERT : PostgreSQL la
+        // rend par RETURNING, MySQL par insertId.
+        executer: async (sql, params, retour = null) => {
+          const req = retour ? `${sql} RETURNING ${retour}` : sql;
+          const res = await p.query(adapterMarqueurs(req), params);
+          return { id: retour ? res.rows[0]?.[retour] ?? null : null, lignes: res.rowCount };
+        },
+      };
     }
     const { default: mysql } = await import('mysql2/promise');
     const p = mysql.createPool({ ...config, connectionLimit: 5, waitForConnections: true });
-    return { requete: async (sql, params) => (await p.query(sql, params))[0] };
+    return {
+      requete: async (sql, params) => (await p.query(sql, params))[0],
+      executer: async (sql, params) => {
+        const [res] = await p.query(sql, params);
+        return { id: res.insertId ?? null, lignes: res.affectedRows ?? 0 };
+      },
+    };
   })();
 
   return poolPromesse;
+}
+
+/**
+ * Accès direct à la base, sans cache — réservé à la console d'administration.
+ * Les pages publiques passent par `lire()`, qui met en cache et ne lève jamais ;
+ * une console, elle, doit voir l'état réel et connaître ses erreurs.
+ */
+export async function connexion() {
+  return pool();
+}
+
+/**
+ * Vide le cache de lecture. Appelé après chaque écriture de la console, sinon
+ * la modification n'apparaîtrait sur le site qu'au bout de CACHE_TTL_MS.
+ */
+export function viderCache() {
+  cache.clear();
 }
 
 /**
@@ -107,7 +139,7 @@ export function levier(cle) {
 }
 
 /** Décode une colonne JSON, quel que soit le pilote. */
-function lireJson(valeur, defaut = null) {
+export function lireJson(valeur, defaut = null) {
   if (valeur === null || valeur === undefined) return defaut;
   if (typeof valeur === 'object') return valeur;
   try {

@@ -5,7 +5,7 @@ par le code source des modules**.
 
 Aucune fiche produit n'est écrite à la main : un pipeline lit chaque dépôt
 GitHub (code + README), demande à Claude d'en tirer une fiche éditoriale
-structurée, et l'écrit **directement dans trois tables SQL**. La landing, en
+structurée, et l'écrit **directement dans quatre tables SQL**. La landing, en
 rendu serveur, lit ces tables à chaque visite — le site suit donc le
 développement sans qu'on y touche.
 
@@ -50,21 +50,28 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 ├── .env.example                  # toutes les variables, à copier en infra/.env sur le serveur
 ├── pipeline/                     # Node 20, ESM, .mjs pur — aucun TypeScript
 │   ├── bootstrap-db.mjs          # crée les trois tables (idempotent)
-│   ├── contenu-initial.mjs       # les 8 fiches rédigées, sans appel IA
+│   ├── contenu-initial.mjs       # les 9 fiches rédigées, sans appel IA
 │   ├── seed-contenu.mjs          # les charge en base, ou produit contenu.sql
 │   ├── contenu.sql               # le même contenu en SQL portable
 │   ├── ingest.mjs                # ingère un module
 │   ├── ingest-all.mjs            # ingère tout + régénère la page d'accueil
+│   ├── sync-captures.mjs         # récupère les captures publiées par les dépôts
 │   ├── Dockerfile                # image lancée à la demande sur le serveur
 │   └── lib/
 │       ├── repo.mjs              # lecture GitHub et construction du digest
 │       ├── ai.mjs                # appel Anthropic en tool-use forcé + validation
 │       └── db.mjs                # accès SQL, MySQL ou PostgreSQL
 ├── apps/web/                     # Astro 7 en SSR (adaptateur Node standalone)
+│   ├── src/design-system/        # les jetons TFB, repris tels quels
 │   ├── src/lib/db.mjs            # lecture des tables — côté serveur uniquement
+│   ├── src/lib/admin/            # session et écritures de la console
+│   ├── src/middleware.js         # garde d'accès à /admin + contrôle d'origine
 │   ├── src/components/Layout.astro
+│   ├── src/components/Console.astro
 │   ├── src/pages/index.astro
+│   ├── src/pages/onboarding.astro
 │   ├── src/pages/modules/[slug].astro
+│   ├── src/pages/admin/          # la console : accueil, modules, captures
 │   └── Dockerfile
 ├── deploy/
 │   ├── landing-tfb.service       # gabarit du service systemd
@@ -86,20 +93,29 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 
 ## Le modèle de données
 
-Trois tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
+Quatre tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
 la base sans risque de collision — le préfixe se change avec `DB_PREFIX`. Elles
-sont créées par `bootstrap-db.mjs` et interrogeables directement en SQL.
+sont créées par `bootstrap-db.mjs`, qui ajoute aussi les colonnes manquantes
+d'une table déjà en place, et sont interrogeables directement en SQL.
 
 | Table | Contenu |
 | --- | --- |
-| `landing_modules` | une ligne par dépôt : `slug`, `nom`, `accroche`, `resume`, `description` (markdown), `public_cible`, `problemes`, `benefices`, `stack`, `mots_cles`, `mermaid`, `commit_sha`, `modele_ia`, `genere_le`, `ordre`, `actif` |
-| `landing_fonctions` | une ligne par fonction : `module_id`, `cle`, `nom`, `description`, `benefice`, `icone`, `ordre` |
+| `landing_modules` | une ligne par dépôt : `slug`, `nom`, `accroche`, `resume`, `description` (markdown), `public_cible`, `problemes`, `benefices`, `stack`, `mots_cles`, `mermaid`, `leviers`, `liens`, `onboarding`, `commit_sha`, `modele_ia`, `genere_le`, `ordre`, `actif` |
+| `landing_fonctions` | une ligne par fonction : `module_id`, `cle`, `nom`, `description`, `benefice`, `icone`, `leviers`, `ordre` |
+| `landing_captures` | une ligne par copie d'écran : `module_id`, `fonction_cle`, `fichier`, `titre`, `ordre` |
 | `landing_site` | une seule ligne : le contenu de la page d'accueil (`titre`, `accroche`, `problemes`, `reponses`, `mermaid`, `cta_*`, `meta_description`) |
 
-Les colonnes `problemes`, `benefices`, `stack`, `mots_cles` et `reponses` sont
-de type JSON.
+Les colonnes `problemes`, `benefices`, `stack`, `mots_cles`, `leviers`,
+`liens` et `reponses` sont de type JSON.
 
-**Corriger un texte à la main** se fait en SQL :
+`leviers` contient les clés des six leviers de gestion — `trafic`,
+`recurrence`, `xp`, `food`, `labour`, `overhead` — que le module ou la
+fonction actionne. `liens` décrit les échanges avec les autres modules
+(`{ slug, sens: "envoie" | "recoit", quoi }`) : c'est la matière de la page
+d'onboarding.
+
+**Corriger un texte** se fait dans la console `<BASE_PATH>/admin` (voir plus
+bas) ou, à défaut, en SQL :
 
 ```sql
 UPDATE landing_modules SET accroche = 'Nouvelle phrase.' WHERE slug = 'consultant';
@@ -108,7 +124,8 @@ UPDATE landing_modules SET accroche = 'Nouvelle phrase.' WHERE slug = 'consultan
 Attention : une nouvelle ingestion du même module écrase les champs générés.
 Pour figer un texte retouché, retirer le dépôt de `modules.json`.
 
-**Masquer un module** sans le supprimer :
+**Masquer un module** sans le supprimer — bouton « Masquer » dans la console,
+ou :
 
 ```sql
 UPDATE landing_modules SET actif = 0 WHERE slug = 'consultant';   -- TRUE/FALSE en PostgreSQL
@@ -153,6 +170,8 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | `SITE_DOMAIN` | domaine, vide tant qu'aucun DNS ne pointe vers le serveur |
 | `HTTP_PORT` | port d'écoute de la landing, `8090` par défaut |
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
+| `ADMIN_PASSWORD` | ouvre la console `<BASE_PATH>/admin` — vide, elle reste fermée |
+| `ADMIN_SECRET` | *(facultatif)* clé de signature du cookie de session |
 | `ANTHROPIC_API_KEY` | clé API, nécessaire seulement pour l'ingestion |
 | `GH_INGEST_TOKEN` | jeton de lecture GitHub, seulement si des dépôts modules sont privés |
 
@@ -192,7 +211,7 @@ Relancer le workflow. Il fait alors tout le reste, sans intervention :
 
 1. installe les dépendances et vérifie Node
 2. crée les trois tables `landing_*`
-3. charge les 8 fiches si la base est vide
+3. charge les 9 fiches si la base est vide
 4. construit la landing et (re)démarre le service `landing-tfb`
 
 La landing répond sur `https://<serveur>/landing_tfb/`, à côté des autres
@@ -251,6 +270,35 @@ node pipeline/ingest-all.mjs --only=consultant,cuisine
 node pipeline/seed-contenu.mjs
 ```
 
+### La console d'administration
+
+Le contenu se modifie aussi depuis le navigateur, sans redéploiement, à
+l'adresse `<BASE_PATH>/admin` — par exemple
+`https://185.180.206.46/landing_tfb/admin`.
+
+Elle donne accès à la page d'accueil (titre, accroche, problèmes du
+franchiseur et réponses), à chaque module (fiche, leviers, liens avec les
+autres modules, ordre, affichage), à chaque fonction (nom, description,
+gain, leviers, ordre) et aux captures d'écran (titre, rattachement, ordre).
+Toute écriture vide le cache de lecture : le site montre la modification
+immédiatement.
+
+Elle s'ouvre en renseignant `ADMIN_PASSWORD` dans `infra/.env`, dix
+caractères au minimum :
+
+```bash
+sed -i 's/^ADMIN_PASSWORD=.*/ADMIN_PASSWORD=<un mot de passe long>/' infra/.env
+systemctl restart landing-tfb
+```
+
+Sans cette variable — ou avec la valeur du gabarit — la console répond `503`
+et le site public continue d'être servi normalement.
+
+**Console et pipeline se partagent la même base.** Une ingestion IA du dépôt
+écrase les champs qu'elle régénère : ce qui est écrit à la main dans la
+console tient jusqu'à la prochaine ingestion de ce module. Les leviers, les
+liens et la phrase d'onboarding, eux, ne sont pas touchés par l'ingestion.
+
 ### Ajouter un module
 
 1. Ajouter une ligne dans `modules.json` (`slug`, `repo`, `groupe`, `ordre`).
@@ -271,6 +319,14 @@ node pipeline/seed-contenu.mjs
 - Caddy gère les certificats TLS automatiquement et pose les en-têtes de base.
 - La clé SSH est écrite puis effacée à chaque exécution de workflow, avec
   vérification stricte de l'empreinte du serveur.
+- La console est fermée par défaut : sans `ADMIN_PASSWORD`, elle répond `503`.
+  Le mot de passe est comparé en temps constant, la session tient dans un
+  cookie signé HMAC-SHA256 — `HttpOnly`, `SameSite=Lax`, `Secure` dès que la
+  requête arrive en HTTPS — qui ne contient que sa date d'expiration.
+- Les soumissions de formulaire sont contrôlées sur l'en-tête `Origin`,
+  comparé à `X-Forwarded-Host` : une page tierce ne peut pas écrire dans la
+  base à la place d'un administrateur connecté.
+- `/admin` porte `noindex, nofollow` et n'est lié depuis aucune page publique.
 
 ---
 

@@ -1,0 +1,352 @@
+---
+/**
+ * Habillage de la console d'administration.
+ *
+ * Mêmes jetons que le site public — `design-system/styles.css` — mais une
+ * densité de back office : rail encré de 248 px, barre haute de 60 px, cartes
+ * serrées. Aucune couleur n'est écrite en dur : changer la marque change la
+ * console en même temps que la landing.
+ */
+import '../design-system/styles.css';
+import { lien } from '../lib/lien.mjs';
+
+const { titre, fil = [], message = null, erreur = null } = Astro.props;
+const ici = Astro.url.pathname;
+
+const RUBRIQUES = [
+  {
+    titre: 'Contenu',
+    entrees: [
+      { href: '/admin', libelle: 'Tableau de bord' },
+      { href: '/admin/site', libelle: "Page d'accueil" },
+      { href: '/admin/modules', libelle: 'Modules' },
+      { href: '/admin/captures', libelle: "Captures d'écran" },
+    ],
+  },
+  {
+    titre: 'Le site',
+    entrees: [
+      { href: '/', libelle: 'Voir la landing' },
+      { href: '/onboarding', libelle: "Voir l'onboarding" },
+    ],
+  },
+];
+
+/** Une entrée est active si l'URL courante commence par son chemin. */
+function actif(href) {
+  const cible = lien(href);
+  if (href === '/admin') return ici === cible || ici === `${cible}/`;
+  return ici.startsWith(cible);
+}
+---
+
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{titre ? `${titre} — Console TFB` : 'Console TFB'}</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href={lien('/brand/logo-mark.png')} />
+    <meta name="theme-color" content="#0c1329" />
+
+    <style is:global>
+      :root { --lev-trafic: var(--plum-500); --lev-recurrence: var(--navy-500); --lev-xp: var(--teal-500);
+              --lev-food: var(--amber-500); --lev-labour: var(--ember-500); --lev-overhead: var(--slate-500); }
+
+      body { background: var(--surface-page); }
+
+      /* ── Ossature ──────────────────────────────────────────────────────── */
+      .console {
+        display: grid;
+        grid-template-columns: var(--sidebar-width) 1fr;
+        min-height: 100vh;
+      }
+
+      .rail {
+        background: var(--gradient-ink);
+        color: var(--text-inverse);
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-6);
+        padding: var(--space-5) var(--space-4);
+        position: sticky; top: 0; height: 100vh;
+        overflow-y: auto;
+      }
+      .rail__marque {
+        display: flex; align-items: center; gap: var(--space-3);
+        color: var(--text-inverse); text-decoration: none;
+        font-family: var(--font-display); font-weight: var(--weight-bold);
+        letter-spacing: var(--tracking-tight);
+      }
+      .rail__marque:hover { color: var(--text-inverse); text-decoration: none; }
+      .rail__marque img { width: 30px; height: 30px; }
+      .rail__sous { display: block; font: var(--type-caption); color: var(--text-inverse-secondary); }
+
+      .rail__groupe { display: grid; gap: var(--space-05); }
+      .rail__titre {
+        font: var(--weight-semibold) var(--text-2xs) / 1.2 var(--font-sans);
+        letter-spacing: var(--tracking-caps);
+        text-transform: uppercase;
+        color: rgba(255, 255, 255, 0.42);
+        padding: 0 var(--space-3) var(--space-2);
+      }
+      .rail__lien {
+        display: block;
+        padding: var(--space-2) var(--space-3);
+        border-radius: var(--radius-control);
+        color: var(--text-inverse-secondary);
+        font: var(--type-label);
+        text-decoration: none;
+        transition: var(--transition-control);
+      }
+      .rail__lien:hover { background: var(--alpha-white-08); color: var(--text-inverse); text-decoration: none; }
+      .rail__lien[aria-current='page'] {
+        background: var(--alpha-white-16);
+        color: var(--text-inverse);
+        box-shadow: inset 3px 0 0 var(--teal-300);
+      }
+      .rail__pied { margin-top: auto; font: var(--type-caption); color: rgba(255, 255, 255, 0.5); }
+      .rail__pied form { margin-top: var(--space-3); }
+
+      /* ── Colonne de droite ─────────────────────────────────────────────── */
+      .zone { display: flex; flex-direction: column; min-width: 0; }
+
+      .barre {
+        position: sticky; top: 0; z-index: 10;
+        min-height: var(--topbar-height);
+        display: flex; align-items: center; justify-content: space-between; gap: var(--space-5);
+        padding: 0 var(--space-6);
+        background: var(--surface-card);
+        border-bottom: 1px solid var(--border-default);
+      }
+      .barre h1 { font: var(--type-heading-4); }
+      .fil { font: var(--type-caption); color: var(--text-tertiary); }
+      .fil span::after { content: '›'; margin: 0 var(--space-2); color: var(--border-strong); }
+      .fil span:last-child::after { content: ''; }
+
+      .page { padding: var(--space-6); display: grid; gap: var(--space-5); align-content: start; }
+
+      /* ── Retours ───────────────────────────────────────────────────────── */
+      .alerte {
+        border-radius: var(--radius-card);
+        padding: var(--space-3) var(--space-4);
+        font: var(--type-body-sm);
+        border: 1px solid transparent;
+      }
+      .alerte--ok { background: var(--surface-success-subtle); color: var(--text-success); border-color: var(--green-500); }
+      .alerte--ko { background: var(--surface-danger-subtle); color: var(--text-danger); border-color: var(--border-danger); }
+
+      /* ── Blocs ─────────────────────────────────────────────────────────── */
+      .bloc {
+        background: var(--surface-card);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-panel);
+        box-shadow: var(--shadow-xs);
+      }
+      .bloc__tete {
+        display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+        padding: var(--space-4) var(--space-5);
+        border-bottom: 1px solid var(--border-subtle);
+      }
+      .bloc__tete h2 { font: var(--type-heading-4); }
+      .bloc__tete p { font: var(--type-caption); color: var(--text-tertiary); }
+      .bloc__corps { padding: var(--space-5); display: grid; gap: var(--space-4); }
+
+      /* ── Formulaires ───────────────────────────────────────────────────── */
+      .champ { display: grid; gap: var(--space-1); }
+      .champ > label, .legende {
+        font: var(--type-label);
+        color: var(--text-secondary);
+      }
+      .champ__aide { font: var(--type-caption); color: var(--text-tertiary); }
+
+      input[type='text'], input[type='number'], input[type='password'], textarea, select {
+        width: 100%;
+        padding: var(--space-2) var(--space-3);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-control);
+        background: var(--surface-card);
+        font: var(--type-body-sm);
+        transition: var(--transition-control);
+      }
+      textarea { resize: vertical; line-height: var(--leading-normal); }
+      textarea.code { font-family: var(--font-mono); font-size: var(--text-sm); }
+      input:focus-visible, textarea:focus-visible, select:focus-visible {
+        outline: none;
+        border-color: var(--border-brand);
+        box-shadow: var(--shadow-focus);
+      }
+
+      .duo { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); }
+
+      .bouton {
+        display: inline-flex; align-items: center; gap: var(--space-2);
+        height: 36px; padding-inline: var(--space-4);
+        border-radius: var(--radius-control);
+        border: 1px solid var(--brand);
+        background: var(--brand); color: var(--brand-on);
+        font: var(--type-label); font-weight: var(--weight-semibold);
+        cursor: pointer; text-decoration: none;
+        transition: var(--transition-control);
+      }
+      .bouton:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: var(--brand-on); text-decoration: none; }
+      .bouton--sobre { background: var(--surface-card); color: var(--text-secondary); border-color: var(--border-default); }
+      .bouton--sobre:hover { background: var(--surface-hover); color: var(--text-primary); border-color: var(--border-strong); }
+      .bouton--danger { background: transparent; color: var(--text-danger); border-color: var(--border-danger); }
+      .bouton--danger:hover { background: var(--surface-danger-subtle); color: var(--text-danger); border-color: var(--border-danger); }
+      .bouton--sm { height: 28px; padding-inline: var(--space-3); font-size: var(--text-xs); }
+
+      .actions { display: flex; gap: var(--space-3); flex-wrap: wrap; align-items: center; }
+
+      /* ── Leviers ───────────────────────────────────────────────────────── */
+      .choix-leviers { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+      .choix-levier { position: relative; }
+      .choix-levier input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+      .choix-levier span {
+        display: inline-flex; align-items: center; gap: var(--space-2);
+        padding: var(--space-1) var(--space-3);
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-chip);
+        font: var(--type-caption);
+        color: var(--text-secondary);
+        background: var(--surface-card);
+        transition: var(--transition-control);
+      }
+      .choix-levier span::before {
+        content: attr(data-lettre);
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 16px; height: 16px; border-radius: var(--radius-xs);
+        background: var(--lev, var(--slate-400)); color: #fff;
+        font-weight: var(--weight-bold); font-size: 10px;
+      }
+      .choix-levier input:checked + span {
+        border-color: var(--lev, var(--brand));
+        background: var(--surface-hover);
+        color: var(--text-primary);
+        font-weight: var(--weight-semibold);
+      }
+      .choix-levier input:focus-visible + span { box-shadow: var(--shadow-focus); }
+      [data-levier='trafic'] { --lev: var(--lev-trafic); }
+      [data-levier='recurrence'] { --lev: var(--lev-recurrence); }
+      [data-levier='xp'] { --lev: var(--lev-xp); }
+      [data-levier='food'] { --lev: var(--lev-food); }
+      [data-levier='labour'] { --lev: var(--lev-labour); }
+      [data-levier='overhead'] { --lev: var(--lev-overhead); }
+
+      /* ── Tables ────────────────────────────────────────────────────────── */
+      table { width: 100%; border-collapse: collapse; font: var(--type-body-sm); }
+      th {
+        text-align: start; font: var(--type-label);
+        color: var(--text-tertiary);
+        padding: var(--space-2) var(--space-4);
+        border-bottom: 1px solid var(--border-default);
+        white-space: nowrap;
+      }
+      td { padding: var(--space-3) var(--space-4); border-bottom: 1px solid var(--border-subtle); vertical-align: middle; }
+      tr:last-child td { border-bottom: 0; }
+      tbody tr:hover { background: var(--surface-hover); }
+      .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+
+      .jeton {
+        display: inline-block; font-family: var(--font-mono); font-size: var(--text-xs);
+        background: var(--surface-sunken); color: var(--text-secondary);
+        padding: 2px var(--space-2); border-radius: var(--radius-xs);
+      }
+      .etat { display: inline-flex; align-items: center; gap: var(--space-2); font: var(--type-caption); }
+      .etat::before { content: ''; width: 7px; height: 7px; border-radius: var(--radius-circle); background: var(--status-neutral); }
+      .etat--on::before { background: var(--status-success); }
+
+      /* ── Chiffres du tableau de bord ───────────────────────────────────── */
+      .tuiles { display: grid; gap: var(--space-4); grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr)); }
+      .tuile {
+        background: var(--surface-card); border: 1px solid var(--border-default);
+        border-radius: var(--radius-card); padding: var(--space-5);
+        display: grid; gap: var(--space-1);
+      }
+      .tuile b { font: var(--type-metric); color: var(--text-primary); }
+      .tuile span { font: var(--type-caption); color: var(--text-tertiary); text-transform: uppercase; letter-spacing: var(--tracking-caps); }
+
+      /* ── Répétables ────────────────────────────────────────────────────── */
+      .repet { display: grid; gap: var(--space-3); }
+      .repet__item {
+        display: grid; gap: var(--space-2);
+        padding: var(--space-4);
+        border: 1px solid var(--border-subtle);
+        border-radius: var(--radius-card);
+        background: var(--surface-page);
+      }
+      .repet__trio { display: grid; gap: var(--space-2); grid-template-columns: minmax(9rem, 1fr) minmax(7rem, auto) 2fr; }
+      @media (max-width: 820px) { .repet__trio { grid-template-columns: 1fr; } }
+
+      details.fonction {
+        border: 1px solid var(--border-default);
+        border-radius: var(--radius-card);
+        background: var(--surface-card);
+      }
+      details.fonction[open] { box-shadow: var(--shadow-sm); }
+      details.fonction > summary {
+        cursor: pointer; list-style: none;
+        padding: var(--space-3) var(--space-4);
+        display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+        font: var(--type-title);
+      }
+      details.fonction > summary::-webkit-details-marker { display: none; }
+      details.fonction > summary:hover { background: var(--surface-hover); border-radius: var(--radius-card); }
+      .fonction__corps { padding: 0 var(--space-4) var(--space-4); display: grid; gap: var(--space-3); }
+      .fonction__meta { display: flex; align-items: center; gap: var(--space-2); }
+
+      @media (max-width: 900px) {
+        .console { grid-template-columns: 1fr; }
+        .rail { position: static; height: auto; }
+      }
+      @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+    </style>
+  </head>
+
+  <body>
+    <div class="console">
+      <nav class="rail">
+        <a class="rail__marque" href={lien('/admin')}>
+          <img src={lien('/brand/logo-mark-inverse.png')} alt="" width="30" height="30" />
+          <span>Console TFB<span class="rail__sous">Contenu de la landing</span></span>
+        </a>
+
+        {RUBRIQUES.map((rubrique) => (
+          <div class="rail__groupe">
+            <div class="rail__titre">{rubrique.titre}</div>
+            {rubrique.entrees.map((entree) => (
+              <a
+                class="rail__lien"
+                href={lien(entree.href)}
+                aria-current={actif(entree.href) ? 'page' : undefined}
+              >{entree.libelle}</a>
+            ))}
+          </div>
+        ))}
+
+        <div class="rail__pied">
+          Les modifications sont visibles sur le site aussitôt enregistrées.
+          <form method="post" action={lien('/admin/deconnexion')}>
+            <button class="bouton bouton--sobre bouton--sm" type="submit">Se déconnecter</button>
+          </form>
+        </div>
+      </nav>
+
+      <div class="zone">
+        <header class="barre">
+          <div>
+            <h1>{titre}</h1>
+            {fil.length > 0 && <div class="fil">{fil.map((etape) => <span>{etape}</span>)}</div>}
+          </div>
+          <slot name="actions" />
+        </header>
+
+        <div class="page">
+          {message && <div class="alerte alerte--ok">{message}</div>}
+          {erreur && <div class="alerte alerte--ko">{erreur}</div>}
+          <slot />
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

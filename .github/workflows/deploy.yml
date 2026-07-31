@@ -195,6 +195,16 @@ jobs:
             CARTES=\$(curl -fsS "http://127.0.0.1:\$PORT_WEB\$BASE/" | grep -o 'carte carte--lien' | wc -l)
             echo "La landing répond sur \$BASE — \$CARTES modules affichés."
 
+            # La console d'administration n'est ouverte que si le serveur porte
+            # un ADMIN_PASSWORD. Sans lui elle répond 503, ce qui est voulu :
+            # on le signale plutôt que de laisser chercher.
+            CODE_ADMIN=\$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:\$PORT_WEB\$BASE/admin")
+            if [ "\$CODE_ADMIN" = "503" ]; then
+              echo "::warning::Console fermée — renseigner ADMIN_PASSWORD dans \$RACINE/infra/.env (10 caractères minimum) pour ouvrir \$BASE/admin."
+            else
+              echo "Console d'administration disponible sur \$BASE/admin."
+            fi
+
             # --- Montage dans Apache -----------------------------------------
             # Déposé en conf-available : la landing s'ajoute aux hôtes déjà
             # servis, y compris le catch-all sur l'IP, sans toucher à leurs

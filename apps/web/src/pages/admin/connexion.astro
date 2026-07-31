@@ -1,0 +1,128 @@
+---
+/**
+ * Connexion à la console.
+ *
+ * Un seul champ : le mot de passe partagé, comparé en temps constant côté
+ * serveur. En cas d'échec, le message reste volontairement laconique.
+ */
+import '../../design-system/styles.css';
+import { lien } from '../../lib/lien.mjs';
+import {
+  NOM_COOKIE,
+  creerJeton,
+  jetonValide,
+  motDePasseValide,
+  optionsCookie,
+} from '../../lib/admin/session.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+
+/** Le retour n'est accepté que s'il désigne une page de la console. */
+function destination(brut) {
+  const chemin = typeof brut === 'string' ? brut : '';
+  return chemin.startsWith('/admin') && !chemin.startsWith('//') ? chemin : '/admin';
+}
+
+let erreur = null;
+const retourDemande = destination(Astro.url.searchParams.get('retour'));
+
+// Déjà connecté : inutile de redemander.
+if (Astro.request.method === 'GET' && jetonValide(Astro.cookies.get(NOM_COOKIE)?.value)) {
+  return Astro.redirect(`${BASE}${retourDemande}`, 302);
+}
+
+if (Astro.request.method === 'POST') {
+  const formulaire = await Astro.request.formData();
+  if (motDePasseValide(formulaire.get('mot_de_passe'))) {
+    Astro.cookies.set(NOM_COOKIE, creerJeton(), optionsCookie(Astro.request, Astro.url));
+    return Astro.redirect(`${BASE}${destination(formulaire.get('retour'))}`, 302);
+  }
+  erreur = 'Mot de passe refusé.';
+}
+---
+
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Console TFB — connexion</title>
+    <meta name="robots" content="noindex, nofollow" />
+    <link rel="icon" type="image/png" href={lien('/brand/logo-mark.png')} />
+
+    <style is:global>
+      body {
+        min-height: 100vh;
+        display: grid; place-items: center;
+        padding: var(--space-6);
+        background:
+          radial-gradient(60rem 30rem at 20% -10%, rgba(123, 68, 136, 0.35), transparent 60%),
+          radial-gradient(50rem 26rem at 90% 10%, rgba(21, 158, 150, 0.22), transparent 55%),
+          var(--navy-900);
+      }
+      .porte {
+        width: min(100%, 25rem);
+        background: var(--surface-card);
+        border-radius: var(--radius-panel);
+        box-shadow: var(--shadow-xl);
+        padding: var(--space-8);
+        display: grid; gap: var(--space-5);
+      }
+      .porte__marque { display: flex; align-items: center; gap: var(--space-3); }
+      .porte__marque img { width: 36px; height: 36px; }
+      .porte__marque b { font-family: var(--font-display); letter-spacing: var(--tracking-tight); }
+      .porte__marque span { display: block; font: var(--type-caption); color: var(--text-tertiary); }
+      .porte label { font: var(--type-label); color: var(--text-secondary); display: block; margin-bottom: var(--space-1); }
+      .porte input {
+        width: 100%; padding: var(--space-3);
+        border: 1px solid var(--border-default); border-radius: var(--radius-control);
+        font: var(--type-body);
+      }
+      .porte input:focus-visible { outline: none; border-color: var(--border-brand); box-shadow: var(--shadow-focus); }
+      .porte button {
+        width: 100%; height: 42px;
+        border: 0; border-radius: var(--radius-control);
+        background: var(--brand); color: var(--brand-on);
+        font: var(--type-title); cursor: pointer;
+        transition: var(--transition-control);
+      }
+      .porte button:hover { background: var(--brand-hover); }
+      .porte__erreur {
+        font: var(--type-body-sm); color: var(--text-danger);
+        background: var(--surface-danger-subtle);
+        padding: var(--space-2) var(--space-3); border-radius: var(--radius-control);
+      }
+      .porte__note { font: var(--type-caption); color: var(--text-tertiary); }
+    </style>
+  </head>
+
+  <body>
+    <form class="porte" method="post">
+      <div class="porte__marque">
+        <img src={lien('/brand/logo-mark.png')} alt="" width="36" height="36" />
+        <div>
+          <b>Console TFB</b>
+          <span>Contenu de la landing</span>
+        </div>
+      </div>
+
+      {erreur && <p class="porte__erreur">{erreur}</p>}
+
+      <div>
+        <label for="mot_de_passe">Mot de passe</label>
+        <input
+          id="mot_de_passe"
+          name="mot_de_passe"
+          type="password"
+          autocomplete="current-password"
+          required
+          autofocus
+        />
+      </div>
+
+      <input type="hidden" name="retour" value={retourDemande} />
+      <button type="submit">Entrer</button>
+
+      <p class="porte__note">Accès réservé. Cette page n'est pas indexée.</p>
+    </form>
+  </body>
+</html>

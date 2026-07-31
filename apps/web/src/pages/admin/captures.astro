@@ -1,0 +1,139 @@
+---
+/**
+ * Les captures d'écran. Les fichiers viennent des dépôts modules
+ * (`docs/landing/*.png`) et sont téléchargés au déploiement ; la console règle
+ * ce qui les entoure : titre, rattachement à une fonction, ordre.
+ *
+ * Le rattachement automatique se fait sur le nom du fichier — `x-catalogue.png`
+ * pour la fonction « catalogue ». Cette page sert à corriger ce qu'il a raté.
+ */
+import Console from '../../components/Console.astro';
+import { lien } from '../../lib/lien.mjs';
+import {
+  chargerModuleAdmin,
+  enregistrerCapture,
+  listerCaptures,
+  supprimerCapture,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    if (String(f.get('action')) === 'suppression') {
+      await supprimerCapture(f.get('id'));
+      return Astro.redirect(`${BASE}/admin/captures?ok=${encodeURIComponent('Capture retirée du site.')}`, 303);
+    }
+    await enregistrerCapture(f.get('id'), {
+      titre: String(f.get('titre') ?? ''),
+      fonction_cle: String(f.get('fonction_cle') ?? ''),
+      ordre: f.get('ordre'),
+    });
+    return Astro.redirect(`${BASE}/admin/captures?ok=${encodeURIComponent('Capture enregistrée.')}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let captures = [];
+try {
+  captures = await listerCaptures();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+// Les clés de fonction par module, pour proposer une liste plutôt qu'un champ libre.
+const clesParModule = new Map();
+for (const slug of new Set(captures.map((c) => c.module_slug))) {
+  const module = await chargerModuleAdmin(slug).catch(() => null);
+  clesParModule.set(slug, (module?.fonctions || []).map((f) => ({ cle: f.cle, nom: f.nom })));
+}
+
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console titre="Captures d'écran" fil={['Console', 'Captures']} message={message} erreur={erreur}>
+  {captures.length === 0 && !erreur && (
+    <section class="bloc">
+      <div class="bloc__corps">
+        <p>
+          Aucune capture en base. Chaque dépôt module publie les siennes dans
+          <span class="jeton">docs/landing/*.png</span> ; elles sont récupérées au déploiement par
+          <span class="jeton">pipeline/sync-captures.mjs</span>. Nommer le fichier
+          <span class="jeton">module-fonction.png</span> le rattache automatiquement à la bonne fonction.
+        </p>
+      </div>
+    </section>
+  )}
+
+  {captures.length > 0 && (
+    <section class="bloc">
+      <div class="bloc__tete">
+        <div>
+          <h2>{captures.length} capture(s)</h2>
+          <p>Le titre est affiché sous l'image ; le rattachement décide de la page où elle apparaît.</p>
+        </div>
+      </div>
+      <div class="bloc__corps">
+        {captures.map((capture) => (
+          <form method="post" class="repet__item">
+            <input type="hidden" name="id" value={capture.id} />
+
+            <div style="display: grid; grid-template-columns: 12rem 1fr; gap: var(--space-4); align-items: start;">
+              <a href={lien(`/captures/${capture.fichier}`)} target="_blank">
+                <img
+                  src={lien(`/captures/${capture.fichier}`)}
+                  alt={capture.titre || capture.fichier}
+                  loading="lazy"
+                  style="width: 100%; border-radius: var(--radius-card); border: 1px solid var(--border-default);"
+                />
+              </a>
+
+              <div style="display: grid; gap: var(--space-3);">
+                <div>
+                  <a href={lien(`/admin/modules/${capture.module_slug}`)}>{capture.module_nom || capture.module_slug}</a>
+                  {' '}<span class="jeton">{capture.fichier}</span>
+                </div>
+
+                <div class="duo">
+                  <div class="champ">
+                    <label>Titre</label>
+                    <input type="text" name="titre" value={capture.titre || ''} />
+                  </div>
+                  <div class="champ">
+                    <label>Fonction rattachée</label>
+                    <select name="fonction_cle">
+                      <option value="">— le module entier —</option>
+                      {(clesParModule.get(capture.module_slug) || []).map((f) => (
+                        <option value={f.cle} selected={f.cle === capture.fonction_cle}>
+                          {f.nom || f.cle}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div class="champ">
+                    <label>Ordre</label>
+                    <input type="number" name="ordre" min="1" value={capture.ordre ?? 100} />
+                  </div>
+                </div>
+
+                <div class="actions">
+                  <button class="bouton bouton--sm" type="submit">Enregistrer</button>
+                  <button
+                    class="bouton bouton--danger bouton--sm"
+                    type="submit"
+                    name="action"
+                    value="suppression"
+                    onclick="return confirm('Retirer cette capture du site ? Le fichier reste dans le dépôt et reviendra à la prochaine synchronisation.')"
+                  >Retirer</button>
+                </div>
+              </div>
+            </div>
+          </form>
+        ))}
+      </div>
+    </section>
+  )}
+</Console>

@@ -1,0 +1,93 @@
+---
+/**
+ * Tableau de bord de la console : ce que contient la base, et par où
+ * commencer. Rien d'éditable ici — c'est une page de repérage.
+ */
+import Console from '../../components/Console.astro';
+import { lien } from '../../lib/lien.mjs';
+import { LEVIERS } from '../../lib/db.mjs';
+import { compteurs, listerModules } from '../../lib/admin/donnees.mjs';
+
+let chiffres = null;
+let modules = [];
+let erreur = null;
+
+try {
+  chiffres = await compteurs();
+  modules = await listerModules();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const sansCapture = modules.filter((m) => m.nb_captures === 0);
+const sansLevier = modules.filter((m) => (m.leviers || []).length === 0);
+const masques = modules.filter((m) => !m.actif);
+---
+
+<Console titre="Tableau de bord" erreur={erreur}>
+  <div class="tuiles">
+    <div class="tuile"><b>{chiffres?.modules ?? '—'}</b><span>Modules</span></div>
+    <div class="tuile"><b>{chiffres?.actifs ?? '—'}</b><span>Affichés</span></div>
+    <div class="tuile"><b>{chiffres?.fonctions ?? '—'}</b><span>Fonctions</span></div>
+    <div class="tuile"><b>{chiffres?.captures ?? '—'}</b><span>Captures</span></div>
+  </div>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>À compléter</h2>
+        <p>Ce qui manque au contenu publié, sans avoir à ouvrir chaque fiche.</p>
+      </div>
+    </div>
+    <div class="bloc__corps">
+      {sansCapture.length === 0 && sansLevier.length === 0 && masques.length === 0 && !erreur && (
+        <p>Rien à signaler : tous les modules sont affichés, rattachés à des leviers et illustrés.</p>
+      )}
+
+      {masques.length > 0 && (
+        <p>
+          <strong>{masques.length} module(s) masqué(s) :</strong>{' '}
+          {masques.map((m, i) => (
+            <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
+          ))}
+        </p>
+      )}
+      {sansLevier.length > 0 && (
+        <p>
+          <strong>{sansLevier.length} module(s) sans levier :</strong>{' '}
+          {sansLevier.map((m, i) => (
+            <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
+          ))}
+        </p>
+      )}
+      {sansCapture.length > 0 && (
+        <p>
+          <strong>{sansCapture.length} module(s) sans capture :</strong>{' '}
+          {sansCapture.map((m, i) => (
+            <Fragment>{i > 0 ? ', ' : ''}<a href={lien(`/admin/modules/${m.slug}`)}>{m.nom || m.slug}</a></Fragment>
+          ))}
+          {' '}— les captures sont publiées par chaque dépôt dans <span class="jeton">docs/landing/*.png</span> et
+          reprises au déploiement.
+        </p>
+      )}
+    </div>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les 6 leviers</h2>
+        <p>L'ossature de lecture du réseau. Chaque module et chaque fonction s'y rattache.</p>
+      </div>
+    </div>
+    <div class="bloc__corps">
+      <div class="choix-leviers">
+        {LEVIERS.map((l) => (
+          <span class="choix-levier" data-levier={l.cle}>
+            <span data-lettre={l.lettre}>{l.nom} — {l.question}</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  </section>
+</Console>

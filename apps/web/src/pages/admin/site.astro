@@ -1,0 +1,127 @@
+---
+/**
+ * Édition de la page d'accueil : le discours d'entrée, les problèmes du
+ * franchiseur et nos réponses, le schéma d'ensemble.
+ *
+ * La table `site` ne contient qu'une ligne — celle amorcée par bootstrap-db.
+ */
+import Console from '../../components/Console.astro';
+import { lien } from '../../lib/lien.mjs';
+import {
+  CHAMPS_SITE,
+  chargerSiteAdmin,
+  enregistrerSite,
+  lireBlocs,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const valeurs = Object.fromEntries(CHAMPS_SITE.map((c) => [c.nom, String(f.get(c.nom) ?? '')]));
+    await enregistrerSite(f.get('id'), {
+      ...valeurs,
+      problemes: lireBlocs(f, 'probleme'),
+      reponses: lireBlocs(f, 'reponse'),
+    });
+    return Astro.redirect(`${BASE}/admin/site?ok=${encodeURIComponent('Page d’accueil enregistrée.')}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let site = null;
+try {
+  site = await chargerSiteAdmin();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const problemes = site ? [...site.problemes, { titre: '', texte: '' }] : [];
+const reponses = site ? [...site.reponses, { titre: '', texte: '' }] : [];
+---
+
+<Console titre="Page d'accueil" fil={['Console', 'Accueil']} message={message} erreur={erreur}>
+  <a slot="actions" class="bouton bouton--sobre" href={lien('/')} target="_blank">Voir la page</a>
+
+  {!site && !erreur && (
+    <p>La table du site est vide. Lancer <span class="jeton">node pipeline/bootstrap-db.mjs</span> sur le serveur.</p>
+  )}
+
+  {site && (
+    <form method="post">
+      <input type="hidden" name="id" value={site.id} />
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le discours d'entrée</h2>
+            <p>Ce que lit un franchiseur dans les dix premières secondes.</p>
+          </div>
+        </div>
+        <div class="bloc__corps">
+          {CHAMPS_SITE.map((champ) => (
+            <div class="champ">
+              <label for={champ.nom}>{champ.libelle}</label>
+              {champ.type === 'ligne' ? (
+                <input id={champ.nom} name={champ.nom} type="text" value={site[champ.nom] || ''} />
+              ) : (
+                <textarea
+                  id={champ.nom}
+                  name={champ.nom}
+                  rows={champ.lignes || 4}
+                  class={champ.type === 'code' ? 'code' : undefined}
+                >{site[champ.nom] || ''}</textarea>
+              )}
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section class="bloc" style="margin-top: var(--space-5);">
+        <div class="bloc__tete">
+          <div>
+            <h2>Les problèmes du franchiseur</h2>
+            <p>Ce qui se passe aujourd'hui, avant qu'on n'ait parlé d'outil. Vider les deux champs supprime le bloc.</p>
+          </div>
+        </div>
+        <div class="bloc__corps">
+          <div class="repet">
+            {problemes.map((bloc) => (
+              <div class="repet__item">
+                <input type="text" name="probleme_titre" value={bloc.titre} placeholder="Titre du problème" />
+                <textarea name="probleme_texte" rows="3">{bloc.texte}</textarea>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section class="bloc" style="margin-top: var(--space-5);">
+        <div class="bloc__tete">
+          <div>
+            <h2>Nos réponses</h2>
+            <p>Une par problème, dans le même vocabulaire.</p>
+          </div>
+        </div>
+        <div class="bloc__corps">
+          <div class="repet">
+            {reponses.map((bloc) => (
+              <div class="repet__item">
+                <input type="text" name="reponse_titre" value={bloc.titre} placeholder="Titre de la réponse" />
+                <textarea name="reponse_texte" rows="3">{bloc.texte}</textarea>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div class="actions" style="margin-top: var(--space-5);">
+        <button class="bouton" type="submit">Enregistrer</button>
+      </div>
+    </form>
+  )}
+</Console>

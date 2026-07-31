@@ -1,5 +1,5 @@
 /**
- * Contenu de départ des huit modules, rédigé à partir du code et des fiches
+ * Contenu de départ des neuf modules, rédigé à partir du code et des fiches
  * `.tfb/module.json` de chaque dépôt.
  *
  * Sert à alimenter la landing sans clé Anthropic. Une ingestion ultérieure
@@ -681,6 +681,127 @@ Chaque écran est un player authentifié par jeton qui envoie un battement de c�
       { cle: 'film', icone: 'smartphone', nom: 'Visionneuse publique', leviers: ["xp"], description: "La dernière playlist publiée est consultable en plein écran sans connexion, à l'adresse /film.", benefice: "Le responsable vérifie l'affichage depuis son téléphone." },
     ],
   },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    slug: 'recrutement',
+    repo: 'samsam2703MFC/atelier-espace-candidat',
+    groupe: 'Développement',
+    ordre: 9,
+    nom: 'Recrutement de franchisés',
+    accroche: "Du premier clic sur l'annonce à la signature, un seul dossier suivi.",
+    resume:
+      "Recruter un franchisé prend six à dix-huit mois et passe par une trentaine d'échanges. Ce module tient les quatre faces de ce parcours au même endroit : la page publique qui capte les candidatures, le CRM qui suit les étapes, l'espace où le candidat avance seul, et la vue du propriétaire qui dit ce que tout cela coûte.",
+    public_cible: "Direction du développement, consultants recrutement, candidats franchisés",
+    description: `Le recrutement de franchisés est le processus le plus mal outillé des réseaux, et le plus déterminant : c'est lui qui décide qui portera l'enseigne pendant dix ans. Dans la plupart des réseaux il vit dans une boîte mail, un tableur et la mémoire d'un consultant. Quand ce consultant part, la moitié des dossiers en cours devient illisible.
+
+Ce module part du constat qu'un candidat traverse quatre surfaces, et qu'elles doivent raconter la même chose. La page publique présente l'enseigne, ses emplacements disponibles et son formulaire. Le CRM suit le dossier étape par étape, avec les documents attendus à chaque étape. L'espace candidat laisse la personne avancer seule — lire, regarder, simuler son financement, réserver un rendez-vous — sans mobiliser un consultant pour chaque question. Et la vue du propriétaire dit, en lecture seule, combien de candidats sont dans le tuyau, où ils bloquent, et ce que coûte une signature.
+
+La liaison entre les quatre est l'adresse e-mail. Un envoi du formulaire crée d'un coup la trace brute du lead, le compte du portail candidat et la fiche CRM à l'étape « dossier reçu ». Aucune ressaisie, et surtout aucun candidat qui existe dans un outil mais pas dans l'autre.
+
+Le parcours candidat n'est pas figé dans le code : les étapes, leur ordre, leur caractère bloquant, les documents qu'elles exigent et l'e-mail qu'elles déclenchent se paramètrent. Un réseau qui change sa méthode de recrutement change son paramétrage, pas son logiciel — et c'est précisément ce qui rend la méthode transmissible à un nouveau directeur du développement.
+
+Les emplacements sont une table unique servie aux trois fronts : ils alimentent la liste déroulante du formulaire, les épingles de la carte publique et le carrousel d'opportunités du portail candidat. Une zone ouverte au recrutement se déclare une fois.`,
+    stack: ['React', 'PHP', 'MySQL', 'Vite'],
+    mots_cles: ['recrutement franchisé', 'CRM', 'espace candidat', 'parcours', 'DIP', 'signature électronique'],
+    problemes: [
+      {
+        titre: 'Le dossier vit dans une boîte mail',
+        texte:
+          "Les pièces d'un candidat sont éparpillées entre des mails, un dossier partagé et la mémoire du consultant. Personne d'autre ne peut reprendre le dossier, et le réseau ne sait pas dire où en est un candidat sans appeler quelqu'un.",
+      },
+      {
+        titre: 'Le candidat attend, et se refroidit',
+        texte:
+          "Entre deux rendez-vous, un candidat n'a rien à faire ni rien à lire. Le délai devient un signal négatif : celui qui abandonne au troisième mois est souvent celui qui n'avait simplement plus de nouvelles.",
+      },
+      {
+        titre: 'La méthode de recrutement ne se transmet pas',
+        texte:
+          "Les étapes, les questions à poser, les documents à réclamer sont dans la tête du recruteur. Un départ, et le réseau réapprend son propre processus — au moment précis où il voudrait accélérer son développement.",
+      },
+      {
+        titre: 'Le coût d\'une signature est inconnu',
+        texte:
+          "Salons, publicité, temps consultant, primes : les dépenses de recrutement sont réelles mais jamais rapportées au nombre de signatures. Le réseau investit sans savoir ce qu'il paie pour un franchisé.",
+      },
+    ],
+    benefices: [
+      {
+        titre: 'Un candidat, un dossier, quatre vues',
+        texte:
+          "La page publique, le CRM, l'espace candidat et la vue du propriétaire lisent la même donnée, reliée par l'adresse e-mail. Le formulaire crée les trois enregistrements d'un coup.",
+      },
+      {
+        titre: 'Le candidat avance sans vous',
+        texte:
+          "Vidéothèque, documents à lire, carte des emplacements, simulateur de financement, créneaux de rendez-vous : entre deux échanges, il progresse seul et vous le voyez progresser.",
+      },
+      {
+        titre: 'Le parcours est un paramétrage',
+        texte:
+          "Étapes, ordre, caractère bloquant, documents exigés et e-mail déclenché se règlent dans l'interface. La méthode du réseau est écrite quelque part, donc reprenable.",
+      },
+      {
+        titre: 'Le coût par signature est un chiffre',
+        texte:
+          "Fixe, primes, publicité, foires et campagnes sont additionnés et rapportés aux candidats et aux signatures. Le développement se pilote comme le reste du réseau.",
+      },
+      {
+        titre: 'Les documents se génèrent et se relisent',
+        texte:
+          "Publipostage à partir de modèles à variables, annexes fixes, signature électronique, puis lecture assistée des pièces reçues avec synthèse et alertes.",
+      },
+    ],
+    mermaid: `flowchart TD
+  A[Page franchise publique] --> B[Formulaire de candidature]
+  B --> C[Trace du lead]
+  B --> D[Compte espace candidat]
+  B --> E[Fiche CRM etape 1]
+  E --> F[Etapes du parcours]
+  F --> G[Documents et publipostage]
+  G --> H[Signature electronique]
+  F --> I[Rendez-vous et agenda]
+  F --> J[Messagerie]
+  D --> K[Videos badges carte simulateur]
+  K --> L[Dossier de candidature]
+  L --> E
+  E --> M[Bilan du proprietaire]
+  N[Emplacements] --> A
+  N --> D`,
+    leviers: ["overhead", "xp", "trafic"],
+    liens: [
+      {"slug": "console-marque", "sens": "envoie", "quoi": "le franchisé signé et sa zone, prêts à devenir un point de vente"},
+      {"slug": "console-marque", "sens": "recoit", "quoi": "les emplacements ciblés par l'analyse géographique du réseau"},
+      {"slug": "consultant", "sens": "envoie", "quoi": "le nouveau franchisé à accompagner sur ses premières visites"}
+    ],
+    onboarding:
+      "C'est ici qu'un réseau grandit. Le candidat entre par l'annonce, avance seul entre deux rendez-vous, et vous voyez à tout moment où il en est et ce qu'il vous coûte. Rien de tout cela ne dépend plus de la mémoire d'un recruteur.",
+    fonctions: [
+      { cle: 'landing', icone: 'monitor', nom: 'Page franchise publique', leviers: ["trafic"], description: "La page qui présente l'enseigne aux candidats : carrousels photos et vidéos, carte des emplacements, formulaire de contact. Tout son contenu vient de la base — aucune ligne à modifier pour changer une diapositive.", benefice: "Le développement publie son annonce sans passer par un développeur." },
+      { cle: 'leads', icone: 'users', nom: 'Candidatures entrantes', leviers: ["trafic", "overhead"], description: "Chaque envoi du formulaire est archivé tel quel, et crée en même temps le compte du portail et la fiche CRM. La trace brute n'est jamais effacée : c'est la sauvegarde de secours des candidatures.", benefice: "Aucune candidature ne se perd entre deux outils." },
+      { cle: 'parcours', icone: 'clipboard-check', nom: 'Étapes du parcours', leviers: ["overhead"], description: "Les étapes du recrutement, leur ordre, celles qui bloquent la suite, les documents qu'elles réclament et l'e-mail qu'elles déclenchent. Le processus du réseau est décrit ici, pas dans une note de service.", benefice: "La méthode de recrutement survit au départ du recruteur." },
+      { cle: 'candidats', icone: 'search', nom: 'Fiches candidats', leviers: ["overhead"], description: "Le dossier de chaque candidat : coordonnées, zone visée, étape courante, notes privées ou partagées, documents reçus par étape, motif de clôture.", benefice: "N'importe quel consultant reprend un dossier en trois minutes." },
+      { cle: 'emplacements', icone: 'map-pin', nom: 'Emplacements et zones', leviers: ["trafic", "overhead"], description: "Une seule table sert les trois fronts : la liste déroulante du formulaire, les épingles de la carte publique et le carrousel d'opportunités du portail. Boutique existante, zone disponible ou zone ciblée sont distinguées.", benefice: "Une zone ouverte au recrutement se déclare une seule fois." },
+      { cle: 'publipostage', icone: 'book-open', nom: 'Publipostage et contrats', leviers: ["overhead"], description: "Des modèles de documents à variables — DIP, contrat, bail — remplis avec les données du candidat, avec leurs annexes PDF fixes. Le document part complet du premier coup.", benefice: "Une heure de mise en forme par dossier en moins." },
+      { cle: 'signature', icone: 'clipboard-check', nom: 'Signature électronique', leviers: ["overhead", "xp"], description: "Envoi à signer, relance et retour du document signé rattaché à l'étape. Le statut de signature est visible dans le dossier, pas dans la boîte mail de quelqu'un.", benefice: "Le délai de signature cesse d'être un angle mort." },
+      { cle: 'lecture-ia', icone: 'search', nom: 'Lecture assistée des documents', leviers: ["overhead"], description: "Les pièces reçues sont analysées : synthèse, champs extraits, alertes sur ce qui manque ou détonne. Le consultant relit une synthèse au lieu de trente pages.", benefice: "Les pièces d'un dossier se contrôlent en quelques minutes." },
+      { cle: 'lexique', icone: 'layers', nom: 'Lexique documentaire', leviers: ["overhead"], description: "La bibliothèque des types de documents du réseau — ce qu'est un DIP, ce que contient un contrat, quelle pièce sert à quoi — organisée et consultable par les consultants.", benefice: "Un consultant qui arrive sait quoi demander, et pourquoi." },
+      { cle: 'rdv', icone: 'calendar', nom: 'Rendez-vous et Google Calendar', leviers: ["overhead", "xp"], description: "Les rendez-vous du parcours, leur lieu, leur statut, et leur synchronisation avec l'agenda du consultant. Le candidat réserve depuis son espace, le consultant les voit dans son calendrier.", benefice: "Plus d'aller-retour de dix messages pour caler une date." },
+      { cle: 'messagerie', icone: 'bell', nom: 'Messagerie intégrée', leviers: ["xp", "overhead"], description: "Les e-mails envoyés et reçus sont journalisés dans le dossier du candidat, avec les modèles automatiques — dont l'accusé de réception sous 48 heures.", benefice: "L'historique de la relation est dans le dossier, pas dans une boîte personnelle." },
+      { cle: 'espace-candidat', icone: 'smartphone', nom: 'Espace candidat', leviers: ["xp"], description: "Le portail du candidat, en deux niveaux : découverte à l'inscription, puis accès complet une fois le dossier validé. Ce que le candidat peut voir dépend de son avancement, pas d'un envoi manuel.", benefice: "Le candidat a quelque chose à faire entre deux rendez-vous." },
+      { cle: 'journey', icone: 'trending-up', nom: 'Parcours en 8 étapes', leviers: ["xp"], description: "Le suivi visuel côté candidat : les huit étapes, la barre d'avancement, et surtout la prochaine action attendue de lui.", benefice: "Le candidat sait toujours ce qu'on attend de lui." },
+      { cle: 'videotheque', icone: 'monitor', nom: 'Vidéothèque et quiz', leviers: ["xp"], description: "Les vidéos de présentation du réseau, avec leur progression de visionnage, puis un quiz qui vérifie ce qui a été compris et débloque un badge.", benefice: "La présentation du concept ne repose plus sur une réunion." },
+      { cle: 'badges', icone: 'bell', nom: 'Collection de badges', leviers: ["xp"], description: "Neuf badges gagnés au fil du parcours. Un candidat engagé dans une collection est un candidat qui revient, et sa progression est un signal lisible pour le consultant.", benefice: "L'engagement du candidat devient mesurable." },
+      { cle: 'carte', icone: 'map-pin', nom: 'Carte des emplacements', leviers: ["xp", "trafic"], description: "La carte du territoire vue par le candidat : boutiques existantes, zones disponibles, zones ciblées, avec le détail de chaque emplacement et un carrousel des opportunités d'ouverture.", benefice: "Le candidat se projette sur un territoire réel, pas sur une promesse." },
+      { cle: 'investisseurs', icone: 'credit-card', nom: 'Financement et investisseurs', leviers: ["xp", "overhead"], description: "Les partenaires financiers du réseau et un simulateur d'apport et de mensualité. Le candidat teste son plan avant le premier rendez-vous bancaire.", benefice: "La question de l'argent se pose tôt, sur des chiffres." },
+      { cle: 'agenda', icone: 'clock', nom: 'Créneaux réservables', leviers: ["xp"], description: "Les disponibilités du consultant groupées par jour, réservables depuis l'espace candidat, plus la journée découverte réservée aux dossiers validés.", benefice: "Le rendez-vous se prend quand le candidat y pense, pas trois jours plus tard." },
+      { cle: 'candidature', icone: 'clipboard-check', nom: 'Dossier de candidature', leviers: ["overhead", "xp"], description: "Le formulaire détaillé — apport, expérience, motivation, zone. Son envoi valide le dossier, débloque le niveau 2 du portail et bascule la fiche CRM.", benefice: "Le passage à l'étape suivante est déclenché par le candidat, pas relancé par vous." },
+      { cle: 'bilan', icone: 'bar-chart', nom: 'Bilan du propriétaire', leviers: ["overhead"], description: "Une vue en lecture seule, sur téléphone : candidats actifs, en attente, signés, abandonnés, répartition par étape et par zone, motifs d'abandon, candidatures des 7 et 30 derniers jours.", benefice: "Le propriétaire suit son développement sans ouvrir le CRM." },
+      { cle: 'couts', icone: 'trending-up', nom: 'Coût du recrutement', leviers: ["overhead"], description: "Fixe, primes de signature, publicité, foires et salons, campagnes par prestataire — additionnés puis rapportés au nombre de candidats et de signatures.", benefice: "On sait enfin ce que coûte un franchisé recruté." },
+      { cle: 'acces', icone: 'settings', nom: 'Comptes et journal de connexion', leviers: ["overhead"], description: "Les comptes consultants avec leur rôle, révocables, et le journal de chaque connexion, échec et déconnexion avec l'adresse et le navigateur.", benefice: "L'accès aux dossiers candidats est traçable." },
+    ],
+  },
 ];
 
 /** Contenu de la page d'accueil. */
@@ -689,7 +810,7 @@ export const SITE = {
   sous_titre:
     "Un ERP qui met le savoir-faire dans l'outil plutôt que dans la tête de quelques personnes.",
   accroche: `Un réseau se vend sur ce qu'il peut transmettre. Tant que les procédures vivent dans la mémoire des fondateurs, dans des tableurs personnels et dans des habitudes prises en magasin, ce qui se transmet n'est qu'une enseigne et un bail. Le repreneur rachète un nom, pas une méthode.
-Nos huit modules couvrent l'exploitation réelle d'un réseau : la vente en ligne, le pilotage du siège et du point de vente, l'approvisionnement, la production, l'animation terrain, la livraison et l'affichage. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d'autre que dans une conversation.`,
+Nos neuf modules couvrent l'exploitation réelle d'un réseau : le recrutement des franchisés, la vente en ligne, le pilotage du siège et du point de vente, l'approvisionnement, la production, l'animation terrain, la livraison et l'affichage. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d'autre que dans une conversation.`,
   cta_texte: 'Demander une démonstration',
   cta_url: '#contact',
   meta_description:
@@ -749,6 +870,7 @@ Nos huit modules couvrent l'exploitation réelle d'un réseau : la vente en lign
     },
   ],
   mermaid: `flowchart LR
+  R[Recrutement] --> A
   A[Console marque] --> B[Catalogue et regles]
   B --> C[Webshop]
   B --> D[Console franchise]
