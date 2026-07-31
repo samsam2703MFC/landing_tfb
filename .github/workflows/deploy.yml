@@ -143,6 +143,18 @@ jobs:
               -e "s#__PORT__#\$PORT_WEB#g" \
               -e "s#__NODE__#\$NODE_BIN#g" \
               deploy/landing-tfb.service > /etc/systemd/system/landing-tfb.service
+
+          # Un gabarit mal substitué donnerait un chemin littéral, et systemd
+          # ne dirait rien de plus qu'un « No such file or directory ».
+          if grep -q '__DEPLOY_PATH__\|__PORT__\|__NODE__' /etc/systemd/system/landing-tfb.service; then
+            echo "::error::Substitution incomplète dans l'unité systemd." >&2
+            grep -n '__' /etc/systemd/system/landing-tfb.service >&2
+            exit 1
+          fi
+          echo "--- unité installée ---"
+          grep -E '^(WorkingDirectory|EnvironmentFile|Environment|ExecStart)=' /etc/systemd/system/landing-tfb.service
+          ls -l "\$DEPLOY_PATH/infra/.env"
+
           systemctl daemon-reload
           systemctl enable landing-tfb > /dev/null 2>&1
 
