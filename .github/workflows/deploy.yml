@@ -56,6 +56,29 @@ jobs:
             # que libcrypto refuse de lire.
             printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
             chmod 600 ~/.ssh/id_deploy
+
+            # Remise en forme des collages approximatifs : lignes vides en
+            # tête, invite de terminal recopiée avant l'en-tête, texte ajouté
+            # après le pied, ou clé aplatie sur une seule ligne.
+            if grep -q -- '-----BEGIN' ~/.ssh/id_deploy; then
+              sed -n '/-----BEGIN/,$p' ~/.ssh/id_deploy > ~/.ssh/id_deploy.tmp
+              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
+            fi
+            if grep -q -- '-----END' ~/.ssh/id_deploy; then
+              sed -n '1,/-----END[A-Z0-9 -]*-----/p' ~/.ssh/id_deploy > ~/.ssh/id_deploy.tmp
+              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
+            fi
+            if [ "$(wc -l < ~/.ssh/id_deploy)" -le 1 ] && grep -q -- '-----BEGIN' ~/.ssh/id_deploy; then
+              # Tout tient sur une ligne : on rétablit les sauts de ligne et on
+              # replie le corps en base64 sur 70 colonnes, comme OpenSSH l'écrit.
+              contenu=$(cat ~/.ssh/id_deploy)
+              entete=$(printf '%s' "$contenu" | grep -o -- '-----BEGIN[A-Z0-9 -]*-----' | head -n 1)
+              pied=$(printf '%s' "$contenu" | grep -o -- '-----END[A-Z0-9 -]*-----' | head -n 1)
+              corps=$(printf '%s' "$contenu" | sed "s|$entete||; s|$pied||" | tr -d ' \t')
+              { echo "$entete"; printf '%s' "$corps" | fold -w 70; echo; echo "$pied"; } > ~/.ssh/id_deploy
+            fi
+            chmod 600 ~/.ssh/id_deploy
+
             if ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
               echo "Clé SSH lue correctement ($(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}'))."
             else
@@ -69,13 +92,13 @@ jobs:
                 PuTTY-User-Key-File*)
                   diagnostic="c'est un fichier PuTTY (.ppk). Le convertir : puttygen cle.ppk -O private-openssh -o cle_openssh" ;;
                 -----BEGIN*PRIVATE*KEY-----)
-                  if [ "$lignes" -le 2 ]; then
-                    diagnostic="les retours à la ligne ont été perdus (tout tient sur une ligne). Recoller le fichier tel quel, sans le reformater."
+                  if ! grep -q -- '-----END' ~/.ssh/id_deploy; then
+                    diagnostic="la clé est tronquée : la ligne « -----END … PRIVATE KEY----- » manque. Recopier le fichier en entier."
                   else
-                    diagnostic="l'en-tête est correct mais la clé reste illisible : corps tronqué, ou clé protégée par une passphrase (le déploiement en exige une sans passphrase)."
+                    diagnostic="en-tête et pied présents (${lignes} lignes) mais la clé reste illisible : corps incomplet, ou clé protégée par une passphrase (le déploiement en exige une sans passphrase)."
                   fi ;;
                 *)
-                  diagnostic="le contenu ne commence par aucun en-tête de clé connu (${lignes} ligne(s) au total)." ;;
+                  diagnostic="aucune ligne « -----BEGIN … PRIVATE KEY----- » dans le secret (${lignes} ligne(s) au total). Le contenu collé n'est pas une clé privée." ;;
               esac
               echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible : $diagnostic"
               bloquant=1
