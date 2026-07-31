@@ -34,6 +34,7 @@ const RUBRIQUES = [
       { cle: 'captures', href: '/admin/captures', libelle: 'Captures', icone: 'image', compte: compteurs.captures },
       { cle: 'textes', href: '/admin/textes', libelle: 'Textes', icone: 'file-text', compte: compteurs.textes },
       { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'panels-top-left' },
+      { cle: 'questions', href: '/admin/questions', libelle: 'Questionnaire', icone: 'clipboard-check', compte: compteurs.questions },
       { cle: 'langues', href: '/admin/langues', libelle: 'Traductions', icone: 'languages', compte: compteurs.langues },
     ],
   },
@@ -148,6 +149,7 @@ const RUBRIQUES = [
       }
       .alerte--ok { background: var(--surface-success-subtle); color: var(--text-success); border-color: var(--green-500); }
       .alerte--ko { background: var(--surface-danger-subtle); color: var(--text-danger); border-color: var(--border-danger); }
+      .alerte--attention { background: var(--amber-100); color: var(--amber-700); border-color: var(--status-warning); }
 
       /* ── Tuiles de chiffres ────────────────────────────────────────────── */
       .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }

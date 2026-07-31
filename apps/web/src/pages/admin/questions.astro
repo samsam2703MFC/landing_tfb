@@ -1,0 +1,239 @@
+---
+/**
+ * Le questionnaire de l'onboarding.
+ *
+ * C'est la seule table de contenu que la console ne touchait pas : les seize
+ * questions venaient du dépôt et rien ne permettait de les corriger sans
+ * redéploiement. Elles se modifient ici.
+ *
+ * Ce qui compte vraiment sur cette page, ce sont les modules cochés : une
+ * question qui n'en déclenche aucun s'affiche sur le site sans rien faire
+ * apparaître — le visiteur coche et il ne se passe rien.
+ */
+import Console from '../../components/Console.astro';
+import { lien } from '../../lib/lien.mjs';
+import {
+  ajouterQuestion,
+  compteurs,
+  enregistrerQuestion,
+  listerQuestions,
+  slugsModules,
+  supprimerQuestion,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    const valeurs = {
+      cle: f.get('cle'),
+      tag: f.get('tag'),
+      texte: f.get('texte'),
+      cible: f.get('cible'),
+      ordre: f.get('ordre'),
+      slugs: f.getAll('slugs').map(String),
+    };
+
+    if (action === 'suppression') {
+      await supprimerQuestion(f.get('id'));
+      return Astro.redirect(`${BASE}/admin/questions?ok=${encodeURIComponent('Question retirée.')}`, 303);
+    }
+    if (action === 'ajout') {
+      await ajouterQuestion(valeurs);
+      return Astro.redirect(`${BASE}/admin/questions?ok=${encodeURIComponent('Question ajoutée.')}`, 303);
+    }
+    await enregistrerQuestion(f.get('id'), valeurs);
+    return Astro.redirect(`${BASE}/admin/questions?ok=${encodeURIComponent('Question enregistrée.')}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let questions = [];
+let modules = [];
+let chiffres = {};
+try {
+  questions = await listerQuestions();
+  modules = await slugsModules();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const TAGS = ['Problème', 'Besoin'];
+
+// Un module que personne ne déclenche n'apparaîtra jamais dans le fil.
+const declenches = new Set(questions.flatMap((q) => q.slugs || []));
+const orphelins = modules.filter((m) => !declenches.has(m.slug));
+const muettes = questions.filter((q) => (q.slugs || []).length === 0);
+---
+
+<Console
+  titre="Questionnaire"
+  fil="TFB Admin · Contenu landing · Onboarding"
+  actif="questions"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>{questions.length} question(s)</h2>
+        <p>
+          Ce que le franchiseur coche sur <a href={lien('/onboarding')} target="_blank">la page d'onboarding</a> :
+          chaque case fait apparaître les modules choisis ci-dessous.
+          <span class="jeton">landing_questions</span>
+        </p>
+      </div>
+    </div>
+
+    {(muettes.length > 0 || orphelins.length > 0) && (
+      <div class="bloc__corps" style="padding-block-end:0">
+        {muettes.length > 0 && (
+          <p class="alerte alerte--attention">
+            {muettes.length} question(s) ne déclenchent aucun module : cochées, il ne se passe rien.
+          </p>
+        )}
+        {orphelins.length > 0 && (
+          <p class="alerte alerte--attention">
+            {orphelins.length} module(s) qu'aucune question ne fait apparaître —
+            {' '}{orphelins.map((m) => m.nom || m.slug).join(', ')}.
+          </p>
+        )}
+      </div>
+    )}
+
+    <div class="bloc__corps">
+      {questions.map((q) => (
+        <form method="post" class="question-ligne">
+          <input type="hidden" name="id" value={q.id} />
+
+          <div class="question-ligne__tete">
+            <code class="jeton">{q.cle}</code>
+            <label class="question-ligne__tag">
+              <span class="legende">Étiquette</span>
+              <select name="tag">
+                {TAGS.map((t) => <option value={t} selected={t === q.tag}>{t}</option>)}
+              </select>
+            </label>
+            <label class="question-ligne__ordre">
+              <span class="legende">Ordre</span>
+              <input type="number" name="ordre" min="1" value={q.ordre ?? 100} />
+            </label>
+          </div>
+
+          <div class="duo">
+            <div class="champ">
+              <label>La phrase que lit le franchiseur</label>
+              <input type="text" name="texte" value={q.texte || ''} required />
+            </div>
+            <div class="champ">
+              <label>Ce que ça vise</label>
+              <input type="text" name="cible" value={q.cible || ''} placeholder="Traçabilité des lots" />
+              <span class="champ__aide">Affiché sous la phrase, précédé d'une flèche.</span>
+            </div>
+          </div>
+
+          <div class="champ">
+            <span class="legende">Modules déclenchés ({(q.slugs || []).length})</span>
+            <div class="cases">
+              {modules.map((m) => (
+                <label class="case">
+                  <input type="checkbox" name="slugs" value={m.slug} checked={(q.slugs || []).includes(m.slug)} />
+                  <span>{m.nom || m.slug}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
+            <button
+              class="bouton bouton--danger bouton--sm"
+              type="submit"
+              name="action"
+              value="suppression"
+              onclick="return confirm('Retirer cette question du questionnaire ?')"
+            >Supprimer</button>
+          </div>
+        </form>
+      ))}
+
+      <!-- Ajout -->
+      <details class="fiche">
+        <summary><span>+ Ajouter une question</span></summary>
+        <form method="post" class="fiche__corps">
+          <input type="hidden" name="action" value="ajout" />
+
+          <div class="duo">
+            <div class="champ">
+              <label>Clé technique</label>
+              <input type="text" name="cle" required placeholder="tracabilite" />
+              <span class="champ__aide">Minuscules et tirets. Elle sert d'ancre HTML : la changer casse les liens.</span>
+            </div>
+            <div class="champ">
+              <label>Étiquette</label>
+              <select name="tag">{TAGS.map((t) => <option value={t}>{t}</option>)}</select>
+            </div>
+            <div class="champ">
+              <label>Ordre</label>
+              <input type="number" name="ordre" min="1" value="100" />
+            </div>
+          </div>
+
+          <div class="champ">
+            <label>La phrase que lit le franchiseur</label>
+            <input type="text" name="texte" required />
+          </div>
+          <div class="champ">
+            <label>Ce que ça vise</label>
+            <input type="text" name="cible" />
+          </div>
+
+          <div class="champ">
+            <span class="legende">Modules déclenchés</span>
+            <div class="cases">
+              {modules.map((m) => (
+                <label class="case">
+                  <input type="checkbox" name="slugs" value={m.slug} />
+                  <span>{m.nom || m.slug}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="bouton bouton--marque bouton--sm" type="submit">Ajouter</button>
+          </div>
+        </form>
+      </details>
+    </div>
+
+    <div class="bloc__pied">
+      Les questions viennent du dépôt à la première ingestion, puis se modifient ici.
+      Une question sans module coché s'affiche mais ne révèle rien.
+    </div>
+  </section>
+</Console>
+
+<style>
+  .question-ligne {
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px; border: 1px solid var(--slate-200); border-radius: var(--radius-card);
+    background: #fff;
+  }
+  .question-ligne__tete { display: flex; align-items: end; gap: 16px; flex-wrap: wrap; }
+  .question-ligne__tete code { margin-inline-end: auto; }
+  .question-ligne__tag, .question-ligne__ordre { display: grid; gap: 5px; }
+  .question-ligne__ordre :global(input) { inline-size: 6rem; }
+
+  /* Treize modules : une grille de cases, pas une colonne interminable. */
+  .cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 6px 14px; }
+  .case { display: flex; align-items: center; gap: 8px; font: var(--type-body-sm); cursor: pointer; }
+  .case :global(input) { inline-size: auto; margin: 0; cursor: pointer; }
+</style>

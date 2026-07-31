@@ -31,7 +31,9 @@ export const CHAMPS_MODULE = [
   { nom: 'icone', libelle: 'Icône', type: 'ligne', aide: 'Nom du jeu TFB : shopping-cart, store, truck, handshake, chef-hat…' },
   { nom: 'onboarding', libelle: 'Phrase d’onboarding', type: 'zone', lignes: 3, aide: "Ce que le nouveau client lit quand il clique sur ce module dans le fil." },
   { nom: 'description', libelle: 'Description longue', type: 'zone', lignes: 14, aide: 'Markdown accepté. Un paragraphe par idée.' },
-  { nom: 'mermaid', libelle: 'Schéma Mermaid', type: 'code', lignes: 10, aide: 'Rendu dans le navigateur. Sans accents dans les libellés de nœuds.' },
+  // Les colonnes `mermaid` (module et site) existent toujours en base, mais
+  // aucune page publique ne les rend : proposer le champ ferait croire à un
+  // réglage qui ne change rien. Les remettre ici le jour où le schéma est rendu.
 ];
 
 /** Les colonnes de la page d’accueil éditables depuis la console. */
@@ -42,7 +44,6 @@ export const CHAMPS_SITE = [
   { nom: 'cta_texte', libelle: 'Libellé du bouton', type: 'ligne' },
   { nom: 'cta_url', libelle: 'Cible du bouton', type: 'ligne' },
   { nom: 'meta_description', libelle: 'Description pour les moteurs', type: 'zone', lignes: 3 },
-  { nom: 'mermaid', libelle: 'Schéma d’ensemble', type: 'code', lignes: 12 },
 ];
 
 /** Décode les colonnes JSON d’un module. */
@@ -76,6 +77,7 @@ export async function compteurs() {
   const [langues] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('langues')} WHERE publiee = ?`, [vrai(true)]);
   const [leads] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('leads')} WHERE traite = ?`, [vrai(false)]);
   const [clients] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('clients')}`);
+  const [questions] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('questions')}`);
   const [aValider] = await db.requete(
     `SELECT (SELECT COUNT(*) FROM ${table('modules')} WHERE statut = 'nouveau')
           + (SELECT COUNT(*) FROM ${table('fonctions')} WHERE statut = 'nouveau') AS total`,
@@ -90,6 +92,7 @@ export async function compteurs() {
     langues: nombre(langues),
     leads: nombre(leads),
     clients: nombre(clients),
+    questions: nombre(questions),
     aValider: nombre(aValider),
   };
 }
@@ -457,6 +460,62 @@ export async function enregistrerClient(id, valeurs) {
 export async function supprimerClient(id) {
   const db = await connexion();
   await db.executer(`DELETE FROM ${table('clients')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/**
+ * Les questions de l'onboarding. Chacune porte les slugs des modules qu'elle
+ * fait apparaître : c'est le seul endroit où se décide ce que le franchiseur
+ * voit s'assembler quand il coche.
+ */
+export async function listerQuestions() {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('questions')} ORDER BY ordre, id`);
+  return lignes.map((q) => ({ ...q, slugs: lireJson(q.slugs, []) }));
+}
+
+/** Ajoute une question au questionnaire. */
+export async function ajouterQuestion(valeurs) {
+  const cle = normaliserCle(valeurs.cle);
+  if (!cle) throw new Error('La clé de la question est obligatoire.');
+  const db = await connexion();
+  const existantes = await db.requete(`SELECT id FROM ${table('questions')} WHERE cle = ? LIMIT 1`, [cle]);
+  if (existantes.length > 0) throw new Error(`La clé « ${cle} » existe déjà.`);
+  await db.executer(
+    `INSERT INTO ${table('questions')} (cle, tag, texte, cible, slugs, ordre) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      cle,
+      String(valeurs.tag || 'Problème').trim().slice(0, 20),
+      String(valeurs.texte || '').trim(),
+      String(valeurs.cible || '').trim().slice(0, 120) || null,
+      json(valeurs.slugs),
+      Number(valeurs.ordre) || 100,
+    ],
+  );
+  viderCache();
+}
+
+/** Enregistre une question existante. La clé ne bouge pas : elle sert d'ancre HTML. */
+export async function enregistrerQuestion(id, valeurs) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('questions')} SET tag = ?, texte = ?, cible = ?, slugs = ?, ordre = ? WHERE id = ?`,
+    [
+      String(valeurs.tag || 'Problème').trim().slice(0, 20),
+      String(valeurs.texte || '').trim(),
+      String(valeurs.cible || '').trim().slice(0, 120) || null,
+      json(valeurs.slugs),
+      Number(valeurs.ordre) || 100,
+      Number(id),
+    ],
+  );
+  viderCache();
+}
+
+/** Retire une question du questionnaire. */
+export async function supprimerQuestion(id) {
+  const db = await connexion();
+  await db.executer(`DELETE FROM ${table('questions')} WHERE id = ?`, [Number(id)]);
   viderCache();
 }
 
