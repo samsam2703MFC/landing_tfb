@@ -20,6 +20,8 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { createHash } from 'node:crypto';
+
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
@@ -30,16 +32,34 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 // Écriture en base
 // ---------------------------------------------------------------------------
 
-async function ecrireEnBase({ siVide = false } = {}) {
+/**
+ * @param {{siVide?: boolean, aValider?: boolean}} options
+ *   `aValider` dépose le contenu sans le publier : le module reste masqué et
+ *   ses composants hors ligne jusqu'à la relecture dans la console. C'est la
+ *   procédure pour tout contenu produit par le pipeline.
+ */
+/** Empreinte stable d'une fiche : deux exécutions sans changement donnent la même. */
+function empreinte(module) {
+  return createHash('sha256').update(JSON.stringify(module)).digest('hex');
+}
+
+async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
   const db = await ouvrir();
   try {
     // Mode du déploiement : on complète ce qui manque sans toucher au reste.
     // Un module ajouté au catalogue arrive donc tout seul, et une fiche déjà
     // retouchée — par l'ingestion IA ou dans la console — est laissée en place.
     let dejaLa = new Set();
+    // En mode « si vide », on ne saute que les modules dont la fiche n'a pas
+    // bougé. Une fiche réécrite dans le dépôt doit atteindre la base — c'est
+    // tout l'intérêt de la procédure — mais elle repasse par la relecture.
+    const connus = new Map();
     if (siVide) {
-      const lignes = await db.requete(`SELECT slug FROM ${table('modules')}`);
-      dejaLa = new Set(lignes.map((l) => l.slug));
+      const lignes = await db.requete(`SELECT slug, empreinte, actif FROM ${table('modules')}`);
+      for (const l of lignes) connus.set(l.slug, { empreinte: l.empreinte, actif: Boolean(l.actif) });
+      dejaLa = new Set(
+        MODULES.filter((m) => connus.get(m.slug)?.empreinte === empreinte(m)).map((m) => m.slug),
+      );
     }
 
     let ignores = 0;
@@ -48,6 +68,22 @@ async function ecrireEnBase({ siVide = false } = {}) {
         ignores += 1;
         continue;
       }
+      // La règle, en deux temps.
+      //
+      //   · Un module qui n'existait pas n'est pas publié tant qu'il n'a pas
+      //     été relu : il n'était pas en ligne, personne ne perd rien.
+      //   · Un module déjà publié dont la fiche a changé reçoit la nouvelle
+      //     version et le drapeau « à valider », mais reste en ligne. Dépublier
+      //     une page vivante parce que le pipeline a tourné serait pire que le
+      //     mal — surtout quand la nouvelle version corrige l'ancienne.
+      //
+      // Dans les deux cas la console signale ce qui attend une relecture.
+      const connu = connus.get(module.slug);
+      // En mode « si vide » on n'arrive ici que si le module est nouveau ou
+      // si sa fiche a changé : les deux méritent une relecture.
+      const enAttente = aValider || siVide;
+      const restePublie = connu ? connu.actif : false;
+
       const { id, cree } = await upsert(db, table('modules'), 'slug', module.slug, {
         repo: module.repo,
         ref: 'main',
@@ -56,8 +92,9 @@ async function ecrireEnBase({ siVide = false } = {}) {
         ordre: module.ordre,
         // Un module à valider n'est pas publié : il apparaît dans la console,
         // pas sur le site.
-        actif: !aValider,
-        statut: aValider ? 'nouveau' : 'valide',
+        actif: connu ? restePublie : !enAttente,
+        statut: enAttente ? 'nouveau' : 'valide',
+        empreinte: empreinte(module),
         nom: module.nom,
         accroche: module.accroche,
         resume: module.resume,
@@ -92,14 +129,15 @@ async function ecrireEnBase({ siVide = false } = {}) {
           fonction.icone,
           json(fonction.leviers),
           position,
-          aValider ? 'nouveau' : 'valide',
-          !aValider,
+          enAttente ? 'nouveau' : 'valide',
+          !enAttente,
         ];
         const existant = parCle.get(fonction.cle);
         if (existant) {
+          // Un composant déjà en ligne le reste : seul son drapeau change.
           await db.executer(
-            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, leviers = ?, ordre = ?, statut = ?, en_ligne = ? WHERE id = ?`,
-            [...valeurs, existant],
+            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, leviers = ?, ordre = ?, statut = ? WHERE id = ?`,
+            [...valeurs.slice(0, 7), existant],
           );
         } else {
           await db.executer(
@@ -120,7 +158,7 @@ async function ecrireEnBase({ siVide = false } = {}) {
       }
 
       console.log(
-        `${cree ? '✓ créé  ' : '· maj   '} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions${aValider ? ' — à valider' : ''}`,
+        `${cree ? '✓ créé  ' : '↻ mis à jour'} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions${enAttente ? ' — à valider' : ''}`,
       );
     }
 
@@ -317,7 +355,10 @@ async function principal() {
     console.log(`✓ ${cible} écrit — ${MODULES.length} modules, ${total} fonctions.`);
     return;
   }
-  await ecrireEnBase({ siVide: process.argv.includes('--si-vide') });
+  await ecrireEnBase({
+    siVide: process.argv.includes('--si-vide'),
+    aValider: process.argv.includes('--a-valider'),
+  });
 }
 
 principal().catch((err) => {

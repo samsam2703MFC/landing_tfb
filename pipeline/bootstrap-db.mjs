@@ -65,6 +65,10 @@ function modele(pg) {
         // Flux de validation : tout contenu produit par le pipeline arrive
         // en « nouveau » et attend une relecture dans la console.
         ['statut', `${t.chaine(20)} DEFAULT 'valide'`],
+        // Empreinte de la fiche du dépôt : c'est elle qui dit si le contenu a
+        // bougé depuis la dernière écriture, et donc s'il faut le représenter
+        // à la relecture.
+        ['empreinte', t.chaine(64)],
         ['commit_sha', t.chaine(64)],
         ['modele_ia', t.chaine(120)],
         ['genere_le', t.horodatage],

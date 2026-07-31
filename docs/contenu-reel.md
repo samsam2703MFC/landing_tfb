@@ -366,145 +366,160 @@ flowchart TD
 
 ## Cuisine
 
-`cuisine` · famille **Terrain** · ordre 5 · 7 fonctions
+`cuisine` · famille **Terrain** · ordre 5 · 6 fonctions
 
 **Leviers** — E Expérience · F Food Cost · L Labour
 
-**Public visé** — Équipes de production en point de vente
+**Public visé** — Franchisés et équipes de production en point de vente
 
-**Accroche** (85 car.) — L'application du plan de travail : production du jour, checklists, fiches techniques.
+**Accroche** (86 car.) — La tablette du magasin : ce qu'il y a à préparer, à contrôler et à remettre au client.
 
-**Résumé** (249 car.)
+**Résumé** (285 car.)
 
-Une application installable, tenue à une main derrière le plan de travail. Elle dit à l'équipe ce qu'il faut produire aujourd'hui, dans quel ordre, avec les fiches produit et les recettes à portée. Les checklists remplacent les feuilles plastifiées.
+L'outil quotidien du franchisé dans son point de vente. La tablette est authentifiée une fois pour toutes ; ensuite, chaque équipier s'identifie par un code à quatre chiffres au moment où il coche une tâche. Chaque geste porte donc un nom, une heure et, si la tâche l'exige, une photo.
 
-**Phrase d'onboarding** — Installable depuis le navigateur, sans informatique sur place. L'équipe voit ce qu'il y a à produire et coche ses contrôles ; chaque case porte un nom et une heure.
+**Phrase d'onboarding** — C'est l'outil que le franchisé et son équipe ouvrent le matin. Tout ce qui est fait dans la journée y laisse une trace nominative — c'est ce qui rend le standard démontrable, et donc transmissible.
 
 ### Ce que ce module fait disparaître
 
-- **Le savoir-faire part avec la personne** — Quand les recettes et les tours de main ne sont écrits nulle part, le départ d'un responsable coûte des mois de réapprentissage.
-- **Des contrôles impossibles à prouver** — Une case cochée sur une feuille plastifiée, sans nom ni heure, ne vaut rien le jour où il faut démontrer qu'une procédure est suivie.
-- **La production travaille sur une recopie** — Recopier les commandes du matin introduit des erreurs, et personne ne sait laquelle des deux listes fait foi.
+- **Une tablette partagée, une seule session** — Six personnes travaillent sur le même écran et tout est attribué à celui qui a ouvert le service. La traçabilité s'effondre au premier changement d'équipe.
+- **La fiche technique est au bureau** — Quand la recette vit dans un classeur ou un fichier partagé, elle n'est pas consultée au poste. Le geste se fait de mémoire, et la mémoire varie d'une personne à l'autre.
+- **Le savoir-faire part avec la personne** — Un responsable qui s'en va emporte le tour de main, les quantités, les raisons derrière chaque étape. Le suivant réapprend au prix d'une saison.
 
 ### Ce qu'il apporte
 
-- **Les procédures vivent dans l'outil** — Recettes, fiches techniques et checklists sont au poste de travail. Le savoir-faire ne dépend plus d'une personne.
-- **Des contrôles prouvables** — Chaque tâche cochée porte un nom et une heure. Ce qui a été fait est démontrable sans classeur.
-- **La commande réelle, pas sa copie** — La cuisine travaille sur la commande du client telle qu'elle a été passée.
-- **Aucune installation à gérer** — L'app s'installe depuis le navigateur, sans boutique d'applications ni intervention informatique.
+- **Chaque geste porte un nom** — L'appareil est authentifié une fois ; l'équipier s'identifie par un code à quatre chiffres au moment de cocher, vérifié côté serveur. Le nom, l'heure et la photo suivent la tâche.
+- **La fiche est au poste, pas au bureau** — Allergènes, compétences requises, quantités, étapes, emballage et photos de présentation : la fiche technique se consulte là où le geste se fait.
+- **Un seul référentiel de checklists** — Le magasin et l'animateur réseau lisent les mêmes listes. Ce qui est coché en cuisine est ce que le consultant voit sur sa tablette.
+- **Les commandes du comptoir en un endroit** — Les commandes à préparer pour un retrait, leur statut, qui les a acceptées et remises — et la saisie d'une nouvelle commande sans quitter l'écran.
 
-### Le menu, entrée par entrée (7)
+### Le menu, entrée par entrée (6)
 
 | Entrée | Leviers | À quoi elle sert | Le gain |
 | --- | --- | --- | --- |
-| **Production du jour**<br>`production` | L F | Ce qu'il y a à faire aujourd'hui, avec l'avancement par tâche : à faire, en cours, terminé. Le tableau de bord ouvre sur cet état, pas sur un menu. | L'équipe voit l'essentiel en déverrouillant l'écran. |
-| **Checklists de poste**<br>`checklists` | E | Les contrôles d'ouverture, de service et de fermeture cochés dans l'app, horodatés et attribués. | Ce qui a été fait est prouvable sans classeur. |
-| **Produits et recettes**<br>`fiches` | E F | La base de connaissances de la cuisine : fiche produit, recette, fiche technique. Le même contenu que celui tenu par le fournisseur, consulté au poste de travail. | Une recette nouvelle arrive au poste sans réimpression. |
-| **Commandes à produire**<br>`commandes` | L | Les commandes qui concernent la cuisine, avec leur détail. La cuisine travaille sur la commande réelle du client, pas sur une recopie. | Une erreur de recopie en moins entre le client et le four. |
-| **Clients servis**<br>`clients` | R | Qui est livré, avec quelles particularités. Utile quand une commande B2B revient chaque semaine avec ses contraintes. | Les habitudes d'un client régulier ne se redécouvrent pas. |
-| **Réclamations**<br>`reclamations` | E | Un problème constaté en production se déclare sur place, avec son motif. Il part vers le fournisseur ou le siège au lieu de rester dans un carnet. | Le défaut remonte le jour où il est vu. |
-| **Installable et hors ligne**<br>`hors-ligne` | O | L'app s'installe sur le téléphone ou la tablette de la cuisine depuis le navigateur, sans boutique d'applications ni intervention IT, et supporte les coupures réseau du magasin. | Déployer un magasin de plus ne demande aucune informatique sur place. |
+| **Tableau de bord du jour**<br>`dashboard` | L | L'ouverture : les tâches à faire et celles terminées aujourd'hui, agrégées depuis les checklists actives, avec les accès rapides vers les fiches, les listes et les commandes. | L'équipe sait en arrivant ce qui reste à faire. |
+| **Listes de contrôle**<br>`checklists` | E L | Les checklists actives du magasin pour une date : chaque tâche avec son heure prévue, son heure réelle, son état, la note et l'équipier qui l'a réalisée. Cocher ouvre la saisie du code à quatre chiffres. | Une case cochée porte un nom et une heure, pas une supposition. |
+| **Produits et fiches techniques**<br>`produits` | F E | Le catalogue des produits à la vente du magasin, avec recherche et filtre par catégorie. Chaque fiche donne le stockage, la durée de vie, le réchauffage, les allergènes, les compétences requises, la recette et ses quantités, les étapes et l'emballage. | La recette est consultée au poste, pas retenue de mémoire. |
+| **Commandes clients**<br>`commandes` | R E | Les commandes à préparer pour une date de retrait, filtrables par client : type, valeur, qui a accepté, qui a remis, statut du retrait et raison de non-retrait. | Le comptoir répond au client sans appeler personne. |
+| **Prise de commande**<br>`nouvelle-commande` | T R | La saisie d'une commande depuis la cuisine : client existant ou créé sur place, heure de retrait, articles et montants. | Une commande prise au comptoir entre dans le système tout de suite. |
+| **Réclamations fournisseur**<br>`reclamations` | F | Une réclamation sur une livraison reçue : commande d'origine, produit, motif codifié, quantité, description et photos. Le suivi montre la réponse et la compensation accordée. | Un produit non conforme se signale avec sa preuve, le jour même. |
 
 ### Ce qu'il échange avec les autres modules
 
-- reçoit de **console-franchise** : les commandes du jour et le stock
-- reçoit de **fournisseurs** : les recettes et les fiches techniques
+- reçoit de **console-franchise** : les commandes à produire dans la journée
+- reçoit de **fournisseurs** : les recettes, fiches techniques et coûts de revient
+- envoie vers **consultant** : les checklists réalisées, avec leur auteur et leur photo
 - envoie vers **livraison** : ce qui est prêt à charger
 
 ### Description longue
 
-La cuisine d'un point de vente fonctionne encore, dans la plupart des réseaux, avec des feuilles imprimées le matin et un classeur de fiches techniques que personne ne rouvre. Quand le responsable change, la moitié du tour de main part avec lui.
+Dans un magasin, la traçabilité tombe toujours sur le même écueil : personne ne se connecte. Une tablette partagée entre six personnes finit avec une session ouverte au nom de celui qui a démarré le service, et toutes les cases cochées lui sont attribuées.
 
-L'application cuisine tient sur le téléphone ou la tablette du poste. Elle ouvre sur ce qu'il y a à produire aujourd'hui, avec l'avancement par tâche — à faire, en cours, terminé — plutôt que sur un menu. Les commandes réelles des clients sont là, pas une recopie.
+Cette application prend le problème à l'envers. La tablette s'authentifie comme appareil du magasin — pas comme personne. C'est ensuite chaque équipier qui, tâche par tâche, choisit son nom et saisit son code à quatre chiffres, vérifié côté serveur. Une case cochée porte donc un nom réel, une heure réelle, et une photo quand la tâche l'exige.
 
-Les checklists d'ouverture, de service et de fermeture se cochent dans l'app, horodatées et attribuées. La différence avec la feuille plastifiée n'est pas le confort : c'est qu'un contrôle coché sans nom ni heure ne prouve rien, et qu'un réseau qui veut être transmissible doit pouvoir montrer que ses procédures sont réellement suivies.
+Les checklists sont le cœur de l'écran : les listes actives du jour, l'avancement tâche par tâche, l'heure prévue face à l'heure réelle, la note laissée par celui qui a fait le geste. Ce sont les mêmes checklists que celles vues par l'animateur réseau sur sa tablette — un seul référentiel, lu des deux côtés du comptoir.
 
-Les fiches produit et les recettes viennent du même référentiel que celui tenu par le fournisseur. Une nouvelle recette arrive au poste de travail sans réimpression, et un problème constaté en production se déclare sur place au lieu de rester dans un carnet.
+Les fiches produit accompagnent la production : catégorie, poids, stockage et température, durée de vie, temps de réchauffage, allergènes, compétences requises, recette et quantités, étapes de préparation, matériaux d'emballage, photos du produit et de sa présentation. C'est le savoir-faire du réseau, consultable là où le geste se fait.
+
+Le reste tient l'exploitation du jour : les commandes clients à préparer pour un retrait, avec leur statut et qui les a acceptées ou remises ; la saisie d'une commande au comptoir, client existant ou créé sur place ; et les réclamations matériel adressées au fournisseur, avec leur motif, leur quantité et leurs photos.
 
 ### Schéma
 
 ```mermaid
 flowchart TD
-  A[Commandes du jour] --> B[Production du jour]
-  B --> C{Avancement par tache}
-  C --> D[A faire]
-  C --> E[En cours]
-  C --> F[Termine]
-  G[Recettes et fiches techniques] --> B
-  B --> H[Checklists de poste horodatees]
-  B --> I[Reclamation declaree au poste]
+  A[Tablette du magasin] --> B[Checklists du jour]
+  B --> C[Code equipier a 4 chiffres]
+  C --> D[Tache faite avec nom heure et photo]
+  D --> E[Panel consultant]
+  A --> F[Fiches produit et recettes]
+  A --> G[Commandes a preparer]
+  G --> H[Retrait client]
+  A --> I[Reclamations fournisseur]
 ```
 
 ---
 
 ## Panel consultant
 
-`consultant` · famille **Terrain** · ordre 6 · 7 fonctions
+`consultant` · famille **Terrain** · ordre 6 · 12 fonctions
 
 **Leviers** — T Trafic · R Récurrence · E Expérience · F Food Cost · L Labour · O Overhead
 
-**Public visé** — Animateurs réseau et responsables d'exploitation
+**Public visé** — Animateurs et consultants réseau, direction du développement
 
-**Accroche** (89 car.) — L'application terrain des animateurs réseau : visites, checklists notées, comptes rendus.
+**Accroche** (84 car.) — La tablette de l'animateur réseau : l'état opérationnel de ses boutiques, en direct.
 
-**Résumé** (270 car.)
+**Résumé** (344 car.)
 
-L'animateur réseau passe sa journée en magasin, pas devant un tableur. Le panel lui donne son agenda de visites, les checklists à passer point de vente par point de vente, et de quoi noter et commenter chaque tâche vérifiée — avec le nom du vérificateur et l'horodatage.
+Un animateur réseau visite dix ou vingt magasins et doit dire, pour chacun, si les standards tiennent et où l'argent se perd. Cette application tablette lui donne les deux : les chiffres du jour boutique par boutique, et le contrôle terrain daté, signé et noté. Elle s'installe sur l'écran d'accueil et continue de servir ses pages hors réseau.
 
-**Phrase d'onboarding** — L'outil de l'animateur réseau. Il prépare sa visite, la passe checklist par checklist, et repart avec un compte rendu déjà écrit. Les 6 leviers sont l'ossature de la conversation avec le franchisé.
+**Phrase d'onboarding** — C'est l'outil de celui qui fait tenir le réseau. Il arrive en magasin en sachant déjà ce qui va bien et ce qui dérive, et il repart en ayant laissé une trace que personne ne peut contester.
 
 ### Ce que ce module fait disparaître
 
-- **Des visites sans trace exploitable** — Un compte rendu rédigé de mémoire trois jours après la visite perd l'essentiel. Ce qui n'est pas noté sur place n'existe pas.
-- **« Vérifié » par personne** — Un contrôle sans nom ni horodatage ne prouve rien. Le jour où il faut démontrer qu'un standard est appliqué, il n'y a rien à montrer.
-- **La discussion tourne au ressenti** — Sans objectifs ni tendance sous les yeux, l'échange avec le franchisé se joue sur des impressions et se rejoue à chaque visite.
+- **L'animateur arrive sans les chiffres** — Sans données à jour, la visite se passe en discussion d'impressions. Le franchisé raconte son mois, l'animateur le croit ou non, et personne ne peut trancher sur autre chose que le ton de la conversation.
+- **Le compte rendu s’écrit le soir, de mémoire** — Rédigé après coup, il perd le détail et gagne l'interprétation. Ce qui remonte au siège est un récit, pas un relevé — et deux animateurs ne racontent pas de la même façon.
+- **« Vérifié » ne prouve rien** — Une checklist cochée sans nom ni horodatage ne démontre rien, ni au franchisé qui conteste, ni au repreneur qui audite. Le réseau ne peut pas prouver que ses standards existent ailleurs que dans son discours.
+- **Deux animateurs passent la même semaine** — Sans agenda partagé par boutique, les visites se chevauchent ou s'oublient. Le franchisé voit deux personnes en trois jours, puis plus rien pendant un trimestre.
 
 ### Ce qu'il apporte
 
-- **Le contrôle devient une preuve** — Chaque tâche vérifiée porte une note, un commentaire, un nom et une heure.
-- **Zéro ressaisie après la visite** — Le compte rendu se construit à partir de ce qui a été relevé sur place, et se valide côté propriétaire.
-- **Une conversation appuyée sur des chiffres** — Objectifs, tendance et leviers sur le même écran que la checklist.
-- **La mémoire du magasin se conserve** — Ce qui restait ouvert à la visite précédente est retrouvé à la suivante, quel que soit l'animateur.
+- **La visite commence sur des faits** — Chiffre d'affaires du jour, panier moyen, compte de résultat, comparatif avec l'an dernier : l'animateur ouvre la conversation sur des chiffres que le franchisé voit aussi.
+- **Chaque contrôle porte un nom et une heure** — L'avis de l'animateur sur chaque tâche est noté, commenté, attribué et daté. Une validation par le propriétaire peut être exigée — le droit se règle en base, pas dans le code.
+- **Le réseau se lit par six leviers** — Trafic, Récurrence, Expérience, Food Cost, Labour, Overhead : chaque boutique se situe par rapport à la moyenne du réseau, avec un statut clair et un comparatif entre magasins.
+- **L'agenda est commun à tout le réseau** — Chaque boutique a son agenda, tous animateurs confondus. Une visite se prépare avec les actions par levier et se partage au franchisé — sauf si elle est surprise.
+- **Elle tient dans une tablette, même sans réseau** — Installable sur l'écran d'accueil, en plein écran, avec un service worker qui sert les pages déjà consultées quand la connexion lâche en réserve ou en cave.
 
-### Le menu, entrée par entrée (7)
+### Le menu, entrée par entrée (12)
 
 | Entrée | Leviers | À quoi elle sert | Le gain |
 | --- | --- | --- | --- |
-| **Agenda des visites**<br>`agenda` | O | Les visites planifiées par point de vente, préparées avant de partir et retrouvées sur place. L'animateur sait ce qu'il va voir et ce qu'il a laissé ouvert la dernière fois. | Rien ne se perd entre deux passages. |
-| **Checklists de visite notées**<br>`checklists` | E | Chaque tâche du magasin est vérifiée, notée et commentée, et la revue porte le nom de son auteur et son horodatage. | Le contrôle devient démontrable, pas déclaratif. |
-| **Objectifs, tendances et leviers**<br>`objectifs` | T R | Les cibles par indicateur et par magasin, la tendance sur la période, et les leviers identifiés pour la corriger. | La discussion avec le franchisé porte sur des chiffres. |
-| **Réclamations matériel**<br>`reclamations` | O | Ce qui est cassé ou manquant se déclare pendant la visite, sur plusieurs magasins d'un coup quand le même problème revient dans le réseau. | Un défaut de série se traite en une fois. |
-| **Comptes rendus de visite**<br>`rapports` | L | Le compte rendu se construit à partir de ce qui a été vérifié sur place, et se valide côté propriétaire. | Personne ne retape la visite le soir. |
-| **Notes de terrain**<br>`notes` | E | Les remarques prises au passage, rattachées au magasin et retrouvées à la visite suivante — plutôt qu'un carnet qui reste dans la voiture. | La mémoire du magasin survit au changement d'animateur. |
-| **Installable et plein écran**<br>`kiosque` | O | L'app s'installe depuis le navigateur et s'ouvre sans barre d'adresse. Sur un écran fixe en magasin, elle se lance en mode kiosque. | Un poste de plus se met en service en quelques minutes. |
+| **Aperçu du jour**<br>`dashboard` | T O | L'écran d'ouverture : chiffre d'affaires du jour, tâches faites, checklists, alertes à traiter, et l'état en direct de chaque boutique — CA, clients, panier moyen, résultat. | L'animateur sait où porter son attention avant de démarrer sa tournée. |
+| **Boutiques et compte de résultat**<br>`shops` | O F | Les magasins classés par chiffre d'affaires du mois, chacun dépliable sur son compte de résultat au jour, à la semaine ou au mois, un comparatif avec l'année précédente et un croisement catégories × magasins. | L'écart entre deux boutiques se voit sans exporter un seul tableur. |
+| **HEXm — les six leviers**<br>`sixl` | T R E F L O | Un levier par ligne, trois indicateurs chacun, comparés à la moyenne du réseau avec un statut clair. Un comparateur magasins × leviers termine l'écran. | Le réseau se lit toujours dans la même grille, d'une boutique à l'autre. |
+| **Agenda des visites**<br>`agenda` | E O | Le calendrier des visites du consultant, et pour chaque boutique un agenda partagé entre tous les animateurs. Une visite se prépare avec ses actions par levier et les résultats du mois écoulé. | Plus deux passages la même semaine, ni trois mois sans personne. |
+| **Checklists notées**<br>`checklists` | E | Les boutiques classées sur la réalisation des tâches du jour — faites, en attente, échouées, obligatoires, tendance sur sept jours. Chaque tâche reçoit l'avis noté et commenté de l'animateur, avec son nom et l'heure. | Le contrôle devient démontrable, pas déclaratif. |
+| **Objectifs du franchisé**<br>`targets` | T R | Les trois objectifs mensuels — B2B, clients en magasin contre l'an dernier, panier moyen — avec un verdict en couleur et le graphique comparatif au toucher. Les seuils s'encodent par boutique et par mois. | Le franchisé sait où il en est sans attendre la réunion. |
+| **Tendances sur douze mois**<br>`trends` | T | Le chiffre d'affaires consolidé du réseau sur douze mois, en cumulé ou en mensuel, avec l'année précédente et les objectifs en regard. | La saisonnalité se discute sur une courbe, pas sur un souvenir. |
+| **Notes de terrain**<br>`notes` | E | Des notes rattachées à une boutique ou à une personne, avec leur catégorie, jusqu'à quatre photos et un fil de commentaires. | Ce qui se remarque en visite ne se perd plus entre deux passages. |
+| **Comptes rendus PDF**<br>`rapports` | O | Un rapport hebdomadaire ou mensuel, sur une boutique ou sur tout le réseau, mis en page pour l'impression : chiffres, santé, points d'attention, campagnes, demandes en cours. | Le compte rendu part le jour même, dans la même forme pour tous. |
+| **Demandes et tickets**<br>`helpdesk` | E O | Les tickets du helpdesk assignés aux zones de l'animateur, filtrables par statut, avec pièces jointes, réponse, changement de statut et affectation d'un rendez-vous. | Une demande de magasin ne se perd plus dans une boîte mail. |
+| **Tâches du consultant**<br>`tasks` | L | Les tâches assignées au poste de l'animateur, avec le détail de chacune, les sous-tâches à cocher et la clôture par note et photo. | Ce qui est demandé à l'animateur se suit comme le reste. |
+| **Réclamations matériel**<br>`claims` | F O | Les réclamations fournisseur d'une boutique ou de tout le réseau, avec leur motif, leur statut et leurs photos consultables. | Un défaut récurrent devient visible avant de coûter cher. |
 
 ### Ce qu'il échange avec les autres modules
 
-- envoie vers **console-marque** : les visites notées et les leviers à travailler
+- envoie vers **console-marque** : les comptes rendus de visite et les écarts constatés
 - reçoit de **console-franchise** : les chiffres du magasin visité
+- reçoit de **cuisine** : les checklists réalisées en magasin, avec leur photo et leur auteur
+- reçoit de **recrutement** : le nouveau franchisé à accompagner sur ses premières visites
 
 ### Description longue
 
-L'animation réseau est le métier qui décide si une enseigne tient ses standards. C'est aussi celui qui se pratique le plus souvent sans outil : un carnet dans la voiture, un tableur le soir, et un compte rendu rédigé de mémoire trois jours plus tard.
+L'animation d'un réseau se joue entre deux visites. Entre les deux, le siège ne sait rien : les chiffres remontent en fin de mois, les comptes rendus s'écrivent le soir de mémoire, et l'écart entre deux points de vente se creuse sans que rien ne le signale.
 
-Le panel consultant met la visite au centre. L'agenda liste les points de vente à voir, avec ce qui avait été laissé ouvert la fois précédente. Sur place, les checklists se passent tâche par tâche : chacune est vérifiée, notée et commentée, et la revue porte le nom de son auteur et son horodatage.
+Cette application renverse l'ordre. L'animateur ouvre sa tablette et voit d'abord l'état du jour : le chiffre d'affaires de chaque boutique, le nombre de tickets, le panier moyen, le résultat. Puis il descend d'un cran — le compte de résultat de la boutique, le comparatif avec l'année précédente, la lecture par les six leviers de gestion. La visite commence donc sur des faits, pas sur une impression.
 
-Ce détail est l'essentiel du module. « Vérifié » sans savoir par qui ni quand ne vaut rien — ni pour corriger, ni pour prouver, ni pour transmettre. Un réseau dont les contrôles sont datés et signés peut démontrer à un repreneur que ses standards existent ailleurs que dans le discours.
+Sur place, le contrôle laisse une trace. Les checklists du magasin sont notées et commentées par l'animateur, avec son nom et l'heure ; une validation par le propriétaire peut être exigée, et ce droit est un paramètre en base, pas une règle écrite dans le code. Les notes de terrain se prennent par boutique ou par personne, avec jusqu'à quatre photos. Le compte rendu de visite se génère en PDF, hebdomadaire ou mensuel, sur une boutique ou sur tout le réseau.
 
-Les objectifs par indicateur, la tendance sur la période et les leviers identifiés sont sur le même écran : la conversation avec le franchisé s'appuie sur ces trois vues plutôt que sur une impression. Le compte rendu se construit à partir de ce qui a été réellement vérifié sur place, et se valide côté propriétaire. Personne ne retape la visite le soir.
+L'agenda des visites est partagé : chaque boutique a le sien, tous animateurs confondus, ce qui évite deux passages la même semaine. Une visite se prépare avec les actions à travailler par levier et les résultats du mois écoulé sous les yeux, et elle peut être partagée au franchisé — sauf si c'est une visite surprise.
+
+Le reste suit la même logique de terrain : les tickets du helpdesk assignés à ses zones, ses propres tâches, les réclamations matériel avec leurs photos, et les objectifs mensuels de chaque franchisé avec leur verdict en couleur. L'application est une PWA : elle s'installe, passe en plein écran, et son service worker sert les pages déjà vues quand le réseau lâche.
 
 ### Schéma
 
 ```mermaid
 flowchart TD
-  A[Agenda des visites] --> B[Preparation avant depart]
-  B --> C[Visite en magasin]
-  C --> D[Checklist notee et commentee]
-  D --> E[Nom du verificateur et horodatage]
-  C --> F[Objectifs tendances leviers]
-  D --> G[Compte rendu]
-  F --> G
-  G --> H[Validation cote proprietaire]
+  A[Tablette animateur] --> B[Etat du jour par boutique]
+  B --> C[Compte de resultat et comparatif]
+  B --> D[Lecture par les 6 leviers]
+  A --> E[Agenda partage des visites]
+  E --> F[Visite preparee par levier]
+  F --> G[Checklists notees et signees]
+  G --> H[Compte rendu PDF]
+  H --> I[Siege]
+  A --> J[Tickets helpdesk et reclamations]
+  J --> I
 ```
 
 ---
@@ -1031,9 +1046,9 @@ flowchart TD
 | Problèmes par module | 3 à 4 |
 | Bénéfices par module | 4 à 5 |
 | Accroche (caractères) | 60 à 94 |
-| Résumé (caractères) | 232 à 320 |
+| Résumé (caractères) | 232 à 344 |
 | Description (caractères) | 617 à 1834 |
 | Nom de fonction (caractères) | 9 à 33 |
-| Description de fonction (caractères) | 65 à 220 |
+| Description de fonction (caractères) | 65 à 251 |
 
 Le cas de test d'une maquette : **Recrutement de franchisés** et ses 22 entrées de menu, à côté de **Facturation** qui en a 5. Les deux dans la même mise en page.
