@@ -79,27 +79,22 @@ jobs:
             exit 1
           fi
 
-          # On ne contrôle que les variables encore présentes dans le gabarit :
-          # un .env hérité d'une version précédente peut contenir des clés
-          # abandonnées, sans que cela empêche la pile de démarrer.
-          restants=''
+          # Seules ces variables sont indispensables au démarrage. Les autres
+          # (ACME_EMAIL, CACHE_TTL_MS, clés d'ingestion) ont une valeur par
+          # défaut dans le compose ou ne servent qu'au pipeline.
           absentes=''
-          for cle in \$(grep -E '^[A-Z_]+=' .env.example | cut -d= -f1); do
-            ligne=\$(grep -E "^\$cle=" infra/.env | head -n 1 || true)
-            if [ -z "\$ligne" ]; then
-              absentes="\$absentes \$cle"
-            elif printf '%s' "\$ligne" | grep -q 'change-moi'; then
-              restants="\$restants \$cle"
-            fi
+          for cle in DB_CLIENT DB_HOST DB_PORT DB_LOGIN DB_NAME DB_PASS SITE_DOMAIN; do
+            grep -qE "^\$cle=." infra/.env || absentes="\$absentes \$cle"
           done
-
           if [ -n "\$absentes" ]; then
-            echo "Variables absentes de \$DEPLOY_PATH/infra/.env :\$absentes" >&2
-            echo "Le gabarit a évolué. Repartir de zéro : cp .env.example infra/.env puis le remplir." >&2
+            echo "Variables absentes ou vides dans \$DEPLOY_PATH/infra/.env :\$absentes" >&2
             exit 1
           fi
+
+          # Un « change-moi » oublié empêcherait la connexion à la base.
+          restants=\$(grep -E '^[A-Z_]+=.*change-moi' infra/.env | cut -d= -f1 | tr '\n' ' ')
           if [ -n "\$restants" ]; then
-            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env :\$restants" >&2
+            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env : \$restants" >&2
             exit 1
           fi
 
