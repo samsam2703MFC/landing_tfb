@@ -226,18 +226,23 @@ export function Differentiators({ payload }: { payload: LandingPayload }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <span className="fb-eyebrow">{t('diff.eyebrow')}</span>
           <h2 style={{ font: 'var(--type-heading-1)' }}>{t('diff.title')}</h2>
-          <blockquote style={{ margin: 0, marginTop: 'var(--space-4)', padding: 'var(--space-5)', borderRadius: 'var(--radius-panel)', background: 'var(--surface-brand-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.5 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>{t('quote.text')}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flex: 'none', borderRadius: 'var(--radius-circle)', background: 'var(--plum-500)', color: '#fff', font: 'var(--weight-semibold) var(--text-sm)/1 var(--font-sans)' }}>
-                {t('quote.initials')}
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ font: 'var(--weight-medium) var(--text-base)/1.3 var(--font-sans)' }}>{t('quote.author')}</span>
-                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>{t('quote.role')}</span>
+          {/* Une citation ne s'affiche que si quelqu'un l'a réellement prononcée :
+              vider `quote.text` dans tfb_translations retire le bloc. Un témoignage
+              d'attente sur une page commerciale se lit comme un vrai témoignage. */}
+          {payload.strings['quote.text'] && (
+            <blockquote style={{ margin: 0, marginTop: 'var(--space-4)', padding: 'var(--space-5)', borderRadius: 'var(--radius-panel)', background: 'var(--surface-brand-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.5 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>{t('quote.text')}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flex: 'none', borderRadius: 'var(--radius-circle)', background: 'var(--plum-500)', color: '#fff', font: 'var(--weight-semibold) var(--text-sm)/1 var(--font-sans)' }}>
+                  {t('quote.initials')}
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ font: 'var(--weight-medium) var(--text-base)/1.3 var(--font-sans)' }}>{t('quote.author')}</span>
+                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>{t('quote.role')}</span>
+                </div>
               </div>
-            </div>
-          </blockquote>
+            </blockquote>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           {items.map((it) => (

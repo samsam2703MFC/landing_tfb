@@ -27,7 +27,9 @@ export const LANGUAGES = [
 /** tfb_sections — the order the landing renders in. */
 export const SECTIONS = [
   { key: 'hero', type: 'hero', sortOrder: 1, isActive: true },
-  { key: 'brands', type: 'logo-strip', sortOrder: 2, isActive: true },
+  // Désactivée tant qu'aucune référence client n'est autorisée à être citée.
+  // Une bande de logos vide vaut mieux qu'une bande de logos inventés.
+  { key: 'brands', type: 'logo-strip', sortOrder: 2, isActive: false },
   { key: 'modules', type: 'module-grid', sortOrder: 3, isActive: true },
   { key: 'steps', type: 'steps', sortOrder: 4, isActive: true },
   { key: 'diff', type: 'feature-grid', sortOrder: 5, isActive: true },
@@ -36,38 +38,50 @@ export const SECTIONS = [
   { key: 'contact', type: 'form', sortOrder: 8, isActive: true },
 ];
 
-/** tfb_brands — no logo_path files were supplied; the strip renders name chips. */
-export const BRANDS = [
-  { slug: 'belleville', name: 'Belleville Bistro', sortOrder: 1 },
-  { slug: 'kebab-house', name: 'Kebab House', sortOrder: 2 },
-  { slug: 'sushi-loop', name: 'Sushi Loop', sortOrder: 3 },
-  { slug: 'cafe-nord', name: 'Café Nord', sortOrder: 4 },
-  { slug: 'pasta-bar', name: 'Pasta Bar', sortOrder: 5 },
-  { slug: 'green-bowl', name: 'Green Bowl', sortOrder: 6 },
-];
+/**
+ * tfb_brands — vide, et c'est délibéré.
+ *
+ * La maquette listait six enseignes (Belleville Bistro, Kebab House, Sushi Loop,
+ * Café Nord, Pasta Bar, Green Bowl) : aucune n'est cliente, toutes étaient
+ * inventées. Un faux logo client sur une page commerciale n'est pas un
+ * placeholder, c'est une affirmation fausse.
+ *
+ * Ajoutez les vraies références par le back-office, une fois leur accord obtenu,
+ * puis réactivez la section `brands`.
+ */
+export const BRANDS: { slug: string; name: string; sortOrder: number }[] = [];
 
 /**
- * tfb_modules. One icon per module (readme ICONOGRAPHY):
- * shop → shopping-cart, invoicing → receipt, offers → percent, scan → qr-code,
- * marketing → megaphone, ceobot → bot, pwa → smartphone, consultant → clipboard-check.
- * `shots` is how many placeholder screenshot rows to create.
+ * tfb_modules — vide, et c'est le point.
+ *
+ * La maquette posait sept modules (shop, invoicing, offers, scan, marketing,
+ * ceobot, pwa) dont aucun n'existait : ni dépôt, ni écran, ni ligne de code. Les
+ * modules réels viennent maintenant des dépôts eux-mêmes, chacun publiant sa
+ * fiche `.tfb/module.json` que `npm run sync:modules` charge en base.
+ *
+ * Conséquence assumée : après `npm run seed`, la grille des modules est vide.
+ * Elle se remplit à la première sync — voir README, « Rester à jour ».
  */
-export const MODULES = [
-  { key: 'shop', slug: 'shop', icon: 'shopping-cart', moduleGroup: 'Ventes', repo: 'tfb/shop', isNew: false, sortOrder: 1, shots: 3 },
-  { key: 'invoicing', slug: 'invoicing', icon: 'receipt', moduleGroup: 'Finance', repo: 'tfb/invoicing', isNew: false, sortOrder: 2, shots: 2 },
-  { key: 'offers', slug: 'offers', icon: 'percent', moduleGroup: 'Marketing', repo: 'tfb/offers', isNew: false, sortOrder: 3, shots: 2 },
-  { key: 'scan', slug: 'scan', icon: 'qr-code', moduleGroup: 'Logistique', repo: 'tfb/scan', isNew: true, sortOrder: 4, shots: 3 },
-  { key: 'marketing', slug: 'marketing', icon: 'megaphone', moduleGroup: 'Marketing', repo: 'tfb/marketing', isNew: false, sortOrder: 5, shots: 2 },
-  { key: 'ceobot', slug: 'ceobot', icon: 'bot', moduleGroup: 'Assistance', repo: 'tfb/ceobot', isNew: true, sortOrder: 6, shots: 2 },
-  { key: 'pwa', slug: 'pwa', icon: 'smartphone', moduleGroup: 'Terrain', repo: 'tfb/pwa-shell', isNew: true, sortOrder: 7, shots: 2 },
-  { key: 'consultant', slug: 'consultant', icon: 'clipboard-check', moduleGroup: 'Terrain', repo: 'samsam2703MFC/pwa_consultant', isNew: true, sortOrder: 8, shots: 3 },
-];
+export const MODULES: {
+  key: string; slug: string; icon: string; moduleGroup: string;
+  repo: string; isNew: boolean; sortOrder: number; shots: number;
+}[] = [];
 
-/** tfb_plans. `amount` in cents; NULL = sur devis. */
+/**
+ * tfb_plans. `amount` est en centimes ; NULL affiche « Sur devis ».
+ *
+ * Les trois montants de la maquette (89 € et 149 € par point de vente) n'ont
+ * jamais été validés commercialement : ils sont donc à NULL. Les trois paliers
+ * s'affichent « Sur devis » et renvoient au formulaire de contact, ce qui est
+ * vrai, plutôt qu'un prix inventé, qui ne l'est pas.
+ *
+ * Renseignez les montants ici, ou dans le back-office (Tarifs), quand ils sont
+ * arrêtés — et le `stripe_price_id` correspondant pour activer le paiement.
+ */
 export const PLANS = [
-  { key: 'starter', amount: 8900, currency: 'EUR', interval: 'month', isFeatured: false, stripePriceId: null, sortOrder: 1 },
-  { key: 'pro', amount: 14900, currency: 'EUR', interval: 'month', isFeatured: true, stripePriceId: null, sortOrder: 2 },
-  { key: 'enterprise', amount: null, currency: 'EUR', interval: 'year', isFeatured: false, stripePriceId: null, sortOrder: 3 },
+  { key: 'starter', amount: null as number | null, currency: 'EUR', interval: 'month', isFeatured: false, stripePriceId: null, sortOrder: 1 },
+  { key: 'pro', amount: null as number | null, currency: 'EUR', interval: 'month', isFeatured: true, stripePriceId: null, sortOrder: 2 },
+  { key: 'enterprise', amount: null as number | null, currency: 'EUR', interval: 'year', isFeatured: false, stripePriceId: null, sortOrder: 3 },
 ];
 
 /**
@@ -78,13 +92,13 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
   fr: {
     'nav.modules': 'Modules', 'nav.pricing': 'Tarifs', 'nav.contact': 'Contact', 'nav.signin': 'Connexion',
     'cta.demo': 'Demander une démo', 'cta.start': 'Commencer',
-    'hero.eyebrow': 'ERP tout-en-un · Restauration & retail',
-    'hero.title': 'Pilotez tout votre réseau depuis un seul écran.',
-    'hero.subtitle': 'Shop, facturation, offres, scan, marketing, chatbot et PWA : des modules connectés, une seule base de données, aucun problème de gestion de cash.',
-    'hero.proof1': 'Mise en route en 3 semaines', 'hero.proof2': '8 langues, arabe inclus',
-    'brands.title': 'Des réseaux qui gèrent leurs points de vente avec TFB',
-    'modules.eyebrow': 'Modules', 'modules.title': 'Un module par métier, connectés entre eux',
-    'modules.lead': 'Chaque module est publié automatiquement dès qu’il sort des dépôts. Vous voyez les écrans réels, pas des promesses.',
+    'hero.eyebrow': 'ERP modulaire · Réseaux de franchise et chaînes de magasins',
+    'hero.title': 'Un module par métier. Une seule base pour tout le réseau.',
+    'hero.subtitle': 'Webshop, console marque, console franchisé, tournées de livraison, régie d’affichage, cuisine, fournisseur, panel consultant : huit modules qui se parlent, sur la même donnée.',
+    'hero.proof1': 'Des écrans réels, pas des maquettes', 'hero.proof2': '8 langues, arabe en miroir',
+    'brands.title': 'Ils pilotent leur réseau avec ces modules',
+    'modules.eyebrow': 'Modules', 'modules.title': 'Huit modules, un par métier du réseau',
+    'modules.lead': 'Chaque module publie sa fiche depuis son propre dépôt. Ce que vous lisez ici décrit ce qui tourne — captures comprises, pas une intention.',
     'modules.link': 'Découvrir le module', 'modules.new': 'Nouveau',
     'modules.all': 'Tous les modules', 'modules.count': 'modules', 'modules.newcount': 'nouveaux',
     'detail.back': 'Tous les modules', 'detail.connected': 'Modules connectés', 'detail.gain': 'Gain constaté',
@@ -94,28 +108,25 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
     'group.logistique': 'Logistique', 'group.assistance': 'Assistance', 'group.terrain': 'Terrain',
     'group.pilotage': 'Pilotage',
     'shot.alt': 'Capture du module',
-    'mock.brand': 'TFB Admin · Belleville Bistro', 'mock.stores': '64 PDV',
+    'mock.brand': 'TFB Admin · jeu de démonstration', 'mock.stores': '64 PDV',
     'mock.collected': 'Encaissé (juil.)', 'mock.licenses': 'Abonnements', 'mock.vsjune': 'vs. juin',
     'mock.thismonth': 'ce mois', 'mock.active': 'Actif',
     'mock.collected.value': '418 k€', 'mock.collected.delta': '+6,4%',
     'mock.licenses.value': '128', 'mock.licenses.delta': '+6',
-    'steps.eyebrow': 'Comment ça marche', 'steps.title': 'Quatre étapes, pas quatre trimestres',
-    'steps.1t': 'Connectez vos points de vente', 'steps.1d': 'Import des enseignes, des magasins et des utilisateurs. Une seule source de vérité.',
-    'steps.2t': 'Activez les modules utiles', 'steps.2d': 'Shop, facturation, scan, marketing : vous activez ce que vous utilisez, rien de plus.',
-    'steps.3t': 'Pilotez depuis le tableau de bord', 'steps.3d': 'Chiffre d’affaires, encaissements, stocks et alertes, consolidés par enseigne.',
-    'steps.4t': 'Encaissez sans souci de cash', 'steps.4d': 'Paiements et abonnements suivis automatiquement. Plus de rapprochement manuel.',
-    'diff.eyebrow': 'Points différenciants', 'diff.title': 'Ce que les tableurs ne feront jamais',
-    'diff.1t': 'Zéro problème de gestion de cash', 'diff.1d': 'Encaissements, factures et abonnements réconciliés en continu.',
-    'diff.2t': 'Multi-enseignes natif', 'diff.2d': 'Une enseigne, dix enseignes, un master-franchisé : même base, mêmes droits.',
-    'diff.3t': '8 langues, arabe en RTL', 'diff.3d': 'Toutes les chaînes viennent de la base, jamais du code. Mise en page miroir en arabe.',
-    'diff.4t': 'Modules connectés', 'diff.4d': 'Le scan alimente le stock, le stock alimente le shop, le shop alimente la facturation.',
+    'steps.eyebrow': 'Comment ça marche', 'steps.title': 'De la reprise de vos données à la première commande',
+    'steps.1t': 'Cadrage du réseau', 'steps.1d': 'Vos enseignes, vos magasins, qui a le droit de quoi. Le siège décide, le point de vente exécute.',
+    'steps.2t': 'Reprise de vos données', 'steps.2d': 'Catalogue, tarifs, clients professionnels, zones de livraison : importés, pas ressaisis.',
+    'steps.3t': 'Activation des modules utiles', 'steps.3d': 'Vous n’activez que ce que vous utilisez. Un module de plus s’ajoute sans toucher aux autres.',
+    'steps.4t': 'Mise en service auprès des équipes', 'steps.4d': 'Les applications terrain s’installent depuis un navigateur, sans boutique d’applications ni intervention informatique.',
+    'diff.eyebrow': 'Points différenciants', 'diff.title': 'Ce qu’un tableur partagé ne fera jamais',
+    'diff.1t': 'Multi-enseignes natif', 'diff.1d': 'Une base, des droits par enseigne et par magasin. Le siège voit tout, chaque franchisé voit le sien.',
+    'diff.2t': 'Modules connectés', 'diff.2d': 'Le catalogue du siège alimente le webshop, le webshop alimente la préparation, la préparation alimente la tournée. Aucune ressaisie entre deux étapes.',
+    'diff.3t': '8 langues, arabe en miroir', 'diff.3d': 'Toutes les chaînes viennent de la base, jamais du code. En arabe, la mise en page est entièrement mirroitée.',
+    'diff.4t': 'Le terrain sans installation', 'diff.4d': 'Chauffeurs, cuisine, animateurs réseau : des applications installables depuis le navigateur, qui continuent de fonctionner hors ligne.',
     'pricing.eyebrow': 'Tarifs', 'pricing.title': 'Par point de vente, pas par utilisateur',
-    'pricing.lead': 'Invitez toute l’équipe : franchisés, managers, responsables réseau. Vous payez les magasins, la seule ligne que vous budgétez déjà.',
+    'pricing.lead': 'Un tarif par point de vente, pas par utilisateur : invitez les franchisés, les managers et les équipes sans compter les sièges.',
     'pricing.recommended': 'Recommandé', 'pricing.month': '/ mois par point de vente', 'pricing.custom': 'Sur devis',
     'plan.cta': 'Choisir ce plan', 'plan.cta.custom': 'Parler à un expert',
-    'quote.text': '« Six enseignes, quatre pays, une seule base. On a arrêté de se demander où étaient les chiffres. »',
-    'quote.author': 'Naïma Bouchard', 'quote.initials': 'NB',
-    'quote.role': 'Directrice réseau, Belleville Bistro — 64 points de vente',
     'contact.eyebrow': 'Contact', 'contact.title': 'Parlons de votre réseau',
     'contact.lead': 'Décrivez votre organisation actuelle. Nous revenons vers vous sous un jour ouvré, avec une démo adaptée à vos enseignes.',
     'contact.name': 'Nom', 'contact.email': 'E-mail professionnel', 'contact.company': 'Société', 'contact.message': 'Message',
@@ -135,13 +146,13 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
   en: {
     'nav.modules': 'Modules', 'nav.pricing': 'Pricing', 'nav.contact': 'Contact', 'nav.signin': 'Sign in',
     'cta.demo': 'Book a demo', 'cta.start': 'Get started',
-    'hero.eyebrow': 'All-in-one ERP · Food & retail',
-    'hero.title': 'Run your whole network from one screen.',
-    'hero.subtitle': 'Shop, invoicing, offers, scan, marketing, chatbot and PWA: connected modules, one database, no cash management problem.',
-    'hero.proof1': 'Live in 3 weeks', 'hero.proof2': '8 languages, Arabic included',
-    'brands.title': 'Networks running their stores on TFB',
-    'modules.eyebrow': 'Modules', 'modules.title': 'One module per job, wired together',
-    'modules.lead': 'Every module is published the moment it ships from the repos. You see the real screens, not promises.',
+    'hero.eyebrow': 'Modular ERP · Franchise networks and store chains',
+    'hero.title': 'One module per job. One database for the whole network.',
+    'hero.subtitle': 'Webshop, brand console, franchisee console, delivery tours, digital signage, kitchen, supplier, consultant panel: eight modules that talk to each other, on the same data.',
+    'hero.proof1': 'Real screens, not mockups', 'hero.proof2': '8 languages, Arabic mirrored',
+    'brands.title': 'Networks running on these modules',
+    'modules.eyebrow': 'Modules', 'modules.title': 'Eight modules, one per job in the network',
+    'modules.lead': 'Every module publishes its own fiche from its own repository. What you read here describes what runs — screenshots included, not an intention.',
     'modules.link': 'Explore the module', 'modules.new': 'New',
     'modules.all': 'All modules', 'modules.count': 'modules', 'modules.newcount': 'new',
     'detail.back': 'All modules', 'detail.connected': 'Connected modules', 'detail.gain': 'Measured gain',
@@ -151,26 +162,23 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
     'group.logistique': 'Logistics', 'group.assistance': 'Support', 'group.terrain': 'Field',
     'group.pilotage': 'Steering',
     'shot.alt': 'Module screenshot',
-    'mock.brand': 'TFB Admin · Belleville Bistro', 'mock.stores': '64 stores',
+    'mock.brand': 'TFB Admin · demo dataset', 'mock.stores': '64 stores',
     'mock.collected': 'Collected (Jul)', 'mock.licenses': 'Subscriptions', 'mock.vsjune': 'vs. June',
     'mock.thismonth': 'this month', 'mock.active': 'Active',
-    'steps.eyebrow': 'How it works', 'steps.title': 'Four steps, not four quarters',
-    'steps.1t': 'Connect your stores', 'steps.1d': 'Import brands, stores and users. One source of truth.',
-    'steps.2t': 'Switch on the modules you need', 'steps.2d': 'Shop, invoicing, scan, marketing — enable what you use, nothing else.',
-    'steps.3t': 'Run it from the dashboard', 'steps.3d': 'Revenue, collections, stock and alerts, consolidated per brand.',
-    'steps.4t': 'Get paid without the cash chase', 'steps.4d': 'Payments and subscriptions tracked automatically. No manual reconciliation.',
-    'diff.eyebrow': 'Why TFB', 'diff.title': 'What spreadsheets will never do',
-    'diff.1t': 'No cash management problem', 'diff.1d': 'Collections, invoices and subscriptions reconciled continuously.',
-    'diff.2t': 'Multi-brand by default', 'diff.2d': 'One brand, ten brands, a master franchisee — same database, same permissions.',
-    'diff.3t': '8 languages, Arabic in RTL', 'diff.3d': 'Every string comes from the database, never the code. Fully mirrored layout in Arabic.',
-    'diff.4t': 'Connected modules', 'diff.4d': 'Scan feeds stock, stock feeds the shop, the shop feeds invoicing.',
+    'steps.eyebrow': 'How it works', 'steps.title': 'From your existing data to the first order',
+    'steps.1t': 'Scoping the network', 'steps.1d': 'Your brands, your stores, who may do what. Head office decides, the store executes.',
+    'steps.2t': 'Bringing your data over', 'steps.2d': 'Catalogue, prices, business customers, delivery areas: imported, not retyped.',
+    'steps.3t': 'Turning on the modules you need', 'steps.3d': 'You enable only what you use. One more module drops in without touching the others.',
+    'steps.4t': 'Getting the teams on it', 'steps.4d': 'Field apps install straight from a browser — no app store, no IT visit.',
+    'diff.eyebrow': 'Why TFB', 'diff.title': 'What a shared spreadsheet will never do',
+    'diff.1t': 'Multi-brand by design', 'diff.1d': 'One database, rights per brand and per store. Head office sees everything, each franchisee sees their own.',
+    'diff.2t': 'Connected modules', 'diff.2d': 'Head office\'s catalogue feeds the webshop, the webshop feeds preparation, preparation feeds the delivery tour. Nothing is retyped between two steps.',
+    'diff.3t': '8 languages, Arabic mirrored', 'diff.3d': 'Every string comes from the database, never from the code. In Arabic the whole layout mirrors.',
+    'diff.4t': 'The field, with nothing to install', 'diff.4d': 'Drivers, kitchen, network consultants: apps installed from the browser that keep working offline.',
     'pricing.eyebrow': 'Pricing', 'pricing.title': 'Per store, not per seat',
-    'pricing.lead': 'Invite the whole team: franchisees, managers, network leads. You pay for stores — the number you already budget by.',
+    'pricing.lead': 'Priced per store, not per user: invite the franchisees, the managers and the teams without counting seats.',
     'pricing.recommended': 'Recommended', 'pricing.month': '/ month per store', 'pricing.custom': 'Custom',
     'plan.cta': 'Choose this plan', 'plan.cta.custom': 'Talk to an expert',
-    'quote.text': '"Six brands, four countries, one database. We stopped wondering where the numbers were."',
-    'quote.author': 'Naïma Bouchard', 'quote.initials': 'NB',
-    'quote.role': 'Network Director, Belleville Bistro — 64 stores',
     'contact.eyebrow': 'Contact', 'contact.title': "Let's talk about your network",
     'contact.lead': 'Tell us how you operate today. We reply within one business day with a demo built around your brands.',
     'contact.name': 'Name', 'contact.email': 'Work email', 'contact.company': 'Company', 'contact.message': 'Message',
@@ -190,13 +198,13 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
   ar: {
     'nav.modules': 'الوحدات', 'nav.pricing': 'الأسعار', 'nav.contact': 'اتصل بنا', 'nav.signin': 'تسجيل الدخول',
     'cta.demo': 'اطلب عرضًا توضيحيًا', 'cta.start': 'ابدأ الآن',
-    'hero.eyebrow': 'نظام ERP متكامل · المطاعم والتجزئة',
-    'hero.title': 'أدر شبكتك بالكامل من شاشة واحدة.',
-    'hero.subtitle': 'المتجر، الفواتير، العروض، المسح، التسويق، المساعد الذكي وتطبيق PWA: وحدات مترابطة، قاعدة بيانات واحدة، ولا مشكلة في إدارة النقد.',
-    'hero.proof1': 'التشغيل في ثلاثة أسابيع', 'hero.proof2': 'ثماني لغات، بينها العربية',
-    'brands.title': 'شبكات تدير فروعها عبر TFB',
-    'modules.eyebrow': 'الوحدات', 'modules.title': 'وحدة لكل مهمة، مترابطة بالكامل',
-    'modules.lead': 'تُنشر كل وحدة تلقائيًا بمجرد صدورها. ترى الشاشات الحقيقية، لا الوعود.',
+    'hero.eyebrow': 'نظام معياري · شبكات الامتياز وسلاسل المتاجر',
+    'hero.title': 'وحدة لكل مهنة، وقاعدة بيانات واحدة للشبكة كلها.',
+    'hero.subtitle': 'المتجر الإلكتروني، لوحة العلامة، لوحة صاحب الامتياز، جولات التوصيل، شاشات العرض، المطبخ، المورّد، لوحة المستشارين: ثماني وحدات مترابطة على البيانات نفسها.',
+    'hero.proof1': 'شاشات حقيقية، لا نماذج', 'hero.proof2': 'ثماني لغات، والعربية بتخطيط معكوس',
+    'brands.title': 'شبكات تدير أعمالها بهذه الوحدات',
+    'modules.eyebrow': 'الوحدات', 'modules.title': 'ثماني وحدات، واحدة لكل مهنة في الشبكة',
+    'modules.lead': 'كل وحدة تنشر بطاقتها من مستودعها. ما تقرأه هنا يصف ما يعمل فعلًا، بالصور، لا ما ننوي عمله.',
     'modules.link': 'استكشف الوحدة', 'modules.new': 'جديد',
     'modules.all': 'كل الوحدات', 'modules.count': 'وحدات', 'modules.newcount': 'جديدة',
     'detail.back': 'كل الوحدات', 'detail.connected': 'وحدات مترابطة', 'detail.gain': 'النتيجة المقاسة',
@@ -206,26 +214,23 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
     'group.logistique': 'اللوجستيات', 'group.assistance': 'الدعم', 'group.terrain': 'الميدان',
     'group.pilotage': 'القيادة',
     'shot.alt': 'لقطة شاشة للوحدة',
-    'mock.brand': 'TFB Admin · Belleville Bistro', 'mock.stores': '64 نقطة بيع',
+    'mock.brand': 'TFB Admin · بيانات تجريبية', 'mock.stores': '64 نقطة بيع',
     'mock.collected': 'المحصّل (يوليو)', 'mock.licenses': 'الاشتراكات', 'mock.vsjune': 'مقارنة بيونيو',
     'mock.thismonth': 'هذا الشهر', 'mock.active': 'نشط',
-    'steps.eyebrow': 'كيف يعمل', 'steps.title': 'أربع خطوات، لا أربعة أرباع سنة',
-    'steps.1t': 'اربط نقاط البيع', 'steps.1d': 'استيراد العلامات والفروع والمستخدمين. مصدر واحد للحقيقة.',
-    'steps.2t': 'فعّل الوحدات التي تحتاجها', 'steps.2d': 'المتجر، الفواتير، المسح، التسويق: تفعّل ما تستخدمه فقط.',
-    'steps.3t': 'أدر كل شيء من لوحة التحكم', 'steps.3d': 'الإيرادات والتحصيل والمخزون والتنبيهات، مجمّعة لكل علامة.',
-    'steps.4t': 'حصّل أموالك دون متابعة يدوية', 'steps.4d': 'المدفوعات والاشتراكات تُتابع تلقائيًا. لا تسوية يدوية.',
-    'diff.eyebrow': 'لماذا TFB', 'diff.title': 'ما لا تفعله جداول البيانات',
-    'diff.1t': 'لا مشكلة في إدارة النقد', 'diff.1d': 'التحصيل والفواتير والاشتراكات تُسوّى باستمرار.',
-    'diff.2t': 'تعدد العلامات أصلًا', 'diff.2d': 'علامة واحدة أو عشر علامات أو امتياز رئيسي: نفس القاعدة ونفس الصلاحيات.',
-    'diff.3t': 'ثماني لغات، والعربية من اليمين إلى اليسار', 'diff.3d': 'كل النصوص من قاعدة البيانات، لا من الكود. تصميم معكوس بالكامل بالعربية.',
-    'diff.4t': 'وحدات مترابطة', 'diff.4d': 'المسح يغذّي المخزون، والمخزون يغذّي المتجر، والمتجر يغذّي الفواتير.',
+    'steps.eyebrow': 'كيف يعمل', 'steps.title': 'من بياناتك الحالية إلى أول طلب',
+    'steps.1t': 'تحديد إطار الشبكة', 'steps.1d': 'علاماتك وفروعك ومن يحق له ماذا. المقر يقرّر، والفرع ينفّذ.',
+    'steps.2t': 'نقل بياناتك', 'steps.2d': 'الكتالوج والأسعار وعملاء الشركات ومناطق التوصيل: تُستورد ولا تُعاد كتابتها.',
+    'steps.3t': 'تفعيل الوحدات المفيدة', 'steps.3d': 'تفعّل ما تستخدمه فقط. وحدة إضافية تُضاف دون المساس بالبقية.',
+    'steps.4t': 'تشغيلها مع الفرق', 'steps.4d': 'تطبيقات الميدان تُثبَّت من المتصفح مباشرة، بلا متجر تطبيقات ولا تدخل تقني.',
+    'diff.eyebrow': 'لماذا TFB', 'diff.title': 'ما لن يفعله جدول بيانات مشترك أبدًا',
+    'diff.1t': 'تعدد العلامات أصلًا', 'diff.1d': 'قاعدة واحدة وصلاحيات لكل علامة وكل فرع. المقر يرى كل شيء، وكل صاحب امتياز يرى ما يخصه.',
+    'diff.2t': 'وحدات مترابطة', 'diff.2d': 'كتالوج المقر يغذّي المتجر، والمتجر يغذّي التحضير، والتحضير يغذّي جولة التوصيل. لا إعادة إدخال بين خطوتين.',
+    'diff.3t': 'ثماني لغات، والعربية معكوسة', 'diff.3d': 'كل النصوص تأتي من قاعدة البيانات لا من الشيفرة. وبالعربية ينعكس التخطيط بالكامل.',
+    'diff.4t': 'الميدان بلا تثبيت', 'diff.4d': 'السائقون والمطبخ ومستشارو الشبكة: تطبيقات تُثبَّت من المتصفح وتستمر في العمل دون اتصال.',
     'pricing.eyebrow': 'الأسعار', 'pricing.title': 'لكل نقطة بيع، لا لكل مستخدم',
-    'pricing.lead': 'ادعُ الفريق بالكامل: أصحاب الامتياز والمديرين ومسؤولي الشبكة. تدفع مقابل الفروع فقط.',
+    'pricing.lead': 'سعر لكل نقطة بيع لا لكل مستخدم: ادعُ أصحاب الامتياز والمديرين والفرق دون حساب المقاعد.',
     'pricing.recommended': 'موصى به', 'pricing.month': '/ شهريًا لكل نقطة بيع', 'pricing.custom': 'حسب الطلب',
     'plan.cta': 'اختر هذه الخطة', 'plan.cta.custom': 'تحدث إلى خبير',
-    'quote.text': '«ست علامات، أربع دول، قاعدة واحدة. توقفنا عن البحث عن الأرقام.»',
-    'quote.author': 'نعيمة بوشارد', 'quote.initials': 'NB',
-    'quote.role': 'مديرة الشبكة، Belleville Bistro — 64 نقطة بيع',
     'contact.eyebrow': 'اتصل بنا', 'contact.title': 'لنتحدث عن شبكتك',
     'contact.lead': 'اشرح لنا طريقة عملك الحالية. نرد خلال يوم عمل واحد بعرض مخصص لعلاماتك.',
     'contact.name': 'الاسم', 'contact.email': 'البريد المهني', 'contact.company': 'الشركة', 'contact.message': 'الرسالة',
@@ -245,100 +250,55 @@ export const UI_STRINGS: Record<AuthoredLocale, Record<string, string>> = {
 };
 
 /**
- * tfb_translations, entity_type='module'. Fields: name, description, bullets
- * (pipe-joined), metric_value, metric_label.
+ * tfb_translations, entity_type='module' — vide pour la même raison que MODULES.
+ * La copie de chaque module (nom, description, explication, fonctions) vit dans
+ * le `.tfb/module.json` de son dépôt, en français et en anglais, et arrive par
+ * la sync. Le type reste exporté : le back-office et la sync s'y appuient.
  */
 type ModuleCopy = { name: string; description: string; bullets?: string[]; metric?: [string, string] };
 
 export const MODULE_STRINGS: Record<AuthoredLocale, Record<string, ModuleCopy>> = {
-  fr: {
-    shop: {
-      name: 'Shop', description: 'Boutique en ligne connectée au stock de chaque point de vente.',
-      bullets: ['Catalogue commun, prix par enseigne', 'Stock temps réel par point de vente', 'Click & collect et livraison', 'Paiement Stripe intégré'],
-      metric: ['+18%', 'de panier moyen'],
-    },
-    invoicing: {
-      name: 'Facturation', description: 'Factures, avoirs et relances générés depuis les ventes réelles.',
-      bullets: ['Facturation depuis les ventes réelles', 'Avoirs et relances automatiques', 'TVA multi-pays (FR, BE, NL, PL)', 'Export comptable mensuel'],
-      metric: ['3,4 j', 'de délai de paiement'],
-    },
-    offers: {
-      name: 'Offres & promos', description: 'Campagnes de remises par enseigne, par magasin ou par produit.',
-      bullets: ['Remises par enseigne, magasin ou produit', 'Planification par créneau horaire', 'Coupons à usage unique', 'Suivi de marge en direct'],
-      metric: ['-2,1 pt', 'de perte sur promo'],
-    },
-    scan: {
-      name: 'Scan', description: 'Réceptions et inventaires au QR code, depuis un téléphone.',
-      bullets: ['Réception fournisseur au QR code', 'Inventaire tournant depuis un téléphone', 'Écarts remontés au responsable réseau', 'Fonctionne hors ligne'],
-      metric: ['12 min', 'par inventaire'],
-    },
-    marketing: {
-      name: 'Marketing', description: 'E-mails, SMS et cartes de fidélité pilotés depuis la base clients.',
-      bullets: ['E-mails et SMS segmentés', 'Cartes de fidélité dématérialisées', 'Campagnes par zone de chalandise', 'Attribution au point de vente'],
-      metric: ['24%', "d'ouverture moyenne"],
-    },
-    ceobot: {
-      name: 'CEObot', description: 'Assistant conversationnel qui répond sur vos chiffres, pas sur le web.',
-      bullets: ['Répond sur vos chiffres, pas sur le web', 'Requêtes en langage naturel', 'Alertes proactives sur les écarts', 'Historique consultable et exportable'],
-      metric: ['8 s', 'pour un rapport'],
-    },
-    pwa: {
-      name: 'App PWA', description: 'Application installable pour les équipes en magasin, hors ligne comprise.',
-      bullets: ['Installable sur les téléphones des équipes', 'Mode hors ligne avec synchronisation', 'Notifications de service', 'Aucune boutique d’applications'],
-      metric: ['0', 'installation IT'],
-    },
-    consultant: {
-      name: 'Panel consultant', description: 'L’application terrain des animateurs réseau : visites, checklists et comptes rendus.',
-      bullets: ['Agenda des visites par point de vente', 'Checklists de visite notées et commentées', 'Objectifs, tendances et leviers par magasin', 'Réclamations et rapports remontés depuis le terrain'],
-      metric: ['0', 'ressaisie après la visite'],
-    },
-  },
-  en: {
-    shop: { name: 'Shop', description: 'Online store wired to each location’s live stock.' },
-    invoicing: { name: 'Invoicing', description: 'Invoices, credit notes and dunning generated from real sales.' },
-    offers: { name: 'Offers & promos', description: 'Discount campaigns per brand, per store or per product.' },
-    scan: { name: 'Scan', description: 'QR-code deliveries and stock counts from a phone.' },
-    marketing: { name: 'Marketing', description: 'Email, SMS and loyalty cards driven by the customer database.' },
-    ceobot: { name: 'CEObot', description: 'Conversational assistant that answers on your numbers, not the web.' },
-    pwa: { name: 'PWA app', description: 'Installable app for store teams, offline included.' },
-    consultant: { name: 'Consultant panel', description: 'Field app for network consultants: visits, checklists and reports.' },
-  },
-  ar: {
-    shop: { name: 'المتجر', description: 'متجر إلكتروني مرتبط بمخزون كل نقطة بيع.' },
-    invoicing: { name: 'الفواتير', description: 'فواتير وإشعارات دائنة ومطالبات تُنشأ من المبيعات الفعلية.' },
-    offers: { name: 'العروض والتخفيضات', description: 'حملات خصم لكل علامة أو فرع أو منتج.' },
-    scan: { name: 'المسح', description: 'استلام البضائع وجرد المخزون عبر رمز QR من الهاتف.' },
-    marketing: { name: 'التسويق', description: 'بريد ورسائل نصية وبطاقات ولاء من قاعدة العملاء.' },
-    ceobot: { name: 'CEObot', description: 'مساعد محادثة يجيب من أرقامك، لا من الإنترنت.' },
-    pwa: { name: 'تطبيق PWA', description: 'تطبيق قابل للتثبيت لفرق الفروع، يعمل دون اتصال.' },
-    consultant: { name: 'لوحة المستشارين', description: 'تطبيق ميداني لمستشاري الشبكة: الزيارات وقوائم المهام والتقارير.' },
-  },
+  fr: {}, en: {}, ar: {},
 };
 
-/** tfb_translations, entity_type='plan'. Fields: name, description, features. */
+/**
+ * tfb_translations, entity_type='plan'. Champs : name, description, features.
+ *
+ * `features` est vide partout : les listes de la maquette annonçaient un
+ * découpage par palier (« Shop et facturation » en Starter, « tous les modules »
+ * en Pro) qui n'a jamais été arrêté commercialement, et citait des modules qui
+ * n'existent pas. Un palier annonce donc pour qui il est, et rien de plus, tant
+ * que l'offre n'est pas fixée. Renseignez-les dans le back-office (Tarifs).
+ */
 type PlanCopy = { name: string; description: string; features: string[] };
 
 export const PLAN_STRINGS: Record<AuthoredLocale, Record<string, PlanCopy>> = {
   fr: {
-    starter: { name: 'Starter', description: 'Pour un réseau de moins de 10 points de vente.', features: ['Shop et facturation', 'Tableau de bord consolidé', '2 langues', 'Support e-mail'] },
-    pro: { name: 'Pro', description: 'Pour les réseaux multi-enseignes en croissance.', features: ['Tous les modules', 'Multi-enseignes', '8 langues, arabe RTL', 'Paiements Stripe', 'Support prioritaire'] },
-    enterprise: { name: 'Enterprise', description: 'Pour les master-franchisés et les réseaux 500+.', features: ['Tout Pro', 'SSO et journal d’audit', 'Structures de prix sur mesure', 'Chef de projet dédié'] },
+    starter: { name: 'Starter', description: 'Pour un réseau de moins de 10 points de vente.', features: [] },
+    pro: { name: 'Pro', description: 'Pour les réseaux multi-enseignes en croissance.', features: [] },
+    enterprise: { name: 'Enterprise', description: 'Pour les master-franchisés et les réseaux 500+.', features: [] },
   },
   en: {
-    starter: { name: 'Starter', description: 'For networks under 10 stores.', features: ['Shop and invoicing', 'Consolidated dashboard', '2 languages', 'Email support'] },
-    pro: { name: 'Pro', description: 'For growing multi-brand networks.', features: ['All modules', 'Multi-brand', '8 languages, Arabic RTL', 'Stripe payments', 'Priority support'] },
-    enterprise: { name: 'Enterprise', description: 'For master franchisees and 500+ store networks.', features: ['Everything in Pro', 'SSO and audit log', 'Custom price structures', 'Named project lead'] },
+    starter: { name: 'Starter', description: 'For networks under 10 stores.', features: [] },
+    pro: { name: 'Pro', description: 'For growing multi-brand networks.', features: [] },
+    enterprise: { name: 'Enterprise', description: 'For master franchisees and 500+ store networks.', features: [] },
   },
   ar: {
-    starter: { name: 'Starter', description: 'لشبكة أقل من عشر نقاط بيع.', features: ['المتجر والفواتير', 'لوحة تحكم مجمّعة', 'لغتان', 'دعم بالبريد'] },
-    pro: { name: 'Pro', description: 'للشبكات متعددة العلامات في مرحلة النمو.', features: ['كل الوحدات', 'تعدد العلامات', 'ثماني لغات مع العربية', 'مدفوعات Stripe', 'دعم بأولوية'] },
-    enterprise: { name: 'Enterprise', description: 'للامتياز الرئيسي والشبكات الكبيرة.', features: ['كل مزايا Pro', 'الدخول الموحد وسجل التدقيق', 'هياكل أسعار مخصصة', 'مدير مشروع مخصص'] },
+    starter: { name: 'Starter', description: 'لشبكة أقل من عشر نقاط بيع.', features: [] },
+    pro: { name: 'Pro', description: 'للشبكات متعددة العلامات في مرحلة النمو.', features: [] },
+    enterprise: { name: 'Enterprise', description: 'للامتياز الرئيسي والشبكات الكبيرة.', features: [] },
   },
 };
 
-/** Seed inbox — the three messages the back-office kit demonstrates. */
+/**
+ * Boîte de réception de démonstration, pour que l'écran « Messages » du
+ * back-office ne soit pas vide à la première ouverture. Ce sont des exemples
+ * assumés : ni ces personnes ni ces sociétés n'existent, et les adresses sont en
+ * `example.com`, réservé à cet usage. Supprimez-les dès les premiers vrais
+ * messages.
+ */
 export const CONTACT_MESSAGES = [
-  { name: 'Naïma Bouchard', email: 'n.bouchard@belleville.fr', company: 'Belleville Bistro', languageCode: 'fr', status: 'new', message: 'Nous ouvrons 12 points de vente en Belgique en 2027. Peut-on voir le module Scan en démo ?' },
-  { name: 'Piotr Zieliński', email: 'p.zielinski@greenbowl.pl', company: 'Green Bowl', languageCode: 'pl', status: 'new', message: 'Czy moduł fakturowania obsługuje polskie faktury VAT?' },
-  { name: 'Omar Haddad', email: 'o.haddad@kebabhouse.be', company: 'Kebab House', languageCode: 'ar', status: 'read', message: 'هل يمكن تشغيل الواجهة بالعربية لفرق الفروع؟' },
+  { name: 'Exemple — direction réseau', email: 'demo-1@example.com', company: 'Enseigne de démonstration', languageCode: 'fr', status: 'new', message: 'Message d’exemple : nous ouvrons douze points de vente l’an prochain, peut-on voir la console marque et les tournées de livraison en démo ?' },
+  { name: 'Exemple — franchisé', email: 'demo-2@example.com', company: 'Point de vente de démonstration', languageCode: 'fr', status: 'new', message: 'Message d’exemple : est-ce que la console franchisé gère les clients professionnels et les créneaux de livraison ?' },
+  { name: 'Exemple — message lu', email: 'demo-3@example.com', company: 'Enseigne de démonstration', languageCode: 'en', status: 'read', message: 'Sample message: can the kitchen app and the signage run in a store with an unreliable connection?' },
 ];
