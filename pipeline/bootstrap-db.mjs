@@ -43,6 +43,8 @@ function modele(pg) {
         ['repo', t.chaine(255)],
         ['ref', t.chaine(120)],
         ['groupe', t.chaine(120)],
+        // L'icône du module dans le catalogue et le graphe de flux.
+        ['icone', t.chaine(60)],
         ['ordre', 'INT DEFAULT 100'],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['nom', t.chaine(255)],

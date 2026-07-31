@@ -1,0 +1,276 @@
+---
+/**
+ * Le graphe des flux entre modules — « comment l'information circule ».
+ *
+ * Remplace le schéma Mermaid : celui-ci était rendu par une bibliothèque
+ * chargée depuis un CDN, dont on ne maîtrisait ni la taille ni le style.
+ * Ici tout est calculé sur le serveur et rendu en SVG.
+ *
+ * Les positions ne sont pas écrites à la main : le module le plus relié va au
+ * centre, les autres se répartissent sur une ellipse. Un dixième module
+ * trouvera donc sa place tout seul.
+ *
+ * Sans JavaScript, le graphe reste lisible — tous les nœuds sont nommés et
+ * toutes les liaisons tracées. Le script n'ajoute que la mise en avant au
+ * survol et la légende du module choisi.
+ */
+import Icone from './Icone.astro';
+
+const { modules = [] } = Astro.props;
+
+const L = 1000; // repère interne du SVG ; l'affichage s'adapte par viewBox
+const H = 560;
+
+/**
+ * Les flux, ramenés au sens réel.
+ *
+ * Un lien est déclaré par un module mais porte son propre sens : « je reçois
+ * de X » décrit un flux qui part de X. On normalise donc source et cible ici,
+ * une fois pour toutes — sans quoi la moitié des flèches pointerait à l'envers.
+ *
+ * Les deux modules d'une paire décrivent souvent le même échange avec des mots
+ * différents ; on ne garde que la formulation la plus précise.
+ */
+const parFlux = new Map();
+for (const m of modules) {
+  for (const lien of m.liens || []) {
+    if (!modules.some((x) => x.slug === lien.slug)) continue; // module masqué
+    const recu = lien.sens === 'recoit';
+    const de = recu ? lien.slug : m.slug;
+    const vers = recu ? m.slug : lien.slug;
+    const cle = `${de}→${vers}`;
+    const quoi = lien.quoi || '';
+    const connu = parFlux.get(cle);
+    if (!connu || quoi.length > connu.quoi.length) parFlux.set(cle, { de, vers, quoi });
+  }
+}
+const flux = [...parFlux.values()];
+
+/** Combien de liaisons touchent chaque module ? Le plus relié fait le moyeu. */
+const degre = new Map(modules.map((m) => [m.slug, 0]));
+for (const f of flux) {
+  degre.set(f.de, (degre.get(f.de) || 0) + 1);
+  degre.set(f.vers, (degre.get(f.vers) || 0) + 1);
+}
+const moyeu = [...degre.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+/** Le moyeu au centre, les autres sur une ellipse, dans l'ordre du catalogue. */
+const autour = modules.filter((m) => m.slug !== moyeu);
+const positions = new Map();
+if (moyeu) positions.set(moyeu, { x: L / 2, y: H / 2, moyeu: true });
+autour.forEach((m, i) => {
+  // On démarre en haut et on tourne : l'œil suit l'ordre des modules.
+  const angle = (i / autour.length) * Math.PI * 2 - Math.PI / 2;
+  positions.set(m.slug, {
+    x: L / 2 + Math.cos(angle) * (L * 0.37),
+    y: H / 2 + Math.sin(angle) * (H * 0.36),
+    moyeu: false,
+  });
+});
+
+/** Une courbe légèrement bombée entre deux points, pour éviter l'entrelacs. */
+function courbe(a, b) {
+  const mx = (a.x + b.x) / 2;
+  const my = (a.y + b.y) / 2;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const long = Math.hypot(dx, dy) || 1;
+  const cx = mx - (dy / long) * 34;
+  const cy = my + (dx / long) * 34;
+  return `M ${a.x.toFixed(1)} ${a.y.toFixed(1)} Q ${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
+}
+
+/** Un trait par paire de modules, quel que soit le nombre d'échanges. */
+const paires = new Map();
+for (const f of flux) {
+  const cle = [f.de, f.vers].sort().join('|');
+  if (!paires.has(cle)) {
+    const [a, b] = cle.split('|');
+    paires.set(cle, { cle, a, b, d: courbe(positions.get(a), positions.get(b)) });
+  }
+}
+const traits = [...paires.values()];
+
+const noeuds = modules.map((m) => ({
+  slug: m.slug,
+  nom: m.nom || m.slug,
+  icone: m.icone || m.fonctions?.[0]?.icone || 'layers',
+  ...positions.get(m.slug),
+  // Les slugs reliés, pour la mise en avant côté navigateur.
+  relies: [...new Set(flux.filter((f) => f.de === m.slug || f.vers === m.slug).map((f) => (f.de === m.slug ? f.vers : f.de)))],
+}));
+
+/** Ce qu'un module envoie et reçoit, pour la légende sous le graphe. */
+const legendes = modules.map((m) => ({
+  slug: m.slug,
+  nom: m.nom || m.slug,
+  echanges: flux
+    .filter((f) => f.de === m.slug || f.vers === m.slug)
+    .map((f) => {
+      const sortant = f.de === m.slug;
+      const autre = modules.find((x) => x.slug === (sortant ? f.vers : f.de));
+      return { sortant, nom: autre?.nom || (sortant ? f.vers : f.de), quoi: f.quoi };
+    }),
+}));
+
+const depart = moyeu || modules[0]?.slug;
+---
+
+<div class="reseau" data-reseau>
+  <svg class="reseau__toile" viewBox={`0 0 ${L} ${H}`} role="img" aria-label="Les échanges entre modules">
+    <g class="reseau__traits">
+      {traits.map((t) => (
+        <path d={t.d} data-trait={t.cle} data-a={t.a} data-b={t.b} />
+      ))}
+    </g>
+  </svg>
+
+  <div class="reseau__noeuds">
+    {noeuds.map((n) => (
+      <button
+        type="button"
+        class="noeud"
+        class:list={[{ 'noeud--moyeu': n.moyeu }]}
+        data-noeud={n.slug}
+        data-relies={n.relies.join(' ')}
+        aria-pressed={n.slug === depart ? 'true' : 'false'}
+        style={`inset-inline-start:${((n.x / L) * 100).toFixed(2)}%;inset-block-start:${((n.y / H) * 100).toFixed(2)}%`}
+      >
+        <Icone nom={n.icone} taille={n.moyeu ? 16 : 14} />
+        <span>{n.nom}</span>
+      </button>
+    ))}
+  </div>
+</div>
+
+<div class="reseau__legendes">
+  {legendes.map((l) => (
+    <div class="reseau__legende" data-legende={l.slug} hidden={l.slug !== depart}>
+      <p class="reseau__titre">
+        <strong>{l.nom}</strong>
+        <span>{l.echanges.length} échange(s)</span>
+      </p>
+      <ul>
+        {l.echanges.map((e) => (
+          <li>
+            <span class={e.sortant ? 'reseau__sens reseau__sens--sort' : 'reseau__sens reseau__sens--entre'}>
+              {e.sortant ? 'envoie vers' : 'reçoit de'} {e.nom}
+            </span>
+            <span class="reseau__quoi">{e.quoi}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  ))}
+</div>
+
+<style is:global>
+  .reseau {
+    position: relative;
+    aspect-ratio: 1000 / 560;
+    inline-size: 100%;
+    border-radius: var(--radius-panel);
+    background:
+      radial-gradient(60rem 30rem at 20% 0%, rgba(123, 68, 136, 0.3), transparent 62%),
+      radial-gradient(48rem 26rem at 92% 100%, rgba(21, 158, 150, 0.2), transparent 58%),
+      var(--navy-900);
+    overflow: hidden;
+  }
+  .reseau__toile { position: absolute; inset: 0; inline-size: 100%; block-size: 100%; }
+  .reseau__traits path {
+    fill: none;
+    stroke: rgba(255, 255, 255, 0.16);
+    stroke-width: 1.4;
+    transition: stroke .2s var(--ease-standard), stroke-width .2s var(--ease-standard);
+  }
+  .reseau__traits path.est-vif { stroke: var(--teal-300); stroke-width: 2.2; }
+
+  .reseau__noeuds { position: absolute; inset: 0; }
+  .noeud {
+    position: absolute;
+    transform: translate(-50%, -50%);
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 8px 12px;
+    border-radius: var(--radius-control);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    background: rgba(12, 19, 41, 0.55);
+    backdrop-filter: blur(3px);
+    color: #fff;
+    font: 500 12.5px/1.2 var(--font-sans);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all .2s var(--ease-standard);
+  }
+  /* Le repère logique suit l'écriture : en arabe l'ellipse se lit en miroir. */
+  [dir='rtl'] .noeud { transform: translate(50%, -50%); }
+  .noeud--moyeu { padding: 10px 14px; font-weight: var(--weight-semibold); font-size: 13.5px; }
+  .noeud:hover { border-color: var(--plum-300); }
+  .noeud[aria-pressed='true'] {
+    border-color: var(--plum-300);
+    background: rgba(123, 68, 136, 0.55);
+    box-shadow: 0 0 0 4px rgba(123, 68, 136, 0.22);
+  }
+  .noeud.est-pale { opacity: .5; color: rgba(255, 255, 255, 0.42); }
+
+  .reseau__legendes { margin-block-start: 20px; }
+  .reseau__titre {
+    display: flex; align-items: baseline; gap: 12px; margin: 0 0 10px;
+    font: 400 var(--text-sm) / 1.4 var(--font-sans); color: rgba(255, 255, 255, 0.68);
+  }
+  .reseau__titre strong { font: 600 var(--text-md) / 1.3 var(--font-display); color: #fff; }
+  .reseau__legende ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+  .reseau__legende li {
+    display: grid; grid-template-columns: minmax(11rem, auto) 1fr; gap: 14px;
+    padding-block: 8px;
+    border-block-start: 1px solid rgba(255, 255, 255, 0.1);
+    font: 400 13.5px/1.5 var(--font-sans);
+  }
+  .reseau__sens { font-weight: var(--weight-medium); }
+  .reseau__sens--sort { color: var(--plum-300); }
+  .reseau__sens--entre { color: var(--teal-300); }
+  .reseau__quoi { color: rgba(255, 255, 255, 0.68); }
+
+  @media (max-width: 780px) {
+    .reseau { aspect-ratio: 1 / 1.15; }
+    .noeud { font-size: 11px; padding: 6px 9px; }
+    .noeud span { display: none; }
+    .noeud--moyeu span { display: inline; }
+    .reseau__legende li { grid-template-columns: 1fr; gap: 2px; }
+  }
+</style>
+
+<script is:inline>
+  (function () {
+    var boite = document.querySelector('[data-reseau]');
+    if (!boite) return;
+    var noeuds = Array.prototype.slice.call(boite.querySelectorAll('[data-noeud]'));
+    var traits = Array.prototype.slice.call(boite.querySelectorAll('[data-trait]'));
+    var legendes = Array.prototype.slice.call(document.querySelectorAll('[data-legende]'));
+
+    function montrer(slug) {
+      var relies = {};
+      noeuds.forEach(function (n) {
+        if (n.dataset.noeud !== slug) return;
+        (n.dataset.relies || '').split(' ').forEach(function (s) { if (s) relies[s] = true; });
+      });
+      noeuds.forEach(function (n) {
+        var moi = n.dataset.noeud === slug;
+        n.setAttribute('aria-pressed', moi ? 'true' : 'false');
+        n.classList.toggle('est-pale', !moi && !relies[n.dataset.noeud]);
+      });
+      traits.forEach(function (t) {
+        t.classList.toggle('est-vif', t.dataset.a === slug || t.dataset.b === slug);
+      });
+      legendes.forEach(function (l) { l.hidden = l.dataset.legende !== slug; });
+    }
+
+    noeuds.forEach(function (n) {
+      n.addEventListener('click', function () { montrer(n.dataset.noeud); });
+      n.addEventListener('mouseenter', function () { montrer(n.dataset.noeud); });
+      n.addEventListener('focus', function () { montrer(n.dataset.noeud); });
+    });
+
+    var depart = boite.querySelector('[aria-pressed="true"]');
+    if (depart) montrer(depart.dataset.noeud);
+  })();
+</script>

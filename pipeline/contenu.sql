@@ -9,11 +9,11 @@ DELETE FROM landing_fonctions;
 DELETE FROM landing_modules;
 
 -- ── Webshop (webshop)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'webshop', 'samsam2703MFC/WebShop', 'main', 'Vente', 1, '1',
+  'webshop', 'samsam2703MFC/WebShop', 'main', 'Vente', 'shopping-cart', 1, '1',
   'Webshop',
   'La boutique en ligne du réseau, déclinée par point de vente.',
   'Le client commande sur le site de son magasin, pas sur un site générique : catalogue, prix, jours d''ouverture et créneaux sont ceux de ce point de vente. La disponibilité est vérifiée avant le paiement, et la commande atterrit directement dans la console du franchisé.',
@@ -79,11 +79,11 @@ SELECT id, 'langues', 'Quatre langues',
 FROM landing_modules WHERE slug = 'webshop';
 
 -- ── Console marque (console-marque)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'console-marque', 'samsam2703MFC/back_office_ws_franchisor', 'main', 'Pilotage', 2, '1',
+  'console-marque', 'samsam2703MFC/back_office_ws_franchisor', 'main', 'Pilotage', 'layout-dashboard', 2, '1',
   'Console marque',
   'L''écran du franchiseur : ce que le réseau vend, et ce qu''il a fait.',
   'Le back office du siège. Il décide ce que le réseau vend — catalogue, formules, prix, promotions — et voit ce que le réseau a fait : chiffre consolidé, boutique par boutique, zone par zone. Les droits sont posés par rôle, avec un journal d''audit derrière.',
@@ -156,11 +156,11 @@ SELECT id, 'prospects', 'Prospects',
 FROM landing_modules WHERE slug = 'console-marque';
 
 -- ── Console franchisé (console-franchise)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'console-franchise', 'samsam2703MFC/back_office_ws_franchisee', 'main', 'Pilotage', 3, '1',
+  'console-franchise', 'samsam2703MFC/back_office_ws_franchisee', 'main', 'Pilotage', 'store', 3, '1',
   'Console franchisé',
   'La journée du point de vente : préparation, livraison, stock, clients.',
   'Le pendant magasin de la console marque. Le franchisé y voit sa journée — ce qu''il faut préparer, ce qui part en tournée, ce qui manque — et gère ce qui lui appartient : clients professionnels, créneaux, frais de livraison, promotions locales.',
@@ -232,11 +232,11 @@ SELECT id, 'rentabilite', 'Rentabilité',
 FROM landing_modules WHERE slug = 'console-franchise';
 
 -- ── Fournisseur (fournisseurs)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'fournisseurs', 'samsam2703MFC/supplier_atl', 'main', 'Approvisionnement', 4, '1',
+  'fournisseurs', 'samsam2703MFC/supplier_atl', 'main', 'Approvisionnement', 'building-2', 4, '1',
   'Fournisseur',
   'L''atelier de production : matières, recettes, coût de revient et commandes du réseau.',
   'Le module que fait tourner l''atelier qui produit pour le réseau. Il tient la chaîne complète : matières premières, recettes et fiches techniques, coût de revient, puis catalogue et liste de prix négociée client par client. Les commandes des points de vente arrivent dedans, la logistique les expédie.',
@@ -308,11 +308,11 @@ SELECT id, 'analytics', 'Analyse des ventes',
 FROM landing_modules WHERE slug = 'fournisseurs';
 
 -- ── Cuisine (cuisine)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'cuisine', 'samsam2703MFC/pwa_kitchen', 'main', 'Terrain', 5, '1',
+  'cuisine', 'samsam2703MFC/pwa_kitchen', 'main', 'Terrain', 'chef-hat', 5, '1',
   'Cuisine',
   'L''application du plan de travail : production du jour, checklists, fiches techniques.',
   'Une application installable, tenue à une main derrière le plan de travail. Elle dit à l''équipe ce qu''il faut produire aujourd''hui, dans quel ordre, avec les fiches produit et les recettes à portée. Les checklists remplacent les feuilles plastifiées.',
@@ -379,11 +379,11 @@ SELECT id, 'hors-ligne', 'Installable et hors ligne',
 FROM landing_modules WHERE slug = 'cuisine';
 
 -- ── Panel consultant (consultant)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'consultant', 'samsam2703MFC/pwa_consultant', 'main', 'Terrain', 6, '1',
+  'consultant', 'samsam2703MFC/pwa_consultant', 'main', 'Terrain', 'clipboard-check', 6, '1',
   'Panel consultant',
   'L''application terrain des animateurs réseau : visites, checklists notées, comptes rendus.',
   'L''animateur réseau passe sa journée en magasin, pas devant un tableur. Le panel lui donne son agenda de visites, les checklists à passer point de vente par point de vente, et de quoi noter et commenter chaque tâche vérifiée — avec le nom du vérificateur et l''horodatage.',
@@ -450,11 +450,11 @@ SELECT id, 'kiosque', 'Installable et plein écran',
 FROM landing_modules WHERE slug = 'consultant';
 
 -- ── Tournées de livraison (livraison)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'livraison', 'samsam2703MFC/pwa_delivery', 'main', 'Approvisionnement', 7, '1',
+  'livraison', 'samsam2703MFC/pwa_delivery', 'main', 'Approvisionnement', 'truck', 7, '1',
   'Tournées de livraison',
   'L''application tablette du chauffeur : chargement vérifié, tournée guidée, preuve de livraison.',
   'Une tablette partagée au dépôt, une session liée à la tournée du jour. Le chauffeur vérifie son chargement au scan, suit un ordre de passage qui ne bouge plus, et repart de chaque point avec une preuve datée. Tout fonctionne hors ligne.',
@@ -518,11 +518,11 @@ SELECT id, 'contrat', 'Salarié ou sous-traitant',
 FROM landing_modules WHERE slug = 'livraison';
 
 -- ── Régie d'affichage (affichage)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'affichage', 'samsam2703MFC/signage', 'main', 'Vente', 8, '1',
+  'affichage', 'samsam2703MFC/signage', 'main', 'Vente', 'monitor', 8, '1',
   'Régie d''affichage',
   'Les écrans du magasin pilotés depuis un seul back office, jusqu''au player.',
   'Un magasin affiche des prix, des promos et des menus sur ses écrans. La régie remplace le montage vidéo et la clé USB : on construit un film à partir de la base produits, on le planifie par période, on le pousse sur les écrans du réseau, et chaque écran remonte son état.',
@@ -584,11 +584,11 @@ SELECT id, 'film', 'Visionneuse publique',
 FROM landing_modules WHERE slug = 'affichage';
 
 -- ── Recrutement de franchisés (recrutement)
-INSERT INTO landing_modules (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,
+INSERT INTO landing_modules (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,
   description, public_cible, problemes, benefices, stack, mots_cles, mermaid,
   leviers, liens, onboarding, modele_ia)
 VALUES (
-  'recrutement', 'samsam2703MFC/atelier-espace-candidat', 'main', 'Développement', 9, '1',
+  'recrutement', 'samsam2703MFC/atelier-espace-candidat', 'main', 'Développement', 'handshake', 9, '1',
   'Recrutement de franchisés',
   'Du premier clic sur l''annonce à la signature, un seul dossier suivi.',
   'Recruter un franchisé prend six à dix-huit mois et passe par une trentaine d''échanges. Ce module tient les quatre faces de ce parcours au même endroit : la page publique qui capte les candidatures, le CRM qui suit les étapes, l''espace où le candidat avance seul, et la vue du propriétaire qui dit ce que tout cela coûte.',

@@ -28,6 +28,7 @@ export const CHAMPS_MODULE = [
   { nom: 'resume', libelle: 'Résumé', type: 'zone', lignes: 4 },
   { nom: 'public_cible', libelle: 'Public visé', type: 'ligne' },
   { nom: 'groupe', libelle: 'Famille', type: 'ligne', aide: 'Sert à regrouper les modules sur la page d’accueil.' },
+  { nom: 'icone', libelle: 'Icône', type: 'ligne', aide: 'Nom du jeu TFB : shopping-cart, store, truck, handshake, chef-hat…' },
   { nom: 'onboarding', libelle: 'Phrase d’onboarding', type: 'zone', lignes: 3, aide: "Ce que le nouveau client lit quand il clique sur ce module dans le fil." },
   { nom: 'description', libelle: 'Description longue', type: 'zone', lignes: 14, aide: 'Markdown accepté. Un paragraphe par idée.' },
   { nom: 'mermaid', libelle: 'Schéma Mermaid', type: 'code', lignes: 10, aide: 'Rendu dans le navigateur. Sans accents dans les libellés de nœuds.' },

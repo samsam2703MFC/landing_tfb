@@ -1,132 +1,217 @@
 ---
 /**
- * Page d'accueil : problèmes du franchiseur d'abord, réponses ensuite,
- * puis l'inventaire des modules. Tout vient de la base, rien n'est écrit ici.
+ * Page d'accueil, d'après la maquette Claude Design.
+ *
+ * L'ordre du discours est celui décidé avec le client : ses problèmes
+ * d'abord, nos réponses ensuite, puis seulement l'outil. Tout le contenu
+ * vient des tables `landing_*` — rien n'est écrit en dur ici.
  */
 import Layout from '../components/Layout.astro';
-import { chargerCaptures, chargerModules, chargerSite, grouperModules } from '../lib/db.mjs';
+import Icone from '../components/Icone.astro';
+import Pastille from '../components/Pastille.astro';
+import Reseau from '../components/Reseau.astro';
+import { chargerCaptures, chargerParcours, chargerSite } from '../lib/db.mjs';
+import { LEVIERS, leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
 const [site, modules, captures] = await Promise.all([
   chargerSite(),
-  chargerModules(),
-  // Une par module d'abord : la galerie montre la largeur du catalogue.
+  // Le parcours complet : on a besoin des fonctions pour l'icône et le compte.
+  chargerParcours(),
   chargerCaptures(8),
 ]);
-const groupes = grouperModules(modules);
 
-// Valeurs de repli si le pipeline n'a pas encore tourné.
-const titre = site?.titre || 'La valeur de votre réseau, c\'est sa capacité à être transmis';
+const titre = site?.titre || "La valeur d'un réseau, c'est sa capacité à être transmis";
 const sousTitre =
-  site?.sous_titre ||
-  'Un ERP qui met le savoir-faire dans l\'outil, et non dans la tête de quelques personnes.';
-const paragraphes = (site?.accroche || '').split('\n').filter((p) => p.trim().length > 0);
+  site?.sous_titre || "Un ERP qui met le savoir-faire dans l'outil plutôt que dans la tête de quelques personnes.";
 const problemes = site?.problemes || [];
 const reponses = site?.reponses || [];
 const ctaTexte = site?.cta_texte || 'Demander une démonstration';
-const ctaUrl = site?.cta_url || '#contact';
 
-// Adresse de contact déduite du domaine, lue à l'exécution (pas au build).
-const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`;
+const familles = [...new Set(modules.map((m) => m.groupe).filter(Boolean))];
+
+/** Une icône par réponse, prise dans l'ordre — purement décoratif. */
+const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 'triangle-alert', 'chart-line'];
 ---
 
-<Layout titre={titre} description={site?.meta_description} modules={modules}>
-  <!-- Accroche -->
-  <section class="section" style="border-top: 0;">
-    <div class="contenant">
-      <div style="max-width: 62ch;">
-        <h1>{titre}</h1>
-        <p style="font-size: 1.2rem; color: var(--encre-douce);">{sousTitre}</p>
-        {paragraphes.map((paragraphe) => <p>{paragraphe}</p>)}
-        <p style="margin-top: 28px;">
-          <a class="bouton" href={ctaUrl.startsWith("#") ? lien("/" + ctaUrl) : ctaUrl}>{ctaTexte}</a>
-          {modules.length > 0 && (
-            <a class="bouton bouton--fantome" href={lien("/#modules")} style="margin-left: 10px;">
-              Voir les {modules.length} modules
-            </a>
-          )}
-        </p>
+<Layout
+  description={site?.meta_description || sousTitre}
+  large={true}
+  actif="accueil"
+>
+  <!-- ── L'accroche ──────────────────────────────────────────────────── -->
+  <section class="hero">
+    <div class="dedans hero__dedans" data-monte>
+      <span class="oeil oeil--clair">ERP pour réseaux de franchise</span>
+      <h1 class="h-geant hero__titre">{titre}</h1>
+      <p class="chapo chapo--clair hero__chapo">{sousTitre}</p>
+      <div class="hero__actions">
+        <a class="bouton bouton--chaud bouton--lg" href={lien('/#contact')}>
+          {ctaTexte}
+          <Icone nom="arrow-right" taille={16} classe="icone--miroir" />
+        </a>
+        <a class="bouton bouton--inverse bouton--lg" href={lien('/#modules')}>Parcourir les modules</a>
       </div>
     </div>
   </section>
 
-  <!-- Les problèmes, avant toute solution -->
-  {problemes.length > 0 && (
-    <section class="section section--teinte" id="problemes">
-      <div class="contenant">
-        <div class="section__chapeau">
-          <p class="section__oeil">Ce que vit un franchiseur</p>
-          <h2>Le réseau grandit, le contrôle s'éloigne</h2>
+  <!-- ── Ses problèmes, puis nos réponses ────────────────────────────── -->
+  <section class="bande bande--serree">
+    <div class="dedans plis">
+      {problemes.length > 0 && (
+        <details class="pli" open>
+          <summary class="pli__tete">
+            <span class="pli__intitule">
+              <span class="oeil">Vos problèmes d'abord</span>
+              <span class="h-bloc">Ce qu'un franchiseur ne voit pas lui coûte le plus</span>
+            </span>
+            <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
+          </summary>
+          <div class="pli__corps">
+            {problemes.map((p) => (
+              <article class="carte carte--probleme">
+                <h3 class="h-carte">{p.titre}</h3>
+                <p class="texte">{p.texte}</p>
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {reponses.length > 0 && (
+        <details class="pli">
+          <summary class="pli__tete">
+            <span class="pli__intitule">
+              <span class="oeil">Nos réponses</span>
+              <span class="h-bloc">Ce que l'outil rend démontrable</span>
+            </span>
+            <Icone nom="chevron-down" taille={16} classe="pli__chevron" />
+          </summary>
+          <div class="pli__corps">
+            {reponses.map((r, i) => (
+              <article class="carte carte--reponse">
+                <span class="carte__icone"><Icone nom={ICONES_REPONSES[i % ICONES_REPONSES.length]} taille={16} /></span>
+                <h3 class="h-carte">{r.titre}</h3>
+                <p class="texte">{r.texte}</p>
+              </article>
+            ))}
+          </div>
+        </details>
+      )}
+    </div>
+  </section>
+
+  <!-- ── Comment l'information circule ───────────────────────────────── -->
+  {modules.length > 0 && (
+    <section class="bande bande--sombre" id="flux">
+      <div class="dedans">
+        <div class="entete-section" data-monte>
+          <span class="oeil oeil--clair">Vue d'ensemble</span>
+          <h2 class="h-section" style="color:#fff">Comment l'information circule</h2>
+          <p class="chapo chapo--clair">
+            {modules.length} modules, une seule donnée. Choisissez-en un : ses échanges s'allument.
+            <a href={lien('/onboarding')} style="color:var(--teal-300)"> Suivre le fil d'onboarding →</a>
+          </p>
         </div>
-        <div class="grille">
-          {problemes.map((probleme) => (
-            <article class="carte">
-              <h3>{probleme.titre}</h3>
-              <p>{probleme.texte}</p>
-            </article>
-          ))}
-        </div>
+        <Reseau modules={modules} />
       </div>
     </section>
   )}
 
-  <!-- Les réponses -->
-  {reponses.length > 0 && (
-    <section class="section" id="reponses">
-      <div class="contenant">
-        <div class="section__chapeau">
-          <p class="section__oeil">Ce que nous mettons en face</p>
-          <h2>Des procédures qui vivent dans l'outil</h2>
-        </div>
-        <div class="grille">
-          {reponses.map((reponse) => (
-            <article class="carte">
-              <h3>{reponse.titre}</h3>
-              <p>{reponse.texte}</p>
-            </article>
-          ))}
+  <!-- ── Les six leviers ─────────────────────────────────────────────── -->
+  <section class="bande" id="leviers">
+    <div class="dedans">
+      <div class="entete-section" data-monte>
+        <span class="oeil">L'ossature</span>
+        <h2 class="h-section">Six leviers pour lire tout le réseau</h2>
+        <p class="chapo">
+          Chaque module et chaque entrée de menu est rattachée à un ou deux leviers.
+          Trois font le chiffre, trois font le coût.
+        </p>
+      </div>
+      <div class="leviers">
+        {LEVIERS.map((l) => (
+          <div class="levier" data-monte>
+            <div class="levier__tete">
+              <Pastille levier={l} taille="md" />
+              <code>{l.cle}</code>
+            </div>
+            <div>
+              <div class="levier__nom">{l.nom}</div>
+              <div class="levier__question">{l.question}</div>
+            </div>
+          </div>
+        ))}
+        <div class="leviers__note">
+          <span>En pastille sur chaque module et chaque entrée de menu :</span>
+          <span class="pastilles">
+            <Pastille levier={LEVIERS[0]} />
+            <Pastille levier={LEVIERS[3]} />
+          </span>
+          <span>chaque levier garde sa couleur — la lettre fait l'identité</span>
         </div>
       </div>
-    </section>
-  )}
+    </div>
+  </section>
 
-  <!-- Schéma d'ensemble -->
-  {site?.mermaid && (
-    <section class="sect sect--sombre" id="schema">
-      <div class="contenant">
-        <div class="section__chapeau">
-          <p class="oeil oeil--clair">Vue d'ensemble</p>
-          <h2 class="sur-sombre">Comment l'information circule</h2>
-          <p class="chapo">{modules.length > 0 ? `${modules.length} modules` : 'Des modules'}, une seule donnée. <a href={lien('/onboarding')} style="color: var(--teal-300)">Suivre le parcours détaillé →</a></p>
+  <!-- ── Le catalogue ────────────────────────────────────────────────── -->
+  <section class="bande bande--grise" id="modules">
+    <div class="dedans">
+      <div class="entete-modules">
+        <div class="entete-section" data-monte>
+          <span class="oeil">Les modules</span>
+          <h2 class="h-section">
+            {modules.length} modules, {familles.length} famille{familles.length > 1 ? 's' : ''}
+          </h2>
         </div>
-        <div class="schema">
-          <pre class="mermaid">{site.mermaid}</pre>
-        </div>
+        <a href={lien('/onboarding')} class="entete-modules__lien">Suivre le fil d'onboarding</a>
       </div>
-    </section>
-  )}
 
-  <!-- Le produit tel qu'il est, à l'écran -->
+      <div class="grille-modules">
+        {modules.map((m) => (
+          <a class="module" href={lien(`/modules/${m.slug}`)} data-monte>
+            <div class="module__tete">
+              <span class="module__icone"><Icone nom={m.icone || m.fonctions?.[0]?.icone || 'layers'} taille={20} /></span>
+              <span class="module__noms">
+                <span class="module__nom">{m.nom || m.slug}</span>
+                <span class="module__groupe">{m.groupe}</span>
+              </span>
+            </div>
+            <p class="texte module__accroche">{m.accroche}</p>
+            <div class="module__pied">
+              <span class="pastilles">
+                {leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}
+              </span>
+              <span class="module__compte fb-num">{(m.fonctions || []).length} fonctions</span>
+              <Icone nom="chevron-right" taille={14} classe="icone--miroir module__fleche" />
+            </div>
+          </a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Le produit à l'écran ────────────────────────────────────────── -->
   {captures.length > 0 && (
-    <section class="section" id="ecrans">
-      <div class="contenant">
-        <div class="section__chapeau">
-          <p class="section__oeil">À l'écran</p>
-          <h2>Le produit tel qu'il tourne</h2>
-          <p>
-            Des copies d'écran des applications en service, reprises directement
-            dans les dépôts. Pas de maquette.
+    <section class="bande bande--serree" id="ecrans">
+      <div class="dedans">
+        <div class="entete-section" data-monte style="margin-block-end:24px">
+          <span class="oeil">À l'écran</span>
+          <h2 class="h-section">Le produit tel qu'il tourne</h2>
+          <p class="chapo">
+            Des copies d'écran des applications en service, reprises directement dans les dépôts.
+            Pas de maquette.
           </p>
         </div>
         <ul class="captures">
           {captures.map((c) => (
-            <li>
-              <a class="capture capture--lien" href={lien(`/modules/${c.module_slug}`)}>
+            <li data-monte>
+              <a class="capture" href={lien(`/modules/${c.module_slug}`)}>
                 <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || c.module_nom} loading="lazy" decoding="async" />
-                <figcaption>
+                <span class="capture__pied">
                   <strong>{c.module_nom}</strong>
                   {c.titre && <span>{c.titre}</span>}
-                </figcaption>
+                </span>
               </a>
             </li>
           ))}
@@ -135,58 +220,120 @@ const lienContact = `mailto:contact@${process.env.SITE_DOMAIN || 'example.com'}`
     </section>
   )}
 
-  <!-- Inventaire des modules -->
-  <section class="section" id="modules">
-    <div class="contenant">
-      <div class="section__chapeau">
-        <p class="section__oeil">La plateforme</p>
-        <h2>{modules.length > 0 ? `${modules.length} modules, un seul référentiel` : 'Modules'}</h2>
-        <p>
-          Chaque module est un logiciel en production. Les fiches ci-dessous sont générées
-          automatiquement à partir de leur code source.
-        </p>
-      </div>
+  <!-- ── Contact ─────────────────────────────────────────────────────── -->
+  <section class="bande" id="contact">
+    <div class="dedans">
+      <div class="contact">
+        <div class="contact__discours" data-monte>
+          <h2 class="h-grand" style="color:#fff">{ctaTexte}</h2>
+          <p class="chapo chapo--clair" style="max-width:44ch">
+            Une heure, sur vos cas réels : vos boutiques, votre catalogue, vos tournées.
+            Nous revenons vers vous sous un jour ouvré.
+          </p>
+          <p class="contact__mail">
+            <Icone nom="mail" taille={16} />
+            <span class="fb-num">contact@thefranchisebuddy.eu</span>
+          </p>
+        </div>
 
-      {modules.length === 0 ? (
-        <p style="color: var(--encre-douce);">
-          Aucun module publié pour le moment. Lancer <code>npm run ingest:all</code> pour alimenter
-          le site.
-        </p>
-      ) : (
-        groupes.map((groupe) => (
-          <div style="margin-bottom: 40px;">
-            <p class="etiquette" style="margin-bottom: 16px;">{groupe.nom}</p>
-            <div class="grille">
-              {groupe.modules.map((module) => (
-                <a class="carte carte--lien" href={lien(`/modules/${module.slug}`)}>
-                  <h3>{module.nom || module.slug}</h3>
-                  <p>{module.accroche}</p>
-                  {module.fonctions?.length > 0 && (
-                    <p style="margin-top: 14px; font-size: 0.85rem; color: var(--accent);">
-                      {module.fonctions.length} fonctions →
-                    </p>
-                  )}
-                </a>
-              ))}
-            </div>
+        <form class="contact__form" method="post" action={lien('/contact')} data-monte>
+          <label class="champ">
+            <span>Votre nom</span>
+            <input type="text" name="nom" placeholder="Prénom et nom" required />
+          </label>
+          <label class="champ">
+            <span>Votre réseau</span>
+            <input type="text" name="reseau" placeholder="Enseigne, nombre de points de vente" required />
+          </label>
+          <label class="champ">
+            <span>E-mail</span>
+            <input type="email" name="email" placeholder="vous@enseigne.eu" required />
+          </label>
+          <label class="champ">
+            <span>Votre situation</span>
+            <textarea name="situation" rows="4" placeholder="Ce qui vous fait chercher un outil aujourd'hui"></textarea>
+          </label>
+          <!-- Piège à robots : invisible, jamais rempli par un humain. -->
+          <div aria-hidden="true" class="piege">
+            <label>Votre site web<input type="text" name="site_web" tabindex="-1" autocomplete="off" /></label>
           </div>
-        ))
-      )}
-    </div>
-  </section>
-
-  <!-- Contact -->
-  <section class="section section--teinte" id="contact">
-    <div class="contenant" style="max-width: 62ch;">
-      <p class="section__oeil">Prendre contact</p>
-      <h2>Voir la plateforme sur vos propres cas</h2>
-      <p>
-        Une démonstration se fait sur vos points de vente, vos indicateurs et vos procédures.
-        Écrivez-nous en précisant la taille du réseau et les sujets qui coincent aujourd'hui.
-      </p>
-      <p style="margin-top: 24px;">
-        <a class="bouton" href={ctaUrl.startsWith('#') ? lienContact : ctaUrl}>{ctaTexte}</a>
-      </p>
+          <button class="bouton bouton--chaud bouton--lg" type="submit">
+            {ctaTexte}
+            <Icone nom="arrow-right" taille={16} classe="icone--miroir" />
+          </button>
+        </form>
+      </div>
     </div>
   </section>
 </Layout>
+
+<style is:global>
+  /* ── Accroche ──────────────────────────────────────────────────────── */
+  .hero {
+    padding: 88px 40px 80px;
+    color: #fff;
+    background:
+      radial-gradient(720px 360px at 82% 12%, rgba(240, 145, 42, 0.13), transparent 62%),
+      linear-gradient(155deg, #1e2b57 0%, #0c1329 62%);
+  }
+  .hero__dedans { display: flex; flex-direction: column; gap: 22px; align-items: flex-start; }
+  .hero__titre { max-width: 22ch; color: #fff; }
+  .hero__chapo { max-width: 56ch; font-size: var(--text-lg); }
+  .hero__actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-block-start: 6px; }
+  @media (max-width: 820px) { .hero { padding: 56px 20px; } }
+
+  /* ── Leviers ───────────────────────────────────────────────────────── */
+  .leviers {
+    border: 1px solid var(--slate-200);
+    border-radius: var(--radius-panel);
+    overflow: hidden;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .levier {
+    padding: 24px; display: flex; flex-direction: column; gap: 10px;
+    border-inline-end: 1px solid var(--slate-100);
+    border-block-end: 1px solid var(--slate-100);
+  }
+  .levier__tete { display: flex; align-items: center; gap: 10px; }
+  .levier__tete code { font: 400 11px/1 var(--font-mono); color: var(--slate-400); }
+  .levier__nom { font: 600 var(--text-base) / 1.3 var(--font-display); }
+  .levier__question { font: 400 var(--text-sm) / 1.5 var(--font-sans); color: var(--slate-600); }
+  .leviers__note {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 14px 24px; background: var(--slate-25);
+    font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500);
+  }
+
+  /* ── Contact ───────────────────────────────────────────────────────── */
+  .contact {
+    background: var(--gradient-plum-navy);
+    border-radius: var(--radius-2xl);
+    padding: 56px;
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+    gap: 48px; align-items: center;
+  }
+  .contact__discours { display: flex; flex-direction: column; gap: 16px; color: #fff; }
+  .contact__mail { display: flex; align-items: center; gap: 10px; margin: 0; color: rgba(255, 255, 255, 0.75); font-size: var(--text-sm); }
+  .contact__form {
+    background: #fff; border-radius: var(--radius-panel); padding: 28px;
+    display: flex; flex-direction: column; gap: 14px;
+    box-shadow: 0 12px 32px rgba(12, 19, 41, 0.3);
+  }
+  .champ { display: flex; flex-direction: column; gap: 6px; }
+  .champ > span { font: var(--type-label); color: var(--slate-600); }
+  .champ input, .champ textarea {
+    inline-size: 100%; padding: 10px 12px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+    font: var(--type-body-sm); color: var(--navy-900); background: #fff;
+    transition: var(--transition-control);
+  }
+  .champ textarea { resize: vertical; }
+  .champ input:focus-visible, .champ textarea:focus-visible {
+    outline: none; border-color: var(--plum-400); box-shadow: var(--shadow-focus);
+  }
+  .piege { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+
+  @media (max-width: 820px) { .contact { padding: 28px; gap: 28px; } }
+</style>

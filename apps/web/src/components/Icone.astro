@@ -1,0 +1,45 @@
+---
+/**
+ * Une icône du jeu TFB, insérée directement dans le HTML.
+ *
+ * Les 79 fichiers de `src/icones/` sont lus au build par Vite et embarqués
+ * dans le serveur : aucun appel réseau à l'affichage, aucun JavaScript côté
+ * navigateur, et l'icône hérite de la couleur du texte (`currentColor`).
+ *
+ * Un nom inconnu ne casse rien — il ne rend simplement rien. Les noms
+ * viennent de la base (`landing_fonctions.icone`), donc d'un contenu
+ * modifiable : mieux vaut un trou qu'une page en erreur.
+ */
+const FICHIERS = import.meta.glob('../icones/*.svg', { query: '?raw', import: 'default', eager: true });
+
+/** Nom de fichier → contenu SVG, indexé sans l'extension. */
+const ICONES = Object.fromEntries(
+  Object.entries(FICHIERS).map(([chemin, svg]) => [chemin.split('/').pop().replace('.svg', ''), svg]),
+);
+
+const { nom, taille = 16, classe = '' } = Astro.props;
+const brut = ICONES[nom];
+
+// On force la taille demandée et on retire le fond blanc éventuel : le jeu est
+// dessiné en traits, la couleur vient du contexte.
+const svg = brut
+  ? brut
+      .replace(/\swidth="[^"]*"/, ` width="${taille}"`)
+      .replace(/\sheight="[^"]*"/, ` height="${taille}"`)
+      .replace('<svg', '<svg aria-hidden="true" focusable="false"')
+  : null;
+---
+
+{svg && <span class={`icone ${classe}`} set:html={svg} />}
+
+<style is:global>
+  .icone {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: none;
+  }
+  .icone svg { display: block; }
+  /* Les glyphes directionnels se retournent en écriture arabe. */
+  [dir='rtl'] .icone--miroir svg { transform: scaleX(-1); }
+</style>

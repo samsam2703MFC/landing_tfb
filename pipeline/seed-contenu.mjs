@@ -51,6 +51,7 @@ async function ecrireEnBase({ siVide = false } = {}) {
         repo: module.repo,
         ref: 'main',
         groupe: module.groupe,
+        icone: module.icone,
         ordre: module.ordre,
         actif: true,
         nom: module.nom,
@@ -186,11 +187,11 @@ function genererSql() {
 
   for (const m of MODULES) {
     l.push(`-- ── ${m.nom} (${m.slug})`);
-    l.push(`INSERT INTO ${table('modules')} (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,`);
+    l.push(`INSERT INTO ${table('modules')} (slug, repo, ref, groupe, icone, ordre, actif, nom, accroche, resume,`);
     l.push('  description, public_cible, problemes, benefices, stack, mots_cles, mermaid,');
     l.push('  leviers, liens, onboarding, modele_ia)');
     l.push('VALUES (');
-    l.push(`  ${litteral(m.slug)}, ${litteral(m.repo)}, 'main', ${litteral(m.groupe)}, ${m.ordre}, '1',`);
+    l.push(`  ${litteral(m.slug)}, ${litteral(m.repo)}, 'main', ${litteral(m.groupe)}, ${litteral(m.icone)}, ${m.ordre}, '1',`);
     l.push(`  ${litteral(m.nom)},`);
     l.push(`  ${litteral(m.accroche)},`);
     l.push(`  ${litteral(m.resume)},`);

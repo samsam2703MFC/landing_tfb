@@ -1,0 +1,37 @@
+---
+/**
+ * La pastille d'un levier : une lettre dans un carré coloré.
+ *
+ * Deux tailles seulement — `md` isolée, `sm` en série dans une ligne dense.
+ * Le `title` porte le nom complet et la question du levier : c'est ce qui rend
+ * les six lisibles sans légende à côté.
+ */
+import { titreLevier } from '../lib/leviers.mjs';
+
+const { levier, taille = 'sm' } = Astro.props;
+const cote = taille === 'md' ? 28 : 18;
+const police = taille === 'md' ? 13 : 11;
+---
+
+<span
+  class="pastille"
+  title={titreLevier(levier)}
+  style={`--cote:${cote}px;--police:${police}px;--fond:${levier.fond};--encre:${levier.encre}`}
+>{levier.lettre}</span>
+
+<style is:global>
+  .pastille {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: var(--cote);
+    block-size: var(--cote);
+    border-radius: 4px;
+    background: var(--fond);
+    color: var(--encre);
+    font: 600 var(--police) / 1 var(--font-mono);
+    flex: none;
+    cursor: help;
+  }
+  .pastilles { display: inline-flex; gap: 3px; flex: none; }
+</style>
