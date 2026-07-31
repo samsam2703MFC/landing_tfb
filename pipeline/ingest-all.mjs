@@ -15,7 +15,7 @@
  */
 
 import { genererContenuSite } from './lib/ai.mjs';
-import { lireItems, majSingleton } from './lib/directus.mjs';
+import { json, ouvrir } from './lib/db.mjs';
 import { chargerRegistre, ingererModule } from './ingest.mjs';
 
 function lireOptions(argv) {
@@ -36,31 +36,56 @@ function lireOptions(argv) {
 }
 
 /** Régénère le contenu de la page d'accueil à partir de ce qui est en base. */
-async function regenererSite() {
-  const modules = await lireItems('modules', {
-    'filter[actif][_eq]': 'true',
-    fields: 'slug,nom,accroche,resume,groupe,fonctions.nom',
-    sort: 'ordre',
-    limit: -1,
-  });
+async function regenererSite(db) {
+  const modules = await db.requete(
+    'SELECT id, slug, nom, accroche, resume, groupe FROM tfb_modules WHERE actif = ? ORDER BY ordre, nom',
+    [db.dialecte === 'pg' ? true : 1],
+  );
 
-  if (!modules || modules.length === 0) {
-    console.log('\n⚠ Aucun module actif en base : page d\'accueil non régénérée.');
+  if (modules.length === 0) {
+    console.log("\n⚠ Aucun module actif en base : page d'accueil non régénérée.");
     return;
   }
 
+  // Les noms de fonctions donnent au modèle la matière pour la synthèse.
+  for (const module of modules) {
+    module.fonctions = await db.requete(
+      'SELECT nom FROM tfb_fonctions WHERE module_id = ? ORDER BY ordre',
+      [module.id],
+    );
+  }
+
   const contenu = await genererContenuSite(modules);
-  await majSingleton('site', {
-    titre: contenu.titre,
-    sous_titre: contenu.sous_titre,
-    accroche: contenu.accroche,
-    problemes: contenu.problemes,
-    reponses: contenu.reponses,
-    mermaid: contenu.mermaid,
-    cta_texte: contenu.cta_texte,
-    meta_description: contenu.meta_description,
-    genere_le: new Date().toISOString(),
-  });
+
+  const lignes = await db.requete('SELECT id FROM tfb_site LIMIT 1');
+  const valeurs = [
+    contenu.titre,
+    contenu.sous_titre,
+    contenu.accroche,
+    json(contenu.problemes),
+    json(contenu.reponses),
+    contenu.mermaid,
+    contenu.cta_texte,
+    contenu.meta_description,
+    new Date(),
+  ];
+
+  if (lignes.length > 0) {
+    await db.executer(
+      `UPDATE tfb_site SET titre = ?, sous_titre = ?, accroche = ?, problemes = ?,
+       reponses = ?, mermaid = ?, cta_texte = ?, meta_description = ?, genere_le = ?
+       WHERE id = ?`,
+      [...valeurs, lignes[0].id],
+    );
+  } else {
+    await db.executer(
+      `INSERT INTO tfb_site (titre, sous_titre, accroche, problemes, reponses,
+       mermaid, cta_texte, meta_description, genere_le)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      valeurs,
+    );
+  }
+
   console.log(`\n✓ page d'accueil régénérée à partir de ${modules.length} modules`);
 }
 
@@ -79,30 +104,35 @@ async function principal() {
 
   console.log(`→ ${aTraiter.length} module(s) à ingérer`);
 
+  const db = await ouvrir();
   const reussis = [];
   const inchanges = [];
   const echecs = [];
 
-  for (const entree of aTraiter) {
-    try {
-      const bilan = await ingererModule(entree, { force: options.force });
-      if (bilan.statut === 'inchange') inchanges.push(bilan.slug);
-      else reussis.push(bilan.slug);
-    } catch (err) {
-      // Un dépôt en échec ne doit pas interrompre les suivants.
-      console.error(`   ✗ ${entree.slug} : ${err.message}`);
-      echecs.push({ slug: entree.slug, raison: err.message });
+  try {
+    for (const entree of aTraiter) {
+      try {
+        const bilan = await ingererModule(entree, { force: options.force, db });
+        if (bilan.statut === 'inchange') inchanges.push(bilan.slug);
+        else reussis.push(bilan.slug);
+      } catch (err) {
+        // Un dépôt en échec ne doit pas interrompre les suivants.
+        console.error(`   ✗ ${entree.slug} : ${err.message}`);
+        echecs.push({ slug: entree.slug, raison: err.message });
+      }
     }
-  }
 
-  // La page d'accueil n'est régénérée que si le contenu a bougé.
-  if (!options.skipSite && reussis.length > 0) {
-    try {
-      await regenererSite();
-    } catch (err) {
-      console.error(`\n✗ Page d'accueil : ${err.message}`);
-      echecs.push({ slug: '(page d\'accueil)', raison: err.message });
+    // La page d'accueil n'est régénérée que si le contenu a bougé.
+    if (!options.skipSite && reussis.length > 0) {
+      try {
+        await regenererSite(db);
+      } catch (err) {
+        console.error(`\n✗ Page d'accueil : ${err.message}`);
+        echecs.push({ slug: "(page d'accueil)", raison: err.message });
+      }
     }
+  } finally {
+    await db.fermer();
   }
 
   console.log('\n──────── Bilan ────────');

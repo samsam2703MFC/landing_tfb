@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Ingestion d'un module : dépôt GitHub → contenu généré → Directus.
+ * Ingestion d'un module : dépôt GitHub → contenu généré → base SQL.
  *
  * Usage :
  *   node ingest.mjs consultant
@@ -10,10 +10,10 @@
  * Options :
  *   --force      régénère même si le dépôt n'a pas bougé depuis la dernière fois
  *   --ref=<x>    branche à lire (défaut : celle de modules.json)
- *   --dry-run    n'écrit rien dans Directus, affiche le contenu produit
+ *   --dry-run    n'écrit rien en base, affiche le contenu produit
  *
  * Idempotence : le module est identifié par son `slug`, chaque fonction par le
- * couple (module, cle). Rejouer l'ingestion mène au même état, sans doublon.
+ * couple (module_id, cle). Rejouer l'ingestion mène au même état, sans doublon.
  */
 
 import { readFile } from 'node:fs/promises';
@@ -22,7 +22,7 @@ import { fileURLToPath } from 'node:url';
 
 import { genererContenuModule, modele } from './lib/ai.mjs';
 import { chargerDepot } from './lib/repo.mjs';
-import { creerItem, lireItems, majItem, supprimerItems, upsertParCle } from './lib/directus.mjs';
+import { json, ouvrir, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const REGISTRE = resolve(ICI, '..', 'modules.json');
@@ -54,12 +54,12 @@ function lireOptions(argv) {
 
 /**
  * Ingère un module et renvoie un compte rendu.
- * Ne lève une erreur que si l'ingestion est réellement impossible — l'appelant
- * (ingest-all) peut ainsi continuer sur les autres modules.
+ * `db` est fourni par l'appelant quand plusieurs modules se suivent, pour
+ * n'ouvrir qu'une seule connexion.
  *
  * @returns {Promise<{slug, statut: 'ok'|'inchange', fonctions?: number, sha?: string}>}
  */
-export async function ingererModule(entree, { force = false, ref = null, dryRun = false } = {}) {
+export async function ingererModule(entree, { force = false, ref = null, dryRun = false, db = null } = {}) {
   const branche = ref || entree.ref;
   console.log(`\n── ${entree.slug} (${entree.repo}@${branche})`);
 
@@ -72,16 +72,12 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   console.log(`   dépôt lu : ${depot.arbre.length} fichiers, ${depot.extraits.length} extraits, sha ${depot.sha.slice(0, 8)}`);
 
   // 2. Le dépôt a-t-il bougé depuis la dernière ingestion ?
-  let existant = null;
-  if (!dryRun) {
-    const trouves = await lireItems('modules', {
-      'filter[slug][_eq]': entree.slug,
-      fields: 'id,commit_sha',
-      limit: 1,
-    });
-    existant = trouves && trouves.length ? trouves[0] : null;
-
-    if (!force && existant && existant.commit_sha === depot.sha) {
+  if (!dryRun && db) {
+    const trouves = await db.requete(
+      'SELECT id, commit_sha FROM tfb_modules WHERE slug = ? LIMIT 1',
+      [entree.slug],
+    );
+    if (!force && trouves.length > 0 && trouves[0].commit_sha === depot.sha) {
       console.log('   inchangé depuis la dernière ingestion — ignoré (--force pour régénérer)');
       return { slug: entree.slug, statut: 'inchange' };
     }
@@ -102,7 +98,7 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
   }
 
   // 4. Écriture du module
-  const { id: moduleId, cree } = await upsertParCle('modules', 'slug', entree.slug, {
+  const { id: moduleId, cree } = await upsert(db, 'tfb_modules', 'slug', entree.slug, {
     repo: entree.repo,
     ref: branche,
     groupe: entree.groupe,
@@ -113,51 +109,54 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
     resume: contenu.resume,
     description: contenu.description,
     public_cible: contenu.public_cible,
-    problemes: contenu.problemes,
-    benefices: contenu.benefices,
-    stack: contenu.stack,
-    mots_cles: contenu.mots_cles,
+    problemes: json(contenu.problemes),
+    benefices: json(contenu.benefices),
+    stack: json(contenu.stack),
+    mots_cles: json(contenu.mots_cles),
     mermaid: contenu.mermaid,
     commit_sha: depot.sha,
     modele_ia: modele(),
-    genere_le: new Date().toISOString(),
+    genere_le: new Date(),
   });
 
   // 5. Écriture des fonctions, clé par clé
-  const anciennes = await lireItems('fonctions', {
-    'filter[module][_eq]': moduleId,
-    fields: 'id,cle',
-    limit: -1,
-  });
-  const parCle = new Map((anciennes || []).map((f) => [f.cle, f.id]));
+  const anciennes = await db.requete(
+    'SELECT id, cle FROM tfb_fonctions WHERE module_id = ?',
+    [moduleId],
+  );
+  const parCle = new Map(anciennes.map((f) => [f.cle, f.id]));
 
   let position = 1;
   const clesVues = new Set();
   for (const fonction of contenu.fonctions) {
-    const donnees = {
-      module: moduleId,
-      nom: fonction.nom,
-      description: fonction.description,
-      benefice: fonction.benefice,
-      icone: fonction.icone,
-      ordre: position,
-    };
-    // La clé n'est unique qu'à l'intérieur d'un module : on résout donc
-    // l'identifiant à la main plutôt que par un upsert global.
+    const valeurs = [
+      fonction.nom,
+      fonction.description,
+      fonction.benefice,
+      fonction.icone,
+      position,
+    ];
     const idExistant = parCle.get(fonction.cle);
     if (idExistant) {
-      await majItem('fonctions', idExistant, donnees);
+      await db.executer(
+        'UPDATE tfb_fonctions SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?',
+        [...valeurs, idExistant],
+      );
     } else {
-      await creerItem('fonctions', { ...donnees, cle: fonction.cle });
+      await db.executer(
+        'INSERT INTO tfb_fonctions (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [moduleId, fonction.cle, ...valeurs],
+      );
     }
     clesVues.add(fonction.cle);
     position += 1;
   }
 
   // 6. Les fonctions disparues du code disparaissent du site
-  const obsoletes = (anciennes || []).filter((f) => !clesVues.has(f.cle)).map((f) => f.id);
+  const obsoletes = anciennes.filter((f) => !clesVues.has(f.cle)).map((f) => f.id);
   if (obsoletes.length) {
-    await supprimerItems('fonctions', obsoletes);
+    const marqueurs = obsoletes.map(() => '?').join(', ');
+    await db.executer(`DELETE FROM tfb_fonctions WHERE id IN (${marqueurs})`, obsoletes);
     console.log(`   ${obsoletes.length} fonction(s) obsolète(s) supprimée(s)`);
   }
 
@@ -184,7 +183,12 @@ async function principal() {
     process.exit(2);
   }
 
-  await ingererModule(entree, options);
+  const db = options.dryRun ? null : await ouvrir();
+  try {
+    await ingererModule(entree, { ...options, db });
+  } finally {
+    if (db) await db.fermer();
+  }
 }
 
 // Ne s'exécute que lancé directement (ingest-all importe les fonctions).

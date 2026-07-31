@@ -5,7 +5,7 @@
  */
 import { marked } from 'marked';
 import Layout from '../../components/Layout.astro';
-import { chargerModule, chargerModules } from '../../lib/directus.mjs';
+import { chargerModule, chargerModules } from '../../lib/db.mjs';
 
 const { slug } = Astro.params;
 const module = await chargerModule(slug);

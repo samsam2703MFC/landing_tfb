@@ -1,10 +1,10 @@
 ---
 /**
  * Page d'accueil : problèmes du franchiseur d'abord, réponses ensuite,
- * puis l'inventaire des modules. Tout vient de Directus, rien n'est écrit ici.
+ * puis l'inventaire des modules. Tout vient de la base, rien n'est écrit ici.
  */
 import Layout from '../components/Layout.astro';
-import { chargerModules, chargerSite, grouperModules } from '../lib/directus.mjs';
+import { chargerModules, chargerSite, grouperModules } from '../lib/db.mjs';
 
 const [site, modules] = await Promise.all([chargerSite(), chargerModules()]);
 const groupes = grouperModules(modules);

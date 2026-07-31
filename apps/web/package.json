@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Landing ERP en rendu serveur (Astro SSR), alimentée par Directus.",
+  "description": "Landing ERP en rendu serveur (Astro SSR), alimentée directement par la base SQL.",
   "engines": {
     "node": ">=20"
   },
@@ -16,6 +16,8 @@
   "dependencies": {
     "@astrojs/node": "^11.0.3",
     "astro": "^7.1.6",
-    "marked": "^16.0.0"
+    "marked": "^16.0.0",
+    "mysql2": "^3.23.2",
+    "pg": "^8.22.0"
   }
 }

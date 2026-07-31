@@ -23,103 +23,15 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      # Tous les prérequis sont contrôlés d'un coup : on veut connaître la
-      # liste complète de ce qui bloque, pas la découvrir un run à la fois.
-      - name: Vérifier les secrets et la clé SSH
-        env:
-          SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PORT: ${{ secrets.SSH_PORT }}
-          # Chemin du clone sur le serveur. Le secret l'emporte s'il existe ;
-          # sinon on retombe sur l'emplacement en place. Ce n'est pas une
-          # donnée sensible, juste un chemin de fichiers.
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/landing_tfb' }}
-        run: |
-          bloquant=0
+      - name: Récupérer le dépôt
+        uses: actions/checkout@v4
 
-          manquants=""
-          [ -n "${SSH_HOST:-}" ]    || manquants="$manquants SSH_HOST"
-          [ -n "${SSH_USER:-}" ]    || manquants="$manquants SSH_USER"
-          [ -n "${SSH_KEY:-}" ]     || manquants="$manquants SSH_KEY"
-          [ -n "${DEPLOY_PATH:-}" ] || manquants="$manquants DEPLOY_PATH"
-          if [ -n "$manquants" ]; then
-            echo "::error::Secrets absents ou vides :$manquants — les créer dans Paramètres → Secrets and variables → Actions."
-            bloquant=1
-          fi
-
-          # La clé est écrite et testée même si un autre secret manque, pour
-          # que le log liste tous les problèmes en une seule fois.
-          if [ -n "${SSH_KEY:-}" ]; then
-            mkdir -p ~/.ssh
-            # `tr -d '\r'` : une clé copiée depuis Windows contient des CRLF
-            # que libcrypto refuse de lire.
-            printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
-            chmod 600 ~/.ssh/id_deploy
-
-            # Deuxième forme acceptée : la clé encodée en base64 (`base64 -w0`).
-            # Les espaces et retours à la ligne éventuellement introduits par
-            # un terminal sont retirés avant décodage, ce qui rend ce format
-            # bien plus tolérant au copier-coller que le PEM multi-lignes.
-            if ! grep -q -- '-----BEGIN' ~/.ssh/id_deploy \
-               && tr -d ' \t\n' < ~/.ssh/id_deploy | base64 -d 2>/dev/null | grep -q -- '-----BEGIN'; then
-              tr -d ' \t\n' < ~/.ssh/id_deploy | base64 -d > ~/.ssh/id_deploy.tmp
-              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
-              chmod 600 ~/.ssh/id_deploy
-              echo "Clé fournie en base64 : décodée."
-            fi
-
-            # Remise en forme des collages approximatifs : lignes vides en
-            # tête, invite de terminal recopiée avant l'en-tête, texte ajouté
-            # après le pied, ou clé aplatie sur une seule ligne.
-            if grep -q -- '-----BEGIN' ~/.ssh/id_deploy; then
-              sed -n '/-----BEGIN/,$p' ~/.ssh/id_deploy > ~/.ssh/id_deploy.tmp
-              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
-            fi
-            if grep -q -- '-----END' ~/.ssh/id_deploy; then
-              sed -n '1,/-----END[A-Z0-9 -]*-----/p' ~/.ssh/id_deploy > ~/.ssh/id_deploy.tmp
-              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
-            fi
-            if [ "$(wc -l < ~/.ssh/id_deploy)" -le 1 ] && grep -q -- '-----BEGIN' ~/.ssh/id_deploy; then
-              # Tout tient sur une ligne : on rétablit les sauts de ligne et on
-              # replie le corps en base64 sur 70 colonnes, comme OpenSSH l'écrit.
-              contenu=$(cat ~/.ssh/id_deploy)
-              entete=$(printf '%s' "$contenu" | grep -o -- '-----BEGIN[A-Z0-9 -]*-----' | head -n 1)
-              pied=$(printf '%s' "$contenu" | grep -o -- '-----END[A-Z0-9 -]*-----' | head -n 1)
-              corps=$(printf '%s' "$contenu" | sed "s|$entete||; s|$pied||" | tr -d ' \t')
-              { echo "$entete"; printf '%s' "$corps" | fold -w 70; echo; echo "$pied"; } > ~/.ssh/id_deploy
-            fi
-            chmod 600 ~/.ssh/id_deploy
-
-            if ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
-              echo "Clé SSH lue correctement ($(ssh-keygen -l -f ~/.ssh/id_deploy | awk '{print $1, $4}'))."
-            else
-              # On identifie la nature du contenu sans jamais l'afficher :
-              # seul le verdict sort dans le log.
-              lignes=$(wc -l < ~/.ssh/id_deploy)
-              premiere=$(head -n 1 ~/.ssh/id_deploy)
-              case "$premiere" in
-                ssh-rsa*|ssh-ed25519*|ecdsa-sha2*|sk-ssh*)
-                  diagnostic="c'est la clé PUBLIQUE. Copier le fichier sans l'extension .pub." ;;
-                PuTTY-User-Key-File*)
-                  diagnostic="c'est un fichier PuTTY (.ppk). Le convertir : puttygen cle.ppk -O private-openssh -o cle_openssh" ;;
-                -----BEGIN*PRIVATE*KEY-----)
-                  if ! grep -q -- '-----END' ~/.ssh/id_deploy; then
-                    diagnostic="la clé est tronquée : la ligne « -----END … PRIVATE KEY----- » manque. Recopier le fichier en entier."
-                  else
-                    diagnostic="en-tête et pied présents (${lignes} lignes) mais la clé reste illisible : corps incomplet, ou clé protégée par une passphrase (le déploiement en exige une sans passphrase)."
-                  fi ;;
-                *)
-                  diagnostic="aucune ligne « -----BEGIN … PRIVATE KEY----- » dans le secret (${lignes} ligne(s) au total). Le contenu collé n'est pas une clé privée." ;;
-              esac
-              echo "::error::Le secret SSH_KEY n'est pas une clé privée OpenSSH lisible : $diagnostic"
-              bloquant=1
-            fi
-          fi
-
-          [ "$bloquant" -eq 0 ] || exit 1
-
-          ssh-keyscan -p "${SSH_PORT:-22}" -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Préparer la connexion SSH
+        uses: ./.github/actions/preparer-ssh
+        with:
+          cle: ${{ secrets.SSH_KEY }}
+          hote: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || '22' }}
 
       - name: Mettre à jour et relancer la pile
         env:
@@ -134,8 +46,6 @@ jobs:
           DEPOT: ${{ github.server_url }}/${{ github.repository }}.git
         run: |
           set -euo pipefail
-          # BatchMode + IdentitiesOnly : pas de repli sur le mot de passe, donc
-          # un échec d'authentification reste lisible dans le log.
           # Le script distant est passé par l'entrée standard : les valeurs du
           # runner sont fixées en tête, le reste s'exécute côté serveur (d'où
           # les \$ échappés).
@@ -168,11 +78,10 @@ jobs:
             echo "infra/.env vient d'être créé dans \$DEPLOY_PATH à partir de .env.example. Renseigner les valeurs puis relancer le déploiement." >&2
             exit 1
           fi
-          # DIRECTUS_TOKEN se génère dans Directus, donc après ce premier
-          # démarrage ; ANTHROPIC_API_KEY et GH_INGEST_TOKEN ne servent qu'au
-          # pipeline, jamais aux conteneurs. Ces trois-là peuvent rester vides.
-          if grep -vE '^(DIRECTUS_TOKEN|ANTHROPIC_API_KEY|GH_INGEST_TOKEN)=' infra/.env | grep -q 'change-moi'; then
-            echo "infra/.env contient encore des valeurs « change-moi » dans \$DEPLOY_PATH. Renseigner la base, les clés Directus et les domaines avant de relancer." >&2
+
+          restants=\$(grep -E '^[A-Z_]+=.*change-moi' infra/.env | cut -d= -f1 | tr '\n' ' ')
+          if [ -n "\$restants" ]; then
+            echo "Valeurs encore à renseigner dans \$DEPLOY_PATH/infra/.env : \$restants" >&2
             exit 1
           fi
 

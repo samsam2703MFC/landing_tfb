@@ -1,50 +1,14 @@
-# Pile de production : Directus (CMS), la landing Astro, Caddy en frontal.
+# Pile de production : la landing Astro et Caddy en frontal.
 #
 # La base de données n'est PAS gérée ici : on se branche sur le SQL existant
-# (PostgreSQL ou MySQL selon DB_CLIENT).
+# (PostgreSQL ou MySQL selon DB_CLIENT), où le pipeline écrit directement les
+# tables tfb_modules, tfb_fonctions et tfb_site.
 #
 # Les variables viennent du fichier .env placé à côté de ce compose.
-# Le mapping DB_LOGIN → DB_USER, DB_NAME → DB_DATABASE, DB_PASS → DB_PASSWORD
-# permet de conserver tels quels les noms de secrets déjà en place sur le dépôt.
 
 name: landing-tfb
 
 services:
-  directus:
-    image: directus/directus:11
-    restart: unless-stopped
-    environment:
-      # --- Connexion à la base existante ---
-      DB_CLIENT: ${DB_CLIENT}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_USER: ${DB_LOGIN}
-      DB_DATABASE: ${DB_NAME}
-      DB_PASSWORD: ${DB_PASS}
-      # --- Clés internes (stables, sinon les sessions sautent) ---
-      KEY: ${DIRECTUS_KEY}
-      SECRET: ${DIRECTUS_SECRET}
-      # --- Compte admin créé au premier démarrage ---
-      ADMIN_EMAIL: ${DIRECTUS_ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${DIRECTUS_ADMIN_PASSWORD}
-      # --- Exposition ---
-      PUBLIC_URL: https://${CMS_DOMAIN}
-      CORS_ENABLED: "false"
-      TELEMETRY: "false"
-      WEBSOCKETS_ENABLED: "false"
-    volumes:
-      - directus_uploads:/directus/uploads
-      - directus_extensions:/directus/extensions
-    extra_hosts:
-      # Permet d'atteindre une base installée sur l'hôte (DB_HOST=host.docker.internal).
-      - "host.docker.internal:host-gateway"
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8055/server/health"]
-      interval: 20s
-      timeout: 5s
-      retries: 10
-      start_period: 60s
-
   web:
     build:
       context: ../apps/web
@@ -52,17 +16,21 @@ services:
         SITE_DOMAIN: ${SITE_DOMAIN}
     restart: unless-stopped
     environment:
-      # La landing parle à Directus sur le réseau interne : le jeton ne sort
-      # jamais du serveur, et aucun appel n'est fait depuis le navigateur.
-      DIRECTUS_URL: http://directus:8055
-      DIRECTUS_TOKEN: ${DIRECTUS_TOKEN}
+      # Lecture du contenu en base, côté serveur uniquement : les identifiants
+      # restent dans le conteneur et ne partent jamais vers le navigateur.
+      DB_CLIENT: ${DB_CLIENT}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_LOGIN: ${DB_LOGIN}
+      DB_NAME: ${DB_NAME}
+      DB_PASS: ${DB_PASS}
       SITE_DOMAIN: ${SITE_DOMAIN}
       CACHE_TTL_MS: ${CACHE_TTL_MS:-60000}
       HOST: 0.0.0.0
       PORT: 4321
-    depends_on:
-      directus:
-        condition: service_healthy
+    extra_hosts:
+      # Permet d'atteindre une base installée sur l'hôte (DB_HOST=host.docker.internal).
+      - "host.docker.internal:host-gateway"
 
   caddy:
     image: caddy:2-alpine
@@ -72,17 +40,39 @@ services:
       - "443:443"
     environment:
       SITE_DOMAIN: ${SITE_DOMAIN}
-      CMS_DOMAIN: ${CMS_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-admin@localhost}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
       - web
-      - directus
+
+  # Outil ponctuel, jamais démarré avec la pile (profil « outils ») :
+  #   docker compose --profile outils run --rm pipeline node bootstrap-db.mjs
+  #   docker compose --profile outils run --rm pipeline node ingest-all.mjs
+  pipeline:
+    profiles: ["outils"]
+    build:
+      context: ../pipeline
+    environment:
+      DB_CLIENT: ${DB_CLIENT}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_LOGIN: ${DB_LOGIN}
+      DB_NAME: ${DB_NAME}
+      DB_PASS: ${DB_PASS}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANTHROPIC_MODEL: ${ANTHROPIC_MODEL:-claude-sonnet-4-5}
+      GH_INGEST_TOKEN: ${GH_INGEST_TOKEN}
+    volumes:
+      # Le code vit dans /app/pipeline ; modules.json est lu un cran au-dessus.
+      # On le monte plutôt que de le copier : ajouter un module ne demande
+      # alors pas de reconstruire l'image.
+      - ../modules.json:/app/modules.json:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
-  directus_uploads:
-  directus_extensions:
   caddy_data:
   caddy_config:

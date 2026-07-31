@@ -1,5 +1,8 @@
 name: Ingérer un module
 
+# L'ingestion tourne SUR LE SERVEUR, par SSH : la base n'est pas exposée
+# sur Internet, et la clé Anthropic reste dans infra/.env.
+#
 # Deux déclencheurs :
 #  - repository_dispatch « module-updated », envoyé par le dépôt d'un module
 #    quand son code bouge (voir examples/module-publish.yml) ;
@@ -27,47 +30,59 @@ concurrency:
 jobs:
   ingerer:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Récupérer le dépôt
         uses: actions/checkout@v4
 
-      - name: Installer Node 20
-        uses: actions/setup-node@v4
+      - name: Préparer la connexion SSH
+        uses: ./.github/actions/preparer-ssh
         with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: pipeline/package-lock.json
-
-      - name: Installer les dépendances du pipeline
-        run: npm ci
-        working-directory: pipeline
+          cle: ${{ secrets.SSH_KEY }}
+          hote: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || '22' }}
 
       - name: Déterminer la cible
         id: cible
         run: |
           CIBLE="${{ github.event.client_payload.repo || inputs.module }}"
           if [ -z "$CIBLE" ]; then
-            echo "Aucun module fourni." >&2
+            echo "::error::Aucun module fourni."
+            exit 1
+          fi
+          # Le nom part vers un shell distant : on refuse tout ce qui n'est pas
+          # un slug ou un couple org/dépôt.
+          if ! printf '%s' "$CIBLE" | grep -qE '^[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?$'; then
+            echo "::error::Nom de module invalide : $CIBLE"
             exit 1
           fi
           echo "valeur=$CIBLE" >> "$GITHUB_OUTPUT"
 
-      - name: Ingérer
-        working-directory: pipeline
+      - name: Ingérer sur le serveur
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          ANTHROPIC_MODEL: ${{ vars.ANTHROPIC_MODEL }}
-          DIRECTUS_URL: ${{ secrets.DIRECTUS_URL }}
-          DIRECTUS_TOKEN: ${{ secrets.DIRECTUS_TOKEN }}
-          GH_INGEST_TOKEN: ${{ secrets.GH_INGEST_TOKEN }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/var/www/landing_tfb' }}
+          CIBLE: ${{ steps.cible.outputs.valeur }}
+          FORCE: ${{ inputs.force || github.event.client_payload.force }}
         run: |
+          set -euo pipefail
           ARGS=""
-          if [ "${{ inputs.force }}" = "true" ] || [ "${{ github.event.client_payload.force }}" = "true" ]; then
-            ARGS="--force"
-          fi
-          if [ -n "${{ github.event.client_payload.ref }}" ]; then
-            ARGS="$ARGS --ref=${{ github.event.client_payload.ref }}"
-          fi
-          node ingest.mjs "${{ steps.cible.outputs.valeur }}" $ARGS
+          [ "${FORCE:-}" = "true" ] && ARGS="--force"
+
+          ssh -i ~/.ssh/id_deploy -p "${SSH_PORT:-22}" \
+              -o StrictHostKeyChecking=yes \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              "$SSH_USER@$SSH_HOST" bash -s <<EOF
+          set -euo pipefail
+          cd '$DEPLOY_PATH/infra'
+          docker compose --profile outils run --rm pipeline \
+            node ingest.mjs '$CIBLE' $ARGS
+          EOF
+
+      - name: Effacer la clé
+        if: always()
+        run: rm -f ~/.ssh/id_deploy

@@ -3,17 +3,19 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Ingestion des dépôts GitHub, génération du contenu par l'API Anthropic, écriture dans Directus.",
+  "description": "Ingestion des dépôts GitHub, génération du contenu par l'API Anthropic, écriture directe en base SQL.",
   "engines": {
     "node": ">=20"
   },
   "scripts": {
-    "bootstrap": "node bootstrap-directus.mjs",
+    "bootstrap": "node bootstrap-db.mjs",
     "ingest": "node ingest.mjs",
     "ingest:all": "node ingest-all.mjs",
-    "check": "node --check ingest.mjs && node --check ingest-all.mjs && node --check bootstrap-directus.mjs && node --check lib/repo.mjs && node --check lib/ai.mjs && node --check lib/directus.mjs"
+    "check": "node --check ingest.mjs && node --check ingest-all.mjs && node --check bootstrap-db.mjs && node --check lib/repo.mjs && node --check lib/ai.mjs && node --check lib/db.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.115.0"
+    "@anthropic-ai/sdk": "^0.115.0",
+    "mysql2": "^3.23.2",
+    "pg": "^8.22.0"
   }
 }
