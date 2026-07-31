@@ -11,11 +11,15 @@ import Pastille from '../../../components/Pastille.astro';
 import { lien } from '../../../lib/lien.mjs';
 import { leviersDe } from '../../../lib/leviers.mjs';
 import {
+  basculerFonction,
   basculerModule,
+  chargerModuleAdmin,
   compteurs,
   enregistrerLigneModule,
   famillesConnues,
   listerModules,
+  validerFonction,
+  validerModule,
 } from '../../../lib/admin/donnees.mjs';
 import { LEVIERS, titreLevier } from '../../../lib/leviers.mjs';
 
@@ -35,9 +39,26 @@ if (Astro.request.method === 'POST') {
     const f = await Astro.request.formData();
     const slug = String(f.get('slug') || '');
 
+    const action = String(f.get('action') || '');
+
+    // La relecture : le module et ses composants encore « nouveaux » passent
+    // d'un coup en ligne.
+    if (action === 'valider-module') {
+      await validerModule(slug);
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} validé et publié.`)}`, 303);
+    }
+    if (action === 'valider-fonction') {
+      await validerFonction(f.get('id'));
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Composant validé et mis en ligne.')}`, 303);
+    }
+    if (action === 'bascule-fonction') {
+      await basculerFonction(f.get('id'), f.get('en_ligne') === '1');
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Composant mis à jour.')}`, 303);
+    }
+
     // Deux actions sur la même table : basculer la publication, ou
     // enregistrer la ligne modifiée sur place.
-    if (String(f.get('action')) === 'publication') {
+    if (action === 'publication') {
       const actif = f.get('actif') === '1';
       await basculerModule(slug, actif);
       return Astro.redirect(
@@ -67,6 +88,11 @@ try {
   modules = await listerModules();
   chiffres = await compteurs();
   familles = await famillesConnues();
+  // Les composants de chaque module, pour la ligne dépliable.
+  for (const m of modules) {
+    const complet = await chargerModuleAdmin(m.slug).catch(() => null);
+    m.composants = complet?.fonctions || [];
+  }
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
@@ -120,7 +146,10 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   <input type="hidden" name="slug" value={m.slug} />
 
                   <div class="ligne-module__nom">
-                    <a href={lien(`/admin/modules/${m.slug}`)}><strong>{m.nom || m.slug}</strong></a>
+                    <span style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+                      <a href={lien(`/admin/modules/${m.slug}`)}><strong>{m.nom || m.slug}</strong></a>
+                      {m.nouveau && <span class="neuf">nouveau</span>}
+                    </span>
                     <code class="slug">{m.slug}</code>
                   </div>
 
@@ -154,6 +183,11 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   <span class={m.actif ? 'etat etat--on' : 'etat'}>{m.actif ? 'publié' : 'masqué'}</span>
 
                   <span class="actions">
+                    {m.nouveau && (
+                      <button class="bouton bouton--valider bouton--sm" type="submit" name="action" value="valider-module">
+                        Valider
+                      </button>
+                    )}
                     <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
                     <button
                       class="bouton bouton--sobre bouton--sm"
@@ -164,6 +198,53 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                     <input type="hidden" name="actif" value={m.actif ? '0' : '1'} />
                   </span>
                 </form>
+
+                <details class="composants">
+                  <summary>
+                    <Icone nom="chevron-right" taille={14} classe="icone--miroir composants__fleche" />
+                    {(m.composants || []).length} composant(s)
+                    {m.nb_nouvelles > 0 && <span class="neuf">{m.nb_nouvelles} à valider</span>}
+                  </summary>
+                  <div class="composants__liste">
+                    {(m.composants || []).map((c) => (
+                      <div class="composant-ligne">
+                        <span class="composant-ligne__nom">
+                          {c.nom || c.cle}
+                          {c.nouveau && <span class="neuf">nouveau</span>}
+                        </span>
+                        <span class="pastilles">{leviersDe(c.leviers).map((l) => <Pastille levier={l} />)}</span>
+                        <form method="post" class="composant-ligne__etat">
+                          <input type="hidden" name="slug" value={m.slug} />
+                          <input type="hidden" name="id" value={c.id} />
+                          {c.nouveau ? (
+                            <Fragment>
+                              <span class="interrupteur interrupteur--bloque" title="À valider avant mise en ligne"></span>
+                              <span class="composant-ligne__mot">hors ligne</span>
+                              <button class="bouton bouton--valider bouton--sm" type="submit" name="action" value="valider-fonction">
+                                Valider
+                              </button>
+                            </Fragment>
+                          ) : (
+                            <Fragment>
+                              <input type="hidden" name="en_ligne" value={c.en_ligne ? '0' : '1'} />
+                              <button
+                                class={c.en_ligne ? 'interrupteur interrupteur--on' : 'interrupteur'}
+                                type="submit"
+                                name="action"
+                                value="bascule-fonction"
+                                title={c.en_ligne ? 'Mettre hors ligne' : 'Mettre en ligne'}
+                              ><span></span></button>
+                              <span class="composant-ligne__mot" style={c.en_ligne ? 'color:var(--teal-700)' : undefined}>
+                                {c.en_ligne ? 'en ligne' : 'hors ligne'}
+                              </span>
+                            </Fragment>
+                          )}
+                        </form>
+                        <span class="composant-ligne__gain">{c.benefice || '—'}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
               </td>
             </tr>
           ))}

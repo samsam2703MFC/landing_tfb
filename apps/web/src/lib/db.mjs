@@ -191,7 +191,8 @@ export async function chargerModules() {
   const modules = lignes.map(normaliserModule);
   const fonctions = await lire(
     'fonctions-resume',
-    `SELECT module_id, cle, nom, icone FROM ${table('fonctions')} ORDER BY module_id, ordre`,
+    `SELECT module_id, cle, nom, icone FROM ${table('fonctions')} WHERE en_ligne = ? ORDER BY module_id, ordre`,
+    [VRAI()],
   );
 
   if (fonctions) {
@@ -221,8 +222,8 @@ export async function chargerModule(slug) {
 
   const fonctions = await lire(
     `fonctions:${slug}`,
-    `SELECT * FROM ${table('fonctions')} WHERE module_id = ? ORDER BY ordre`,
-    [module.id],
+    `SELECT * FROM ${table('fonctions')} WHERE module_id = ? AND en_ligne = ? ORDER BY ordre`,
+    [module.id, VRAI()],
   );
   module.fonctions = (fonctions || []).map((f) => ({ ...f, leviers: lireJson(f.leviers, []) }));
 
@@ -246,7 +247,8 @@ export async function chargerParcours() {
 
   const fonctions = await lire(
     'fonctions-completes',
-    `SELECT * FROM ${table('fonctions')} ORDER BY module_id, ordre`,
+    `SELECT * FROM ${table('fonctions')} WHERE en_ligne = ? ORDER BY module_id, ordre`,
+    [VRAI()],
   );
   const captures = await lire(
     'captures-toutes',

@@ -62,6 +62,9 @@ function modele(pg) {
         ['leviers', t.objet],
         ['liens', t.objet],
         ['onboarding', t.texte],
+        // Flux de validation : tout contenu produit par le pipeline arrive
+        // en « nouveau » et attend une relecture dans la console.
+        ['statut', `${t.chaine(20)} DEFAULT 'valide'`],
         ['commit_sha', t.chaine(64)],
         ['modele_ia', t.chaine(120)],
         ['genere_le', t.horodatage],
@@ -79,6 +82,10 @@ function modele(pg) {
         ['icone', t.chaine(60)],
         ['leviers', t.objet],
         ['ordre', 'INT DEFAULT 100'],
+        // Un composant « nouveau » reste hors ligne : le commutateur est
+        // verrouillé tant que la relecture n'a pas eu lieu.
+        ['statut', `${t.chaine(20)} DEFAULT 'valide'`],
+        ['en_ligne', `${t.booleen} DEFAULT ${t.vrai}`],
       ],
     },
     {

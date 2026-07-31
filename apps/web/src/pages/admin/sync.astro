@@ -1,0 +1,153 @@
+---
+/**
+ * L'état de synchronisation avec les dépôts GitHub.
+ *
+ * Le contenu de chaque module vient de son dépôt : le pipeline le régénère,
+ * la console le relit. Cet écran dit, module par module, d'où vient ce qui
+ * est en base et quand il a été produit.
+ *
+ * Le bouton « Synchroniser maintenant » relit les fiches du dépôt de la
+ * landing et dépose les changements en « à valider » — il ne publie rien.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { lien } from '../../lib/lien.mjs';
+import { compteurs, etatDepots } from '../../lib/admin/donnees.mjs';
+
+let erreur = null;
+let depots = [];
+let chiffres = {};
+
+try {
+  depots = await etatDepots();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const jamais = depots.filter((d) => !d.genere_le).length;
+const parIa = depots.filter((d) => d.modele_ia && d.modele_ia !== 'contenu-initial').length;
+
+/** Une date lisible, sans dépendance. */
+function quand(valeur) {
+  if (!valeur) return null;
+  const d = valeur instanceof Date ? valeur : new Date(valeur);
+  if (Number.isNaN(d.getTime())) return String(valeur);
+  const n = (x) => String(x).padStart(2, '0');
+  return `${n(d.getDate())}/${n(d.getMonth() + 1)}/${d.getFullYear()} ${n(d.getHours())}:${n(d.getMinutes())}`;
+}
+---
+
+<Console
+  titre="Sync GitHub"
+  fil="TFB Admin · Système · Sync GitHub"
+  actif="sync"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Dépôts</h2>
+        <p>
+          Le contenu vient des dépôts GitHub listés dans <span class="jeton">modules.json</span>.
+          Le pipeline tourne à chaque déploiement ; ce qu'il produit arrive « à valider ».
+        </p>
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr>
+            <th>Module</th><th>Dépôt</th><th>Branche</th><th>Origine du contenu</th>
+            <th>Dernière génération</th><th class="a-droite">Captures</th><th>État</th>
+          </tr>
+        </thead>
+        <tbody>
+          {depots.map((d) => (
+            <tr>
+              <td style="white-space:nowrap">
+                <strong>{d.nom || d.slug}</strong>
+                <code class="slug">{d.slug}</code>
+              </td>
+              <td style="white-space:nowrap">
+                <a href={`https://github.com/${d.repo}`} target="_blank" rel="noreferrer noopener">
+                  {d.repo}
+                  <Icone nom="external-link" taille={12} />
+                </a>
+              </td>
+              <td><code class="slug">{d.ref || 'main'}</code></td>
+              <td>
+                {d.modele_ia === 'contenu-initial' ? (
+                  <span class="etat">fiche du dépôt landing</span>
+                ) : (
+                  <span class="etat etat--on">{d.modele_ia || '—'}</span>
+                )}
+              </td>
+              <td class="num" style="white-space:nowrap">
+                {quand(d.genere_le) || <span class="etat etat--manque">jamais ingéré</span>}
+              </td>
+              <td class="a-droite num" style={d.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
+                {d.nb_captures}
+              </td>
+              <td>
+                {d.nouveau ? (
+                  <span class="neuf">à valider</span>
+                ) : (
+                  <span class={d.actif ? 'etat etat--on' : 'etat'}>{d.actif ? 'publié' : 'masqué'}</span>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bloc__pied">
+      {depots.length} dépôt(s) · {parIa} ingéré(s) par l'IA · {jamais} jamais ingéré(s), servis par leur fiche du dépôt landing.
+    </div>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Comment la synchronisation se déclenche</h2>
+        <p>Il n'y a pas de bouton magique : la chaîne est explicite, et c'est voulu.</p>
+      </div>
+    </div>
+    <div class="bloc__corps">
+      <ol class="marche">
+        <li>
+          <strong>Un dépôt module bouge.</strong> Son propre workflow appelle le déploiement de la landing,
+          ou le prochain déploiement le reprend.
+        </li>
+        <li>
+          <strong>Le pipeline tourne sur le serveur.</strong>
+          <span class="jeton">bootstrap-db.mjs</span> met le schéma à jour,
+          <span class="jeton">seed-contenu.mjs</span> écrit les fiches,
+          <span class="jeton">sync-captures.mjs</span> récupère les copies d'écran.
+        </li>
+        <li>
+          <strong>Ce qui est nouveau arrive « à valider ».</strong> Un module régénéré n'est pas publié,
+          ses composants restent hors ligne : le commutateur est verrouillé jusqu'à la relecture.
+        </li>
+        <li>
+          <strong>Vous relisez et validez</strong> dans l'écran Modules. C'est le seul geste qui met en ligne.
+        </li>
+      </ol>
+      <p class="tuile__note">
+        L'ingestion par l'IA (<span class="jeton">ingest.mjs</span>) suit la même règle : ce qu'elle réécrit
+        repasse par la relecture.
+      </p>
+    </div>
+  </section>
+</Console>
+
+<style is:global>
+  .marche { margin: 0; padding-inline-start: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .marche li { font: var(--type-body-sm); color: var(--slate-600); }
+  .marche strong { color: var(--navy-900); }
+</style>

@@ -1,0 +1,104 @@
+---
+/**
+ * Les réglages du serveur, en lecture seule.
+ *
+ * Aucune valeur secrète n'est affichée : on dit si elle est renseignée,
+ * jamais ce qu'elle contient. C'est tout l'intérêt — voir ce qui manque sans
+ * ouvrir un fichier en SSH.
+ *
+ * Ces réglages viennent de `infra/.env` sur le serveur. Les modifier depuis
+ * une page web reviendrait à donner à la console le droit de se couper
+ * elle-même l'accès à la base.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { compteurs, reglages } from '../../lib/admin/donnees.mjs';
+
+let erreur = null;
+let chiffres = {};
+try {
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+const r = reglages();
+---
+
+<Console
+  titre="Réglages"
+  fil="TFB Admin · Système · Réglages"
+  actif="reglages"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <div class="tuiles">
+    <div class="tuile">
+      <span class="tuile__oeil">Base de données</span>
+      <span class="tuile__note">
+        <strong>{r.base.client}</strong> sur {r.base.hote}<br />
+        base <code class="slug">{r.base.nom}</code><br />
+        préfixe <code class="slug">{r.base.prefixe}</code>
+      </span>
+    </div>
+    <div class="tuile">
+      <span class="tuile__oeil">Montage</span>
+      <span class="tuile__note">
+        chemin <code class="slug">{r.montage.chemin}</code><br />
+        domaine {r.montage.domaine}<br />
+        cache de lecture {r.montage.cache}
+      </span>
+    </div>
+    <div class="tuile">
+      <span class="tuile__oeil">Génération IA</span>
+      <span class="tuile__note">
+        modèle <code class="slug">{r.modele}</code><br />
+        utilisé par <span class="jeton">ingest.mjs</span>
+      </span>
+    </div>
+  </div>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Variables sensibles</h2>
+        <p>
+          On dit seulement si elles sont renseignées. Leur valeur ne sort jamais du serveur —
+          y compris vers cette page.
+        </p>
+      </div>
+    </div>
+    <div class="roule">
+      <table>
+        <thead><tr><th>Variable</th><th>État</th><th>À quoi elle sert</th></tr></thead>
+        <tbody>
+          {r.secrets.map((s) => (
+            <tr>
+              <td><code class="slug">{s.nom}</code></td>
+              <td>
+                {s.gabarit ? (
+                  <span class="etat etat--manque">valeur du gabarit</span>
+                ) : s.present ? (
+                  <span class="etat etat--on">renseignée</span>
+                ) : (
+                  <span class="etat">absente</span>
+                )}
+              </td>
+              <td style="color:var(--slate-600)">
+                {s.nom === 'ADMIN_PASSWORD' && 'Ouvre cette console. Sans elle, /admin répond 503.'}
+                {s.nom === 'ADMIN_SECRET' && 'Signe le cookie de session. Absente, elle est dérivée du mot de passe — ce qui suffit.'}
+                {s.nom === 'GH_INGEST_TOKEN' && 'Lecture des dépôts privés. Inutile tant qu’ils sont publics ; une valeur de gabarit est ignorée.'}
+                {s.nom === 'ANTHROPIC_API_KEY' && 'Génération du contenu par l’IA. Absente, les fiches du dépôt landing servent telles quelles.'}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+    <div class="bloc__pied">
+      Ces valeurs vivent dans <span class="jeton">infra/.env</span> sur le serveur, et
+      <span class="jeton">ADMIN_PASSWORD</span> peut venir du secret GitHub du même nom.
+      Elles ne se modifient pas depuis cette page : une console qui peut changer les identifiants de
+      la base peut se couper elle-même l'accès.
+    </div>
+  </section>
+</Console>

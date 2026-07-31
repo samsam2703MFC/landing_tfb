@@ -54,7 +54,10 @@ async function ecrireEnBase({ siVide = false } = {}) {
         groupe: module.groupe,
         icone: module.icone,
         ordre: module.ordre,
-        actif: true,
+        // Un module à valider n'est pas publié : il apparaît dans la console,
+        // pas sur le site.
+        actif: !aValider,
+        statut: aValider ? 'nouveau' : 'valide',
         nom: module.nom,
         accroche: module.accroche,
         resume: module.resume,
@@ -89,16 +92,18 @@ async function ecrireEnBase({ siVide = false } = {}) {
           fonction.icone,
           json(fonction.leviers),
           position,
+          aValider ? 'nouveau' : 'valide',
+          !aValider,
         ];
         const existant = parCle.get(fonction.cle);
         if (existant) {
           await db.executer(
-            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, leviers = ?, ordre = ? WHERE id = ?`,
+            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, leviers = ?, ordre = ?, statut = ?, en_ligne = ? WHERE id = ?`,
             [...valeurs, existant],
           );
         } else {
           await db.executer(
-            `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, leviers, ordre) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, leviers, ordre, statut, en_ligne) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [id, fonction.cle, ...valeurs],
           );
         }
@@ -115,7 +120,7 @@ async function ecrireEnBase({ siVide = false } = {}) {
       }
 
       console.log(
-        `${cree ? '✓ créé  ' : '· maj   '} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions`,
+        `${cree ? '✓ créé  ' : '· maj   '} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions${aValider ? ' — à valider' : ''}`,
       );
     }
 

@@ -103,7 +103,10 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
     ref: branche,
     groupe: entree.groupe,
     ordre: entree.ordre,
-    actif: true,
+    // Même procédure que le seed : ce que le pipeline régénère repasse par
+    // une relecture avant d'être publié.
+    actif: false,
+    statut: 'nouveau',
     nom: contenu.nom,
     accroche: contenu.accroche,
     resume: contenu.resume,
@@ -135,16 +138,18 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
       fonction.benefice,
       fonction.icone,
       position,
+      'nouveau',
+      false,
     ];
     const idExistant = parCle.get(fonction.cle);
     if (idExistant) {
       await db.executer(
-        `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?`,
+        `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ?, statut = ?, en_ligne = ? WHERE id = ?`,
         [...valeurs, idExistant],
       );
     } else {
       await db.executer(
-        `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre, statut, en_ligne) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [moduleId, fonction.cle, ...valeurs],
       );
     }
@@ -160,7 +165,9 @@ export async function ingererModule(entree, { force = false, ref = null, dryRun 
     console.log(`   ${obsoletes.length} fonction(s) obsolète(s) supprimée(s)`);
   }
 
-  console.log(`   ✓ module ${cree ? 'créé' : 'mis à jour'} (#${moduleId}), ${contenu.fonctions.length} fonctions`);
+  console.log(
+    `   ✓ module ${cree ? 'créé' : 'mis à jour'} (#${moduleId}), ${contenu.fonctions.length} fonctions — à valider dans la console`,
+  );
   return { slug: entree.slug, statut: 'ok', fonctions: contenu.fonctions.length, sha: depot.sha };
 }
 

@@ -27,13 +27,21 @@ const RUBRIQUES = [
     titre: 'Contenu landing',
     entrees: [
       { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
-      { cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules },
+      { cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules,
+        alerte: compteurs.aValider > 0 ? compteurs.aValider : null },
       { cle: 'composants', href: '/admin/composants', libelle: 'Composants', icone: 'panels-top-left', compte: compteurs.fonctions },
       { cle: 'leviers', href: '/admin/leviers', libelle: 'Leviers', icone: 'tag', compte: 6 },
       { cle: 'captures', href: '/admin/captures', libelle: 'Captures', icone: 'image', compte: compteurs.captures },
       { cle: 'textes', href: '/admin/textes', libelle: 'Textes', icone: 'file-text', compte: compteurs.textes },
       { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'panels-top-left' },
       { cle: 'langues', href: '/admin/langues', libelle: 'Traductions', icone: 'languages', compte: compteurs.langues },
+    ],
+  },
+  {
+    titre: 'Système',
+    entrees: [
+      { cle: 'sync', href: '/admin/sync', libelle: 'Sync GitHub', icone: 'arrow-up-down', compte: compteurs.modules },
+      { cle: 'reglages', href: '/admin/reglages', libelle: 'Réglages', icone: 'settings' },
     ],
   },
   {
@@ -227,6 +235,9 @@ const RUBRIQUES = [
       .bouton--marque:hover { background: var(--plum-600); border-color: var(--plum-600); color: #fff; text-decoration: none; }
       .bouton--sobre { background: #fff; border-color: var(--slate-200); color: var(--slate-600); }
       .bouton--sobre:hover { background: var(--slate-50); border-color: var(--slate-300); color: var(--navy-900); text-decoration: none; }
+      /* Le vert de la validation : c'est le geste qui met en ligne. */
+      .bouton--valider { background: var(--teal-500); border-color: var(--teal-700); color: #fff; }
+      .bouton--valider:hover { background: var(--teal-700); border-color: var(--teal-700); color: #fff; text-decoration: none; }
       .bouton--danger { background: #fff; border-color: var(--red-500); color: var(--red-700); }
       .bouton--danger:hover { background: var(--red-100); color: var(--red-700); text-decoration: none; }
       .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -285,6 +296,68 @@ const RUBRIQUES = [
       details.fiche[open] > summary { border-block-end: 1px solid var(--slate-100); }
       .fiche__corps { padding: 16px; display: grid; gap: 12px; }
 
+      /* ── Ce qui attend une relecture ───────────────────────────────────── */
+      .neuf {
+        display: inline-flex; align-items: center;
+        padding: 1px 8px; border-radius: var(--radius-pill);
+        background: var(--ember-500); color: var(--navy-900);
+        font: 600 10.5px/1.5 var(--font-sans);
+        letter-spacing: 0.04em; text-transform: uppercase;
+        white-space: nowrap;
+      }
+      .rail__compte--neuf { background: var(--ember-500); color: var(--navy-900); }
+
+      /* Le commutateur « en ligne », verrouillé tant que c'est à valider. */
+      .interrupteur {
+        position: relative; inline-size: 34px; block-size: 19px;
+        border-radius: var(--radius-pill);
+        border: 1px solid var(--slate-300); background: var(--slate-200);
+        cursor: pointer; padding: 0; flex: none;
+        transition: background var(--duration-fast) var(--ease-standard);
+      }
+      .interrupteur > span, .interrupteur::after {
+        content: ''; position: absolute; inset-block-start: 2px; inset-inline-start: 2px;
+        inline-size: 13px; block-size: 13px; border-radius: 50%;
+        background: #fff; box-shadow: 0 1px 2px rgba(12, 19, 41, 0.2);
+        transition: inset-inline-start var(--duration-fast) var(--ease-standard);
+      }
+      .interrupteur--on { background: var(--teal-500); border-color: var(--teal-700); }
+      .interrupteur--on > span { inset-inline-start: 16px; }
+      .interrupteur--bloque { cursor: not-allowed; opacity: 0.55; }
+      .interrupteur--bloque::after { content: ''; }
+
+      /* ── Composants dépliés sous une ligne de module ───────────────────── */
+      .composants { border-block-start: 1px solid var(--slate-100); background: var(--slate-25); }
+      .composants > summary {
+        cursor: pointer; list-style: none;
+        display: flex; align-items: center; gap: 8px;
+        padding: 8px 16px 8px 38px;
+        font: var(--type-body-sm); color: var(--slate-600);
+      }
+      .composants > summary::-webkit-details-marker { display: none; }
+      .composants > summary::marker { content: ''; }
+      .composants > summary:hover { background: var(--slate-50); }
+      .composants[open] .composants__fleche { transform: rotate(90deg); }
+      .composants .composants__fleche { transition: transform var(--duration-base) var(--ease-standard); }
+      .composants__liste { padding: 0 16px 12px 38px; display: flex; flex-direction: column; }
+      .composant-ligne {
+        display: grid;
+        grid-template-columns: minmax(12rem, 1fr) 8rem 13rem minmax(10rem, 1.4fr);
+        gap: 14px; align-items: center;
+        padding-block: 8px;
+        border-block-end: 1px solid var(--slate-100);
+        font: var(--type-body-sm);
+      }
+      .composant-ligne:last-child { border-block-end: 0; }
+      .composant-ligne__nom { display: flex; align-items: center; gap: 8px; font-weight: var(--weight-medium); }
+      .composant-ligne__etat { display: flex; align-items: center; gap: 8px; margin: 0; }
+      .composant-ligne__mot { font: 500 11px/1 var(--font-mono); color: var(--slate-500); }
+      .composant-ligne__gain {
+        color: var(--slate-500); font-size: var(--text-sm);
+        overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      }
+      @media (max-width: 1100px) { .composant-ligne { grid-template-columns: 1fr; gap: 4px; } }
+
       .jeton {
         display: inline-block; font: 400 11.5px/1.5 var(--font-mono);
         background: var(--slate-100); color: var(--slate-600);
@@ -325,7 +398,11 @@ const RUBRIQUES = [
               <a class="rail__lien" href={lien(e.href)} aria-current={actif === e.cle ? 'page' : undefined}>
                 <Icone nom={e.icone} taille={18} />
                 {e.libelle}
-                {e.compte !== undefined && e.compte !== null && <span class="rail__compte">{e.compte}</span>}
+                {e.alerte ? (
+                  <span class="rail__compte rail__compte--neuf" title={`${e.alerte} élément(s) à valider`}>{e.alerte} ⚑</span>
+                ) : (
+                  e.compte !== undefined && e.compte !== null && <span class="rail__compte">{e.compte}</span>
+                )}
               </a>
             ))}
           </div>
