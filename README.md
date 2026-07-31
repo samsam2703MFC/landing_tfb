@@ -80,7 +80,7 @@ GitHub Actions « Ingérer un module »
 | `DB_PASS` | mot de passe SQL → mappé sur `DB_PASSWORD` |
 | `SSH_HOST` | serveur de déploiement |
 | `SSH_USER` | compte de déploiement |
-| `SSH_KEY` | clé privée de déploiement |
+| `SSH_KEY` | clé privée de déploiement, au format OpenSSH — ou son encodage base64 (`base64 -w0 ~/.ssh/id_deploy`), plus sûr à copier |
 
 Le mapping vers les noms attendus par Directus est fait dans
 `infra/docker-compose.yml` — les secrets ne sont pas renommés.

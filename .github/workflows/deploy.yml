@@ -57,6 +57,18 @@ jobs:
             printf '%s\n' "$SSH_KEY" | tr -d '\r' > ~/.ssh/id_deploy
             chmod 600 ~/.ssh/id_deploy
 
+            # Deuxième forme acceptée : la clé encodée en base64 (`base64 -w0`).
+            # Les espaces et retours à la ligne éventuellement introduits par
+            # un terminal sont retirés avant décodage, ce qui rend ce format
+            # bien plus tolérant au copier-coller que le PEM multi-lignes.
+            if ! grep -q -- '-----BEGIN' ~/.ssh/id_deploy \
+               && tr -d ' \t\n' < ~/.ssh/id_deploy | base64 -d 2>/dev/null | grep -q -- '-----BEGIN'; then
+              tr -d ' \t\n' < ~/.ssh/id_deploy | base64 -d > ~/.ssh/id_deploy.tmp
+              mv ~/.ssh/id_deploy.tmp ~/.ssh/id_deploy
+              chmod 600 ~/.ssh/id_deploy
+              echo "Clé fournie en base64 : décodée."
+            fi
+
             # Remise en forme des collages approximatifs : lignes vides en
             # tête, invite de terminal recopiée avant l'en-tête, texte ajouté
             # après le pied, ou clé aplatie sur une seule ligne.
