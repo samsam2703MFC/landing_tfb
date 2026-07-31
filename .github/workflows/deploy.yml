@@ -161,10 +161,15 @@ jobs:
           git checkout "\$BRANCHE" 2>/dev/null || git checkout -b "\$BRANCHE" "origin/\$BRANCHE"
           git reset --hard "origin/\$BRANCHE"
 
-          # Les identifiants ne peuvent pas venir du dépôt : ce fichier se crée
-          # une fois à la main sur le serveur.
+          # Les identifiants ne peuvent pas venir du dépôt. On dépose le
+          # gabarit au premier passage, mais il reste à le remplir à la main.
           if [ ! -f infra/.env ]; then
-            echo "infra/.env absent dans \$DEPLOY_PATH. Le créer à partir de .env.example et y mettre les identifiants de la base et de Directus." >&2
+            cp .env.example infra/.env
+            echo "infra/.env vient d'être créé dans \$DEPLOY_PATH à partir de .env.example. Renseigner les valeurs puis relancer le déploiement." >&2
+            exit 1
+          fi
+          if grep -q 'change-moi' infra/.env; then
+            echo "infra/.env contient encore des valeurs « change-moi » dans \$DEPLOY_PATH. Les remplacer par les identifiants réels avant de relancer." >&2
             exit 1
           fi
 
