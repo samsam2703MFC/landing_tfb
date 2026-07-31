@@ -362,28 +362,104 @@ retomberaient sur leur placeholder — sans la moindre erreur pour vous préveni
 La validation en CI reste utile : une fiche cassée se voit avant que le serveur ne
 la lise.
 
-### 9.3 Pour du quasi-immédiat
+### 9.3 Déclencher la sync depuis le dépôt module (SSH)
 
-Si dix minutes sont trop, faites déclencher la sync par le dépôt module lui-même.
-Le plus simple est un pas SSH dans son workflow :
+Dix minutes d'attente, c'est parfois neuf de trop. Le dépôt module peut prévenir le
+serveur lui-même : dès qu'une fiche change sur `main`, son workflow ouvre une session
+SSH et lance la sync. Le contenu est en ligne une minute plus tard.
 
-```yaml
-- name: Rafraîchir la landing
-  run: |
-    ssh -o StrictHostKeyChecking=accept-new deploy@VOTRE_SERVEUR \
-      'sudo systemctl start tfb-sync.service'
-  env:
-    SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
+La clé utilisée est à **commande forcée** : elle ne peut rien faire d'autre que
+déclencher la sync. Ni shell, ni tunnel, ni copie de fichier — même entre de
+mauvaises mains, elle ne donne que le droit de rafraîchir la landing.
+
+#### a. Le compte de déploiement, sur le serveur
+
+```bash
+sudo useradd --system --create-home --shell /bin/sh deploy
 ```
 
-avec une clé de déploiement dédiée et une règle sudoers limitée à cette seule
-commande :
+#### b. Le script, seul geste que la clé pourra accomplir
 
-```sudoers
-deploy ALL=(root) NOPASSWD: /bin/systemctl start tfb-sync.service
+```bash
+sudo cp deploy/tfb-sync-trigger.sh /usr/local/bin/tfb-sync-trigger
+sudo chown root: /usr/local/bin/tfb-sync-trigger
+sudo chmod 755 /usr/local/bin/tfb-sync-trigger
+
+sudo cp deploy/tfb-sync.sudoers /etc/sudoers.d/tfb-sync
+sudo chmod 440 /etc/sudoers.d/tfb-sync
+sudo visudo -cf /etc/sudoers.d/tfb-sync      # doit répondre "parsed OK"
 ```
 
-Gardez le minuteur en place malgré tout : il rattrape les déclenchements perdus.
+La règle sudoers autorise **une** ligne de commande, écrite en entier. Pas de joker :
+`systemctl *` reviendrait à donner le droit d'arrêter n'importe quel service.
+
+#### c. La paire de clés
+
+Générez-la sur votre poste, **sans passphrase** (personne ne sera là pour la taper) :
+
+```bash
+ssh-keygen -t ed25519 -N '' -C 'tfb-sync@github-actions' -f ~/.ssh/tfb-sync
+```
+
+La publique va sur le serveur, précédée de ses restrictions — le modèle complet est
+dans `deploy/authorized_keys.example` :
+
+```bash
+sudo -u deploy mkdir -p ~deploy/.ssh && sudo -u deploy chmod 700 ~deploy/.ssh
+printf 'command="/usr/local/bin/tfb-sync-trigger",restrict %s\n' "$(cat ~/.ssh/tfb-sync.pub)" \
+  | sudo -u deploy tee -a ~deploy/.ssh/authorized_keys
+sudo -u deploy chmod 600 ~deploy/.ssh/authorized_keys
+```
+
+Relevez au passage l'empreinte du serveur, pour que la CI sache à qui elle parle :
+
+```bash
+ssh-keyscan -H VOTRE_SERVEUR 2>/dev/null
+```
+
+#### d. Les secrets, dans chaque dépôt module
+
+Settings → Secrets and variables → Actions :
+
+| Nom | Type | Valeur |
+| --- | --- | --- |
+| `TFB_SSH_HOST` | secret | l'hôte du serveur |
+| `TFB_SSH_KEY` | secret | le contenu de `~/.ssh/tfb-sync` (la clé **privée**) |
+| `TFB_SSH_KNOWN_HOSTS` | secret | la sortie de `ssh-keyscan` ci-dessus |
+| `TFB_SSH_USER` | variable | `deploy` (défaut si absent) |
+| `TFB_SSH_PORT` | variable | `22` (défaut si absent) |
+
+Sans `TFB_SSH_HOST`, le workflow ne fait rien et reste vert : un dépôt pas encore
+configuré ne doit pas afficher un échec permanent.
+
+#### e. Le workflow
+
+`deploy/notify-landing.yml` est déjà posé dans les huit dépôts modules, en
+`.github/workflows/notify-landing.yml`. Il se déclenche sur un push `main` touchant
+`.tfb/**` ou `docs/landing/**`, et se lance aussi à la main
+(Actions → notify-landing → Run workflow).
+
+#### f. Vérifier
+
+Depuis votre poste, avec la clé privée :
+
+```bash
+ssh -i ~/.ssh/tfb-sync deploy@VOTRE_SERVEUR
+# → la session se ferme aussitôt : la commande forcée a tourné, pas de shell.
+
+sudo journalctl -t tfb-sync-trigger -n 5 --no-pager   # qui a déclenché, et d'où
+sudo journalctl -u tfb-sync -n 30 --no-pager          # ce que la sync a écrit
+```
+
+Essayez ensuite d'en faire autre chose — la clé doit refuser :
+
+```bash
+ssh -i ~/.ssh/tfb-sync deploy@VOTRE_SERVEUR 'cat /etc/passwd'   # ne lit rien
+```
+
+**Gardez le minuteur en place.** Un push pendant que GitHub est en panne, un runner
+qui échoue, un serveur redémarré : le minuteur rattrape ce que le déclencheur a
+raté. Les deux voies écrivent la même chose, et la sync est idempotente.
 
 ### 9.4 Vérifier que c'est passé
 
