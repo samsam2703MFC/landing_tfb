@@ -249,10 +249,13 @@ reachable from the machine it was built on, so the migration, the seed and the r
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
 
-The same caveat covers `npm run sync:modules`: its **read** path is verified — the eight
-manifests parse and resolve against local clones (`--dry-run --from-disk`) — but its
-**write** path has never touched a database. Run it once with `--dry-run`, then for real,
-and check `/[locale]/modules/<slug>` before pointing the workflow at production.
+`npm run sync:modules` **has** been run end to end, against a temporary SQLite copy of
+this schema: seed, then sync — 8 modules, 57 functions, 29 screenshots copied into
+`STORAGE_PATH`, 438 translation rows — then the pages rendered and were screenshotted in
+FR and AR. What that run does *not* prove is MySQL: native types (`VarChar`, `Text`,
+`Json`) and the migration itself still want a real `prisma migrate deploy` against
+`tfb_landing`. Run `--dry-run` first, then the real sync, and check
+`/[locale]/modules/<slug>` before pointing the workflow at production.
 
 The 27 screenshots shipped with the modules are real captures of the running apps
 (`signage`, `pwa_delivery`, `back_office_ws_franchisor`, `back_office_ws_franchisee`),

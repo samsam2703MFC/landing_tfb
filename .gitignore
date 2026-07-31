@@ -7,6 +7,8 @@ build
 .env*.local
 *.tsbuildinfo
 next-env.d.ts
-storage/
+# Anchored: an unanchored "storage/" also swallows src/app/api/storage/, which is
+# how the route that serves uploads went missing from the repository.
+/storage/
 .DS_Store
 npm-debug.log*
