@@ -5,12 +5,14 @@
  * La table des modules dit ce que le réseau achète ; celle-ci dit ce qu'il
  * obtient, entrée de menu par entrée de menu. C'est la vue qui sert à
  * repérer les trous : un composant sans levier, sans gain écrit, sans
- * capture.
+ * capture, ou encore en attente de validation.
  *
- * Le filtre par module est un simple lien : la page se recharge, l'état est
- * dans l'URL, et un filtre partagé par courriel mène bien au même écran.
+ * Tous les filtres sont des liens et un formulaire GET : l'état vit dans
+ * l'URL, la page se recharge, et un filtre partagé par courriel mène bien au
+ * même écran. Aucun JavaScript.
  */
 import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
 import Pastille from '../../components/Pastille.astro';
 import { lien } from '../../lib/lien.mjs';
 import { leviersDe } from '../../lib/leviers.mjs';
@@ -28,16 +30,22 @@ try {
 }
 
 const filtre = Astro.url.searchParams.get('module') || '';
-const retenus = filtre ? modules.filter((m) => m.slug === filtre) : modules;
+const quete = (Astro.url.searchParams.get('q') || '').trim();
+const manque = Astro.url.searchParams.get('manque') || '';
 
-/** Les composants des modules retenus, à plat, avec leur module d'origine. */
-const composants = [];
-for (const m of retenus) {
+/** Comparaison indifférente à la casse et aux accents. */
+function aplati(texte) {
+  return String(texte || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+/** Tous les composants, à plat, avec leur module d'origine. */
+const tous = [];
+for (const m of modules) {
   const complet = await chargerModuleAdmin(m.slug).catch(() => null);
   if (!complet) continue;
   const captures = new Set((complet.captures || []).map((c) => c.fonction_cle).filter(Boolean));
   for (const f of complet.fonctions || []) {
-    composants.push({
+    tous.push({
       ...f,
       module_nom: m.nom || m.slug,
       module_slug: m.slug,
@@ -46,9 +54,64 @@ for (const m of retenus) {
   }
 }
 
-const sansLevier = composants.filter((c) => (c.leviers || []).length === 0).length;
-const sansGain = composants.filter((c) => !c.benefice).length;
-const sansCapture = composants.filter((c) => !c.illustre).length;
+// La recherche s'applique en premier : les compteurs des puces reflètent
+// ensuite ce que la recherche a laissé.
+const cherche = aplati(quete);
+const trouves = cherche
+  ? tous.filter((c) => aplati(`${c.nom} ${c.cle} ${c.benefice} ${c.description}`).includes(cherche))
+  : tous;
+
+const parModule = new Map();
+for (const c of trouves) parModule.set(c.module_slug, (parModule.get(c.module_slug) || 0) + 1);
+
+const surModule = filtre ? trouves.filter((c) => c.module_slug === filtre) : trouves;
+
+// Les quatre trous, comptés sur ce que le module et la recherche ont retenu.
+const trous = {
+  levier: surModule.filter((c) => (c.leviers || []).length === 0).length,
+  gain: surModule.filter((c) => !c.benefice).length,
+  capture: surModule.filter((c) => !c.illustre).length,
+  valider: surModule.filter((c) => c.nouveau).length,
+};
+
+const tamis = {
+  levier: (c) => (c.leviers || []).length === 0,
+  gain: (c) => !c.benefice,
+  capture: (c) => !c.illustre,
+  valider: (c) => c.nouveau,
+};
+const composants = tamis[manque] ? surModule.filter(tamis[manque]) : surModule;
+
+/** Une URL qui garde l'état courant et ne change que ce qu'on lui passe. */
+function vers(change = {}) {
+  const etat = { module: filtre, q: quete, manque, ...change };
+  const p = new URLSearchParams();
+  if (etat.module) p.set('module', etat.module);
+  if (etat.q) p.set('q', etat.q);
+  if (etat.manque) p.set('manque', etat.manque);
+  const suite = p.toString();
+  return lien(`/admin/composants${suite ? `?${suite}` : ''}`);
+}
+
+const TROUS = [
+  { cle: 'valider', mot: 'à valider', nombre: trous.valider },
+  { cle: 'levier', mot: 'sans levier', nombre: trous.levier },
+  { cle: 'gain', mot: 'sans gain écrit', nombre: trous.gain },
+  { cle: 'capture', mot: 'sans capture', nombre: trous.capture },
+];
+
+const filtreActif = Boolean(filtre || quete || manque);
+const moduleRetenu = modules.find((m) => m.slug === filtre);
+
+// Le pied de bloc, en une phrase : ce qu'on regarde, puis ce qui manque.
+const pied = [
+  `${composants.length} composant(s) affiché(s) sur ${tous.length}`,
+  moduleRetenu ? `module ${moduleRetenu.nom || filtre}` : null,
+  quete ? `recherche « ${quete} »` : null,
+  `${trous.levier} sans levier`,
+  `${trous.gain} sans gain écrit`,
+  `${trous.capture} sans capture`,
+].filter(Boolean).join(' · ') + '.';
 ---
 
 <Console
@@ -67,27 +130,69 @@ const sansCapture = composants.filter((c) => !c.illustre).length;
           et sa capture d'écran. <span class="jeton">landing_fonctions</span>
         </p>
       </div>
-      <div class="bloc__actions">
-        <a class={`bouton bouton--sm ${filtre ? 'bouton--sobre' : 'bouton--marque'}`} href={lien('/admin/composants')}>
-          Tous ({composants.length === 0 && filtre ? '…' : ''}{!filtre ? composants.length : ''})
+    </div>
+
+    <!-- ── La barre de filtres ──────────────────────────────────────────── -->
+    <div class="filtres">
+      <form class="quete" method="get" action={lien('/admin/composants')}>
+        {filtre && <input type="hidden" name="module" value={filtre} />}
+        {manque && <input type="hidden" name="manque" value={manque} />}
+        <Icone nom="search" taille={15} classe="quete__loupe" />
+        <input
+          type="search"
+          name="q"
+          value={quete}
+          placeholder="Rechercher un composant, une clé, un gain…"
+          aria-label="Rechercher un composant"
+        />
+        <button class="bouton bouton--sobre bouton--sm" type="submit">Chercher</button>
+        {quete && <a class="quete__vider" href={vers({ q: '' })} title="Effacer la recherche">Effacer</a>}
+      </form>
+
+      <div class="puces" role="group" aria-label="Filtrer par module">
+        <a class={`puce ${filtre ? '' : 'puce--on'}`} href={vers({ module: '' })}>
+          Tous <b>{trouves.length}</b>
         </a>
-        {modules.map((m) => (
+        {modules.map((m) => {
+          const n = parModule.get(m.slug) || 0;
+          return (
+            <a
+              class={`puce ${filtre === m.slug ? 'puce--on' : ''} ${n === 0 ? 'puce--vide' : ''}`}
+              href={vers({ module: m.slug })}
+              title={m.nb_nouvelles > 0 ? `${m.nb_nouvelles} composant(s) à valider` : undefined}
+            >
+              {m.nom || m.slug} <b>{n}</b>
+              {m.nb_nouvelles > 0 && <i class="puce__point" aria-hidden="true"></i>}
+            </a>
+          );
+        })}
+      </div>
+
+      <div class="puces puces--trous" role="group" aria-label="Filtrer par manque">
+        <span class="puces__oeil">Repérer&nbsp;:</span>
+        {TROUS.map((t) => (
           <a
-            class={`bouton bouton--sm ${filtre === m.slug ? 'bouton--marque' : 'bouton--sobre'}`}
-            href={lien(`/admin/composants?module=${m.slug}`)}
-          >{m.nom || m.slug}</a>
+            class={`puce puce--trou ${manque === t.cle ? 'puce--on' : ''} ${t.nombre === 0 ? 'puce--vide' : ''}`}
+            href={vers({ manque: manque === t.cle ? '' : t.cle })}
+          >{t.mot} <b>{t.nombre}</b></a>
         ))}
+        {filtreActif && (
+          <a class="puce puce--net" href={lien('/admin/composants')}>Tout afficher</a>
+        )}
       </div>
     </div>
 
     <div class="roule">
-      <table>
+      <table class={`table-composants ${filtre ? 'table-composants--seul' : ''}`}>
         <thead>
           <tr>
             <th>Composant</th>
-            <th>Module</th>
+            {/* Filtré sur un module, la colonne répéterait le même nom
+                à chaque ligne : elle s'efface. */}
+            {!filtre && <th>Module</th>}
             <th>Leviers</th>
             <th>Capture</th>
+            <th>État</th>
             <th>Le gain</th>
             <th></th>
           </tr>
@@ -95,13 +200,15 @@ const sansCapture = composants.filter((c) => !c.illustre).length;
         <tbody>
           {composants.map((c) => (
             <tr>
-              <td style="white-space:nowrap">
+              <td>
                 <strong>{c.nom || c.cle}</strong>
                 <code class="slug">{c.cle}</code>
               </td>
-              <td style="white-space:nowrap">
-                <a href={lien(`/admin/modules/${c.module_slug}`)}>{c.module_nom}</a>
-              </td>
+              {!filtre && (
+                <td>
+                  <a href={vers({ module: c.module_slug })}>{c.module_nom}</a>
+                </td>
+              )}
               <td>
                 <span class="pastilles">
                   {leviersDe(c.leviers).map((l) => <Pastille levier={l} />)}
@@ -113,21 +220,123 @@ const sansCapture = composants.filter((c) => !c.illustre).length;
                   {c.illustre ? 'illustré' : 'à venir'}
                 </span>
               </td>
-              <td style="color:var(--slate-600);max-inline-size:34rem">
+              <td style="white-space:nowrap">
+                {c.nouveau
+                  ? <span class="etat etat--manque">à valider</span>
+                  : <span class={c.en_ligne ? 'etat etat--on' : 'etat'}>{c.en_ligne ? 'en ligne' : 'hors ligne'}</span>}
+              </td>
+              <td class="gain">
                 {c.benefice || <span class="etat etat--manque">non renseigné</span>}
               </td>
               <td>
-                <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/modules/${c.module_slug}`)}>Modifier</a>
+                <a
+                  class="bouton bouton--sobre bouton--sm"
+                  href={lien(`/admin/modules/${c.module_slug}#fn-${c.cle}`)}
+                >Modifier</a>
               </td>
             </tr>
           ))}
+          {composants.length === 0 && !erreur && (
+            <tr>
+              <td colspan={filtre ? 6 : 7} class="vide">
+                Aucun composant ne répond à ce filtre.
+                <a href={lien('/admin/composants')}>Tout afficher</a>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
     </div>
 
-    <div class="bloc__pied">
-      {composants.length} composant(s){filtre ? ` du module ${filtre}` : ''} ·
-      {sansLevier} sans levier · {sansGain} sans gain écrit · {sansCapture} sans capture.
-    </div>
+    <div class="bloc__pied">{pied}</div>
   </section>
 </Console>
+
+<style>
+  /* ── La barre de filtres ───────────────────────────────────────────────
+     Elle occupe toute la largeur du bloc, sous le titre : quatorze modules
+     tiennent alors sur deux lignes au lieu d'une colonne qui pousse la page
+     vers le bas. */
+  .filtres {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 4px 20px 16px;
+    border-block-end: 1px solid var(--slate-100);
+  }
+
+  .quete { display: flex; align-items: center; gap: 8px; position: relative; max-inline-size: 34rem; }
+  .quete input[type='search'] { padding-inline-start: 32px; }
+  .quete :global(.quete__loupe) {
+    position: absolute; inset-inline-start: 10px; color: var(--slate-400); pointer-events: none;
+  }
+  .quete__vider { font: var(--type-body-sm); color: var(--slate-600); white-space: nowrap; }
+
+  .puces { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .puces__oeil {
+    font: 600 var(--text-xs) / 1 var(--font-sans);
+    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--slate-400);
+    margin-inline-end: 2px;
+  }
+
+  .puce {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 10px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--slate-200);
+    background: #fff;
+    font: 500 var(--text-xs) / 1.2 var(--font-sans);
+    color: var(--slate-600);
+    text-decoration: none;
+    transition: var(--transition-control);
+  }
+  .puce:hover { border-color: var(--slate-300); color: var(--navy-900); background: var(--slate-50); text-decoration: none; }
+  .puce b {
+    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+    font-weight: 500; font-size: 11px; color: var(--slate-400);
+  }
+  .puce--on { background: var(--plum-500); border-color: var(--plum-500); color: #fff; }
+  .puce--on:hover { background: var(--plum-600); border-color: var(--plum-600); color: #fff; }
+  .puce--on b { color: rgba(255, 255, 255, 0.72); }
+  /* Un module que la recherche ne touche pas reste cliquable, mais s'efface. */
+  .puce--vide { opacity: 0.45; }
+  .puce--vide.puce--on { opacity: 1; }
+
+  /* Le point signale les composants encore à valider dans ce module. */
+  .puce__point {
+    inline-size: 6px; block-size: 6px; border-radius: 50%;
+    background: var(--status-warning); flex: none;
+  }
+
+  .puce--trou { border-style: dashed; }
+  .puce--trou.puce--on { border-style: solid; background: var(--amber-700); border-color: var(--amber-700); }
+  .puce--net { border-color: transparent; color: var(--plum-600); text-decoration: underline; }
+
+  .vide { text-align: center; color: var(--slate-600); padding-block: 32px; }
+  .vide a { margin-inline-start: 8px; }
+
+  /* ── La table ──────────────────────────────────────────────────────────
+     Les colonnes sont fixées pour que « Le gain » — la seule colonne qui
+     mérite de respirer — prenne la place restante, et que la ligne tienne
+     sur une hauteur de lecture au lieu de s'étirer sur cinq lignes. */
+  .table-composants { table-layout: fixed; }
+  /* Sans la colonne Module, tout se décale d'un rang : deux jeux de règles
+     valent mieux qu'un sélecteur acrobatique. */
+  .table-composants :global(th:nth-child(1)) { inline-size: 20%; }
+  .table-composants :global(th:nth-child(2)) { inline-size: 12%; }
+  .table-composants :global(th:nth-child(3)) { inline-size: 7rem; }
+  .table-composants :global(th:nth-child(4)) { inline-size: 7.5rem; }
+  .table-composants :global(th:nth-child(5)) { inline-size: 7.5rem; }
+  .table-composants :global(th:nth-child(7)) { inline-size: 7rem; }
+  .table-composants--seul :global(th:nth-child(1)) { inline-size: 22%; }
+  .table-composants--seul :global(th:nth-child(2)) { inline-size: 7rem; }
+  .table-composants--seul :global(th:nth-child(3)) { inline-size: 7.5rem; }
+  .table-composants--seul :global(th:nth-child(4)) { inline-size: 7.5rem; }
+  .table-composants--seul :global(th:nth-child(5)) { inline-size: auto; }
+  .table-composants--seul :global(th:nth-child(6)) { inline-size: 7rem; }
+  /* Une coupure au milieu d'un mot n'arrive qu'en dernier recours. */
+  .table-composants :global(td) { overflow-wrap: break-word; }
+  .table-composants :global(td:last-child) { white-space: nowrap; text-align: end; }
+  .table-composants :global(td.gain) { color: var(--slate-600); }
+  .table-composants :global(.pastilles) { display: flex; flex-wrap: wrap; gap: 3px; }
+</style>

@@ -213,6 +213,7 @@ const RUBRIQUES = [
         padding: 3px 9px; border-radius: var(--radius-pill);
         font: 500 var(--text-xs) / 1.4 var(--font-sans);
         background: var(--slate-100); color: var(--slate-600);
+        white-space: nowrap;
       }
       .etat::before { content: ''; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--status-neutral); }
       .etat--on { background: var(--green-100); color: var(--green-700); }
@@ -249,7 +250,8 @@ const RUBRIQUES = [
       .champ { display: grid; gap: 5px; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
-      input[type='text'], input[type='number'], input[type='password'], textarea, select {
+      input[type='text'], input[type='number'], input[type='password'], input[type='search'],
+      textarea, select {
         inline-size: 100%;
         padding: 8px 10px;
         border: 1px solid var(--slate-200);

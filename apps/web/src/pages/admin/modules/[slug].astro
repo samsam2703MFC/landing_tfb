@@ -266,7 +266,9 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
             </span>
           </summary>
 
-          <form method="post" class="fiche__corps">
+          {/* L'ancre est posée dans le pli : arriver depuis la table des
+              composants déplie la fiche et s'arrête dessus. */}
+          <form method="post" class="fiche__corps" id={`fn-${fonction.cle}`}>
             <input type="hidden" name="action" value="fonction" />
             <input type="hidden" name="id" value={fonction.id} />
 
