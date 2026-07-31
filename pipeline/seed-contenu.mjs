@@ -50,6 +50,9 @@ async function ecrireEnBase({ siVide = false } = {}) {
         stack: json(module.stack),
         mots_cles: json(module.mots_cles),
         mermaid: module.mermaid,
+        leviers: json(module.leviers),
+        liens: json(module.liens),
+        onboarding: module.onboarding,
         commit_sha: null,
         modele_ia: 'contenu-initial',
         genere_le: new Date(),
@@ -69,17 +72,18 @@ async function ecrireEnBase({ siVide = false } = {}) {
           fonction.description,
           fonction.benefice,
           fonction.icone,
+          json(fonction.leviers),
           position,
         ];
         const existant = parCle.get(fonction.cle);
         if (existant) {
           await db.executer(
-            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, ordre = ? WHERE id = ?`,
+            `UPDATE ${table('fonctions')} SET nom = ?, description = ?, benefice = ?, icone = ?, leviers = ?, ordre = ? WHERE id = ?`,
             [...valeurs, existant],
           );
         } else {
           await db.executer(
-            `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, leviers, ordre) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [id, fonction.cle, ...valeurs],
           );
         }
@@ -162,7 +166,8 @@ function genererSql() {
   for (const m of MODULES) {
     l.push(`-- ── ${m.nom} (${m.slug})`);
     l.push(`INSERT INTO ${table('modules')} (slug, repo, ref, groupe, ordre, actif, nom, accroche, resume,`);
-    l.push('  description, public_cible, problemes, benefices, stack, mots_cles, mermaid, modele_ia)');
+    l.push('  description, public_cible, problemes, benefices, stack, mots_cles, mermaid,');
+    l.push('  leviers, liens, onboarding, modele_ia)');
     l.push('VALUES (');
     l.push(`  ${litteral(m.slug)}, ${litteral(m.repo)}, 'main', ${litteral(m.groupe)}, ${m.ordre}, '1',`);
     l.push(`  ${litteral(m.nom)},`);
@@ -175,14 +180,17 @@ function genererSql() {
     l.push(`  ${litteral(m.stack)},`);
     l.push(`  ${litteral(m.mots_cles)},`);
     l.push(`  ${litteral(m.mermaid)},`);
+    l.push(`  ${litteral(m.leviers)},`);
+    l.push(`  ${litteral(m.liens)},`);
+    l.push(`  ${litteral(m.onboarding)},`);
     l.push("  'contenu-initial'");
     l.push(');');
 
     m.fonctions.forEach((f, i) => {
-      l.push(`INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, ordre)`);
+      l.push(`INSERT INTO ${table('fonctions')} (module_id, cle, nom, description, benefice, icone, leviers, ordre)`);
       l.push(`SELECT id, ${litteral(f.cle)}, ${litteral(f.nom)},`);
       l.push(`  ${litteral(f.description)},`);
-      l.push(`  ${litteral(f.benefice)}, ${litteral(f.icone)}, ${i + 1}`);
+      l.push(`  ${litteral(f.benefice)}, ${litteral(f.icone)}, ${litteral(f.leviers)}, ${i + 1}`);
       l.push(`FROM ${table('modules')} WHERE slug = ${litteral(m.slug)};`);
     });
     l.push('');

@@ -10,6 +10,9 @@ apps/web/.astro/
 .env.*
 !.env.example
 
+# Captures téléchargées depuis les dépôts modules au déploiement
+apps/web/public/captures/
+
 # Sorties du pipeline (JSON intermédiaires de debug)
 pipeline/.cache/
 pipeline/out/

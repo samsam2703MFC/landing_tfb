@@ -88,6 +88,24 @@ async function lire(cle, sql, params = []) {
   }
 }
 
+/**
+ * Les 6 leviers de gestion HEXm, l'ossature de lecture du réseau.
+ * Repris de AgendaService::LEVERS du panel consultant.
+ */
+export const LEVIERS = [
+  { cle: 'trafic', lettre: 'T', nom: 'Trafic', question: 'Combien de clients entrent ?' },
+  { cle: 'recurrence', lettre: 'R', nom: 'Récurrence', question: 'Combien reviennent ?' },
+  { cle: 'xp', lettre: 'E', nom: 'Expérience', question: 'Que vivent-ils sur place ?' },
+  { cle: 'food', lettre: 'F', nom: 'Food Cost', question: 'Que coûte ce qu’on sert ?' },
+  { cle: 'labour', lettre: 'L', nom: 'Labour', question: 'Que coûtent les heures ?' },
+  { cle: 'overhead', lettre: 'O', nom: 'Overhead', question: 'Que coûte la structure ?' },
+];
+
+/** Retrouve un levier par sa clé. */
+export function levier(cle) {
+  return LEVIERS.find((l) => l.cle === cle) || null;
+}
+
 /** Décode une colonne JSON, quel que soit le pilote. */
 function lireJson(valeur, defaut = null) {
   if (valeur === null || valeur === undefined) return defaut;
@@ -108,7 +126,10 @@ function normaliserModule(ligne) {
     benefices: lireJson(ligne.benefices, []),
     stack: lireJson(ligne.stack, []),
     mots_cles: lireJson(ligne.mots_cles, []),
+    leviers: lireJson(ligne.leviers, []),
+    liens: lireJson(ligne.liens, []),
     fonctions: [],
+    captures: [],
   };
 }
 
@@ -165,13 +186,57 @@ export async function chargerModule(slug) {
   if (!lignes || lignes.length === 0) return null;
 
   const module = normaliserModule(lignes[0]);
+
   const fonctions = await lire(
     `fonctions:${slug}`,
     `SELECT * FROM ${table('fonctions')} WHERE module_id = ? ORDER BY ordre`,
     [module.id],
   );
-  module.fonctions = fonctions || [];
+  module.fonctions = (fonctions || []).map((f) => ({ ...f, leviers: lireJson(f.leviers, []) }));
+
+  const captures = await lire(
+    `captures:${slug}`,
+    `SELECT * FROM ${table('captures')} WHERE module_id = ? ORDER BY ordre`,
+    [module.id],
+  );
+  module.captures = captures || [];
+
   return module;
+}
+
+/**
+ * Tout ce qu'il faut à la page d'onboarding : chaque module avec ses
+ * fonctions, ses leviers et ses liens, en une seule passe.
+ */
+export async function chargerParcours() {
+  const modules = await chargerModules();
+  if (modules.length === 0) return [];
+
+  const fonctions = await lire(
+    'fonctions-completes',
+    `SELECT * FROM ${table('fonctions')} ORDER BY module_id, ordre`,
+  );
+  const captures = await lire(
+    'captures-toutes',
+    `SELECT * FROM ${table('captures')} ORDER BY module_id, ordre`,
+  );
+
+  const parModule = new Map();
+  for (const f of fonctions || []) {
+    if (!parModule.has(f.module_id)) parModule.set(f.module_id, []);
+    parModule.get(f.module_id).push({ ...f, leviers: lireJson(f.leviers, []) });
+  }
+  const capsParModule = new Map();
+  for (const c of captures || []) {
+    if (!capsParModule.has(c.module_id)) capsParModule.set(c.module_id, []);
+    capsParModule.get(c.module_id).push(c);
+  }
+
+  for (const m of modules) {
+    m.fonctions = parModule.get(m.id) || [];
+    m.captures = capsParModule.get(m.id) || [];
+  }
+  return modules;
 }
 
 /** Regroupe les modules par famille, en conservant l'ordre d'apparition. */

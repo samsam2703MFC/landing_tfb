@@ -1,14 +1,18 @@
 ---
 /**
- * Gabarit commun : en-tête, pied de page, styles globaux et chargement de
- * Mermaid côté navigateur (les diagrammes sont stockés en texte dans Directus
- * et rendus dans le navigateur, jamais au build).
+ * Gabarit commun.
+ *
+ * Toute la mise en forme s'appuie sur les jetons du design system TFB importés
+ * ci-dessous — aucune couleur, aucun espacement n'est écrit en dur ici. Changer
+ * une variable de marque change le site entier.
  */
+import '../design-system/styles.css';
+import { LEVIERS } from '../lib/db.mjs';
 import { lien } from '../lib/lien.mjs';
 
 const { titre, description, modules = [] } = Astro.props;
 
-const titreComplet = titre ? `${titre} — ERP réseau` : 'ERP réseau';
+const titreComplet = titre ? `${titre} — The Franchise Buddy` : 'The Franchise Buddy — ERP réseau';
 const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
 ---
 
@@ -22,198 +26,394 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     <meta property="og:title" content={titreComplet} />
     {description && <meta property="og:description" content={description} />}
     <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#0c1329" />
+
     <style is:global>
+      /* ── Couleurs de levier ──────────────────────────────────────────────
+         Six teintes distinctes, prises dans la palette de la marque, pour que
+         T/R/E/F/L/O se reconnaissent d'un coup d'œil partout sur le site. */
       :root {
-        --encre: #101820;
-        --encre-douce: #46525f;
-        --papier: #ffffff;
-        --papier-teinte: #f5f6f7;
-        --trait: #e2e5e8;
-        --accent: #1f5f8b;
-        --accent-clair: #eaf1f6;
-        --rayon: 10px;
-        --largeur: 1120px;
+        --lev-trafic: var(--plum-500);
+        --lev-recurrence: var(--navy-500);
+        --lev-xp: var(--teal-500);
+        --lev-food: var(--amber-500, #d99413);
+        --lev-labour: var(--ember-500, #e2703a);
+        --lev-overhead: var(--slate-500);
+
+        --largeur: 1180px;
+        --largeur-texte: 64ch;
       }
 
-      *,
-      *::before,
-      *::after {
-        box-sizing: border-box;
-      }
+      body { background: var(--surface-page); }
 
-      body {
-        margin: 0;
-        font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
-          sans-serif;
-        color: var(--encre);
-        background: var(--papier);
-        line-height: 1.6;
-        font-size: 17px;
-        -webkit-font-smoothing: antialiased;
-      }
-
-      h1,
-      h2,
-      h3 {
-        line-height: 1.2;
-        letter-spacing: -0.015em;
-        margin: 0 0 0.5em;
-      }
-
-      h1 { font-size: clamp(2rem, 4.5vw, 3.1rem); }
-      h2 { font-size: clamp(1.5rem, 2.6vw, 2.1rem); }
-      h3 { font-size: 1.15rem; }
-
-      p { margin: 0 0 1em; }
-
-      a { color: var(--accent); }
-
+      /* ── Structure ─────────────────────────────────────────────────────── */
       .contenant {
         width: 100%;
         max-width: var(--largeur);
         margin: 0 auto;
-        padding: 0 24px;
+        padding-inline: var(--space-6);
       }
 
-      .section {
-        padding: 72px 0;
-        border-top: 1px solid var(--trait);
-      }
+      .sect, .section { padding-block: var(--space-16, 88px); }
+      .sect--haut { padding-block: var(--space-20, 120px) var(--space-12, 72px); }
+      .sect--teinte, .section--teinte { background: var(--surface-sunken); }
 
-      .section--teinte { background: var(--papier-teinte); }
-      .section__chapeau { max-width: 62ch; margin-bottom: 40px; }
-      .section__oeil {
+      /* Les sections sombres portent le contraste du site : c'est là que
+         vivent le fil d'onboarding et le schéma d'ensemble. */
+      .sect--sombre {
+        background:
+          radial-gradient(90rem 40rem at 15% -10%, rgba(123, 68, 136, 0.28), transparent 60%),
+          radial-gradient(70rem 36rem at 95% 0%, rgba(21, 158, 150, 0.18), transparent 55%),
+          var(--navy-900);
+        color: var(--text-inverse);
+      }
+      .sur-sombre, .sect--sombre h2, .sect--sombre h3 { color: var(--text-inverse); }
+      .sect--sombre .chapo { color: var(--text-inverse-secondary); }
+
+      /* ── Typographie ───────────────────────────────────────────────────── */
+      .oeil, .section__oeil {
         text-transform: uppercase;
-        letter-spacing: 0.12em;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--accent);
-        margin-bottom: 12px;
+        letter-spacing: var(--tracking-wide, 0.12em);
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: var(--weight-semibold);
+        color: var(--text-brand);
+        margin-bottom: var(--space-3);
       }
+      .oeil--clair { color: var(--teal-300); }
 
+      .titre-geant {
+        font-size: clamp(2.4rem, 5.2vw, 4.2rem);
+        line-height: 1.04;
+        letter-spacing: -0.03em;
+        max-width: 18ch;
+        margin-bottom: var(--space-5);
+      }
+      h2 { font-size: clamp(1.6rem, 2.8vw, 2.4rem); margin-bottom: var(--space-4); }
+      h3 { font-size: var(--text-lg, 1.15rem); margin-bottom: var(--space-2); }
+
+      .chapo {
+        font-size: var(--text-md, 1.1rem);
+        color: var(--text-secondary);
+        max-width: var(--largeur-texte);
+      }
+      .chapo--court { max-width: 56ch; }
+      .section__chapeau { max-width: var(--largeur-texte); margin-bottom: var(--space-8); }
+
+      /* ── Cartes et grilles ─────────────────────────────────────────────── */
       .grille {
         display: grid;
-        gap: 20px;
-        grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+        gap: var(--space-4);
+        grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
       }
 
       .carte {
-        background: var(--papier);
-        border: 1px solid var(--trait);
-        border-radius: var(--rayon);
-        padding: 24px;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default, var(--slate-200));
+        border-radius: var(--radius-lg, 14px);
+        padding: var(--space-6);
+        box-shadow: var(--shadow-xs);
       }
-
-      .carte h3 { margin-bottom: 8px; }
-      .carte p { color: var(--encre-douce); margin-bottom: 0; }
+      .carte h3 { margin-bottom: var(--space-2); }
+      .carte p { color: var(--text-secondary); }
 
       .carte--lien {
         display: block;
         color: inherit;
         text-decoration: none;
-        transition: border-color 0.15s ease, transform 0.15s ease;
+        transition: border-color var(--duration-fast, 150ms) var(--ease-standard, ease),
+                    transform var(--duration-fast, 150ms) var(--ease-standard, ease),
+                    box-shadow var(--duration-fast, 150ms) var(--ease-standard, ease);
       }
       .carte--lien:hover {
-        border-color: var(--accent);
-        transform: translateY(-2px);
-      }
-
-      .bouton {
-        display: inline-block;
-        background: var(--accent);
-        color: #fff;
+        border-color: var(--brand);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-md, 0 12px 32px -18px rgba(12, 19, 41, 0.5));
         text-decoration: none;
-        font-weight: 600;
-        padding: 13px 26px;
-        border-radius: var(--rayon);
       }
-      .bouton:hover { filter: brightness(1.08); }
 
+      /* ── Boutons ───────────────────────────────────────────────────────── */
+      .bouton {
+        display: inline-flex;
+        align-items: center;
+        gap: var(--space-2);
+        height: 46px;
+        padding-inline: var(--space-6);
+        border-radius: var(--radius-md, 10px);
+        background: var(--brand);
+        color: var(--brand-on);
+        border: 1px solid var(--brand);
+        font-weight: var(--weight-semibold);
+        text-decoration: none;
+        transition: background var(--duration-fast, 150ms) var(--ease-standard, ease);
+      }
+      .bouton:hover { background: var(--brand-hover); color: var(--brand-on); text-decoration: none; }
       .bouton--fantome {
         background: transparent;
-        color: var(--accent);
-        border: 1px solid var(--accent);
+        color: var(--text-inverse);
+        border-color: rgba(255, 255, 255, 0.35);
       }
+      .bouton--fantome:hover { background: rgba(255, 255, 255, 0.1); color: var(--text-inverse); }
 
       .etiquette {
         display: inline-block;
-        font-size: 0.75rem;
-        font-weight: 600;
-        color: var(--accent);
-        background: var(--accent-clair);
-        border-radius: 999px;
-        padding: 3px 12px;
+        font-size: var(--text-xs, 0.75rem);
+        font-weight: var(--weight-semibold);
+        color: var(--text-brand);
+        background: var(--brand-subtle);
+        border-radius: var(--radius-full, 999px);
+        padding: 3px var(--space-3);
       }
 
+      /* ── Leviers ───────────────────────────────────────────────────────── */
+      .pastille {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 22px; height: 22px;
+        border-radius: var(--radius-sm, 6px);
+        font-size: 0.7rem;
+        font-weight: var(--weight-bold, 800);
+        font-style: normal;
+        color: #fff;
+        background: var(--lev, var(--slate-500));
+      }
+      .pastille--sm { width: 18px; height: 18px; font-size: 0.62rem; }
+      [data-levier='trafic'] { --lev: var(--lev-trafic); }
+      [data-levier='recurrence'] { --lev: var(--lev-recurrence); }
+      [data-levier='xp'] { --lev: var(--lev-xp); }
+      [data-levier='food'] { --lev: var(--lev-food); }
+      [data-levier='labour'] { --lev: var(--lev-labour); }
+      [data-levier='overhead'] { --lev: var(--lev-overhead); }
+
+      .leviers {
+        list-style: none;
+        margin: 0; padding: 0;
+        display: grid;
+        gap: var(--space-3);
+        grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      }
+      .levier {
+        display: grid;
+        grid-template-columns: auto 1fr;
+        grid-template-areas: 'lettre nom' 'lettre q' 'lettre n';
+        gap: 0 var(--space-4);
+        align-items: baseline;
+        padding: var(--space-5);
+        background: var(--surface-card);
+        border: 1px solid var(--border-default, var(--slate-200));
+        border-left: 3px solid var(--lev, var(--slate-400));
+        border-radius: var(--radius-md, 10px);
+      }
+      .levier__lettre {
+        grid-area: lettre;
+        align-self: center;
+        font-family: var(--font-display, inherit);
+        font-size: 2rem;
+        font-weight: var(--weight-bold, 800);
+        color: var(--lev, var(--slate-500));
+        line-height: 1;
+      }
+      .levier__nom { grid-area: nom; font-weight: var(--weight-semibold); }
+      .levier__q { grid-area: q; color: var(--text-secondary); font-size: var(--text-sm, 0.9rem); }
+      .levier__n { grid-area: n; color: var(--text-tertiary); font-size: var(--text-xs, 0.75rem); margin-top: 4px; }
+
+      /* ── Le fil d'onboarding ───────────────────────────────────────────── */
+      .fil {
+        display: flex;
+        gap: var(--space-3);
+        overflow-x: auto;
+        padding-block: var(--space-6);
+        scrollbar-width: thin;
+      }
+      .noeud {
+        flex: 0 0 auto;
+        width: 14rem;
+        display: grid;
+        gap: 6px;
+        text-align: start;
+        padding: var(--space-4);
+        border-radius: var(--radius-md, 10px);
+        border: 1px solid rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text-inverse);
+        cursor: pointer;
+        transition: border-color 150ms ease, background 150ms ease, transform 150ms ease;
+      }
+      .noeud:hover { background: rgba(255, 255, 255, 0.09); transform: translateY(-2px); }
+      .noeud--actif {
+        border-color: var(--teal-300);
+        background: rgba(21, 158, 150, 0.16);
+      }
+      .noeud__rang {
+        font-family: var(--font-mono, monospace);
+        font-size: var(--text-xs, 0.72rem);
+        color: var(--teal-300);
+      }
+      .noeud__nom { font-weight: var(--weight-semibold); font-size: var(--text-base, 1rem); }
+      .noeud__groupe { font-size: var(--text-xs, 0.75rem); color: var(--text-inverse-secondary); }
+      .noeud__leviers { display: flex; gap: 4px; margin-top: 4px; }
+
+      /* ── La fiche révélée ──────────────────────────────────────────────── */
+      .fiche {
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        border-radius: var(--radius-lg, 14px);
+        padding: var(--space-8);
+        margin-top: var(--space-4);
+      }
+      .fiche__tete {
+        display: flex;
+        flex-wrap: wrap;
+        gap: var(--space-4);
+        align-items: flex-start;
+        justify-content: space-between;
+        margin-bottom: var(--space-5);
+      }
+      .fiche__accroche { color: var(--text-inverse-secondary); max-width: 52ch; }
+      .fiche__onboarding {
+        border-inline-start: 3px solid var(--teal-500);
+        padding-inline-start: var(--space-4);
+        color: var(--text-inverse);
+        max-width: var(--largeur-texte);
+        margin-bottom: var(--space-8);
+      }
+      .fiche__titre {
+        font-size: var(--text-xs, 0.75rem);
+        text-transform: uppercase;
+        letter-spacing: 0.1em;
+        color: var(--teal-300);
+        margin: var(--space-8) 0 var(--space-4);
+      }
+      .fiche__colonnes {
+        display: grid;
+        gap: var(--space-8);
+        grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+      }
+      .fiche__colonnes .fiche__titre { margin-top: 0; }
+
+      .gains, .pourquoi, .liens, .menu { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--space-4); }
+      .gains li, .pourquoi li { display: grid; gap: 3px; }
+      .gains strong, .pourquoi strong { color: var(--text-inverse); }
+      .gains span, .pourquoi span { color: var(--text-inverse-secondary); font-size: var(--text-sm, 0.92rem); }
+      .gains li { border-inline-start: 2px solid var(--teal-500); padding-inline-start: var(--space-4); }
+      .pourquoi li { border-inline-start: 2px solid var(--ember-500, #e2703a); padding-inline-start: var(--space-4); }
+
+      .menu { grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); }
+      .menu__item {
+        padding: var(--space-4);
+        border-radius: var(--radius-md, 10px);
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+      .menu__tete { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: 6px; }
+      .menu__nom { font-weight: var(--weight-semibold); }
+      .menu__leviers { display: flex; gap: 3px; flex-shrink: 0; }
+      .menu__desc { color: var(--text-inverse-secondary); font-size: var(--text-sm, 0.9rem); }
+      .menu__benef {
+        margin-top: var(--space-3);
+        padding-top: var(--space-3);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: var(--text-sm, 0.9rem);
+        font-weight: var(--weight-medium);
+      }
+
+      .lien {
+        display: grid;
+        grid-template-columns: 8rem auto 1fr;
+        gap: var(--space-3);
+        align-items: baseline;
+        padding-block: var(--space-2);
+        border-top: 1px solid rgba(255, 255, 255, 0.1);
+        font-size: var(--text-sm, 0.9rem);
+      }
+      .lien__sens { color: var(--teal-300); font-family: var(--font-mono, monospace); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.08em; }
+      .lien a { color: var(--text-inverse); font-weight: var(--weight-semibold); }
+      .lien__quoi { color: var(--text-inverse-secondary); }
+      @media (max-width: 780px) { .lien { grid-template-columns: 1fr; gap: 2px; } }
+
+      /* ── Captures d'écran ──────────────────────────────────────────────── */
+      .captures {
+        display: grid;
+        gap: var(--space-4);
+        grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+        list-style: none; margin: 0; padding: 0;
+      }
+      .capture {
+        border: 1px solid var(--border-default, var(--slate-200));
+        border-radius: var(--radius-lg, 14px);
+        overflow: hidden;
+        background: var(--surface-card);
+        box-shadow: var(--shadow-sm);
+      }
+      .capture img { display: block; width: 100%; height: auto; }
+      .capture figcaption {
+        padding: var(--space-3) var(--space-4);
+        font-size: var(--text-sm, 0.88rem);
+        color: var(--text-secondary);
+        border-top: 1px solid var(--border-subtle, var(--slate-100));
+      }
+
+      /* ── Schémas Mermaid ───────────────────────────────────────────────── */
       .schema {
-        background: var(--papier);
-        border: 1px solid var(--trait);
-        border-radius: var(--rayon);
-        padding: 24px;
+        background: var(--surface-card);
+        border: 1px solid var(--border-default, var(--slate-200));
+        border-radius: var(--radius-lg, 14px);
+        padding: var(--space-6);
         overflow-x: auto;
       }
+      .sect--sombre .schema { background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.14); }
       .schema svg { max-width: 100%; height: auto; }
 
+      /* ── En-tête et pied ───────────────────────────────────────────────── */
       .entete {
-        position: sticky;
-        top: 0;
-        z-index: 10;
-        background: rgba(255, 255, 255, 0.94);
-        backdrop-filter: blur(6px);
-        border-bottom: 1px solid var(--trait);
+        position: sticky; top: 0; z-index: 20;
+        background: color-mix(in srgb, var(--surface-page) 88%, transparent);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid var(--border-subtle, var(--slate-200));
       }
       .entete__barre {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 24px;
-        min-height: 64px;
+        display: flex; align-items: center; justify-content: space-between;
+        gap: var(--space-6); min-height: 66px;
       }
       .entete__marque {
-        font-weight: 700;
-        text-decoration: none;
-        color: var(--encre);
+        display: flex; align-items: baseline; gap: 8px;
+        font-family: var(--font-display, inherit);
+        font-weight: var(--weight-bold, 800);
         letter-spacing: -0.02em;
-      }
-      .entete__nav {
-        display: flex;
-        gap: 20px;
-        align-items: center;
-        flex-wrap: wrap;
-      }
-      .entete__nav a {
+        color: var(--text-primary);
         text-decoration: none;
-        color: var(--encre-douce);
-        font-size: 0.94rem;
       }
-      .entete__nav a:hover { color: var(--accent); }
+      .entete__marque:hover { text-decoration: none; }
+      .entete__marque b { color: var(--brand); }
+      .entete__nav { display: flex; gap: var(--space-5); align-items: center; flex-wrap: wrap; }
+      .entete__nav a { color: var(--text-secondary); font-size: var(--text-sm, 0.94rem); text-decoration: none; }
+      .entete__nav a:hover { color: var(--text-brand); text-decoration: none; }
 
       .pied {
-        border-top: 1px solid var(--trait);
-        padding: 40px 0;
-        color: var(--encre-douce);
-        font-size: 0.9rem;
+        border-top: 1px solid var(--border-subtle, var(--slate-200));
+        padding-block: var(--space-10, 56px);
+        color: var(--text-secondary);
+        font-size: var(--text-sm, 0.9rem);
+        background: var(--surface-sunken);
       }
-      .pied__colonnes {
-        display: grid;
-        gap: 24px;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      }
-      .pied a { color: var(--encre-douce); text-decoration: none; display: block; padding: 2px 0; }
-      .pied a:hover { color: var(--accent); }
+      .pied__colonnes { display: grid; gap: var(--space-6); grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); }
+      .pied strong { display: block; color: var(--text-primary); margin-bottom: var(--space-2); }
+      .pied a { color: var(--text-secondary); text-decoration: none; display: block; padding: 2px 0; }
+      .pied a:hover { color: var(--text-brand); text-decoration: none; }
 
-      .prose h2 { margin-top: 1.6em; }
-      .prose ul { padding-left: 1.2em; }
-      .prose code {
-        background: var(--papier-teinte);
-        padding: 2px 5px;
-        border-radius: 4px;
-        font-size: 0.9em;
-      }
+      .prose { max-width: var(--largeur-texte); }
+      .prose h2 { margin-top: 1.4em; font-size: var(--text-xl, 1.4rem); }
+      .prose p { margin-bottom: 1em; color: var(--text-secondary); }
+      .prose code { background: var(--surface-sunken); padding: 2px 5px; border-radius: 4px; font-size: 0.9em; }
 
-      @media (max-width: 640px) {
-        .section { padding: 48px 0; }
+      @media (max-width: 700px) {
+        .sect, .section { padding-block: var(--space-10, 56px); }
         .entete__nav a:not(.bouton) { display: none; }
+        .fiche { padding: var(--space-5); }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        * { transition: none !important; scroll-behavior: auto !important; }
       }
     </style>
   </head>
@@ -221,12 +421,12 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
   <body>
     <header class="entete">
       <div class="contenant entete__barre">
-        <a class="entete__marque" href={lien("/")}>ERP réseau</a>
+        <a class="entete__marque" href={lien('/')}>The Franchise <b>Buddy</b></a>
         <nav class="entete__nav">
-          <a href={lien("/#problemes")}>Problèmes</a>
-          <a href={lien("/#reponses")}>Réponses</a>
-          <a href={lien("/#modules")}>Modules</a>
-          <a class="bouton" href={lien("/#contact")}>Nous contacter</a>
+          <a href={lien('/#problemes')}>Problèmes</a>
+          <a href={lien('/#modules')}>Modules</a>
+          <a href={lien('/onboarding')}>Onboarding</a>
+          <a class="bouton" href={lien('/#contact')}>Nous contacter</a>
         </nav>
       </div>
     </header>
@@ -238,10 +438,8 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
     <footer class="pied">
       <div class="contenant pied__colonnes">
         <div>
-          <strong>ERP réseau</strong>
-          <p>
-            Le contenu de ce site est généré automatiquement à partir du code source des modules.
-          </p>
+          <strong>The Franchise Buddy</strong>
+          <p>Le contenu de ce site est généré à partir du code source des modules.</p>
         </div>
         {modules.length > 0 && (
           <div>
@@ -252,32 +450,43 @@ const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : un
           </div>
         )}
         <div>
+          <strong>Les 6 leviers</strong>
+          {LEVIERS.map((l) => (
+            <a href={lien('/onboarding#leviers')}>{l.lettre} — {l.nom}</a>
+          ))}
+        </div>
+        <div>
           <strong>Contact</strong>
-          <a href={lien("/#contact")}>Demander une démonstration</a>
+          <a href={lien('/onboarding')}>Comment l'information circule</a>
+          <a href={lien('/#contact')}>Demander une démonstration</a>
         </div>
       </div>
     </footer>
 
-    <!--
-      Mermaid est chargé depuis le CDN et exécuté dans le navigateur.
-      `is:inline` empêche Astro de l'inclure dans son bundle.
-    -->
+    <!-- Mermaid, chargé depuis le CDN et exécuté dans le navigateur. -->
     <script is:inline type="module">
       const schemas = document.querySelectorAll('.mermaid');
       if (schemas.length > 0) {
         const { default: mermaid } = await import(
           'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'
         );
+        const sombre = schemas[0].closest('.sect--sombre') !== null;
         mermaid.initialize({
           startOnLoad: false,
-          theme: 'neutral',
+          theme: 'base',
           securityLevel: 'strict',
           flowchart: { curve: 'basis', useMaxWidth: true },
+          themeVariables: sombre
+            ? { primaryColor: '#1e2b57', primaryTextColor: '#ffffff', primaryBorderColor: '#74d2cc',
+                lineColor: '#74d2cc', secondaryColor: '#532d5b', tertiaryColor: '#0c1329',
+                fontFamily: 'IBM Plex Sans, system-ui, sans-serif' }
+            : { primaryColor: '#f6eff8', primaryTextColor: '#0c1329', primaryBorderColor: '#7b4488',
+                lineColor: '#7b4488', secondaryColor: '#d7f2f0', tertiaryColor: '#f5f6f9',
+                fontFamily: 'IBM Plex Sans, system-ui, sans-serif' },
         });
         try {
           await mermaid.run({ nodes: schemas });
         } catch (err) {
-          // Un diagramme mal formé ne doit pas casser la page : on le masque.
           console.warn('Diagramme ignoré :', err);
           schemas.forEach((noeud) => {
             if (!noeud.querySelector('svg')) noeud.closest('.schema')?.remove();

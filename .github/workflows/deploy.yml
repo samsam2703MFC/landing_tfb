@@ -139,6 +139,10 @@ jobs:
           node pipeline/bootstrap-db.mjs
           node pipeline/seed-contenu.mjs --si-vide
 
+          # Les captures des dépôts modules, déposées dans public/ : elles
+          # doivent être là AVANT le build, qui les recopie dans dist/.
+          node pipeline/sync-captures.mjs || echo "::warning::Captures non synchronisées — le site reste servi sans elles."
+
           # --- Construction de la landing ------------------------------------
           # BASE_PATH est lu par astro.config.mjs au build : les liens et les
           # ressources sont figés avec ce préfixe.

@@ -5,7 +5,7 @@
  */
 import { marked } from 'marked';
 import Layout from '../../components/Layout.astro';
-import { chargerModule, chargerModules } from '../../lib/db.mjs';
+import { LEVIERS, chargerModule, chargerModules } from '../../lib/db.mjs';
 import { lien } from '../../lib/lien.mjs';
 
 const { slug } = Astro.params;
@@ -24,6 +24,8 @@ const problemes = module.problemes || [];
 const benefices = module.benefices || [];
 const fonctions = module.fonctions || [];
 const stack = module.stack || [];
+const captures = module.captures || [];
+const leviers = module.leviers || [];
 ---
 
 <Layout titre={module.nom || module.slug} description={module.accroche} modules={modules}>
@@ -65,9 +67,45 @@ const stack = module.stack || [];
             <dd style="margin: 4px 0 0; font-weight: 600;">{stack.join(' · ')}</dd>
           </div>
         )}
+        {leviers.length > 0 && (
+          <div>
+            <dt style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-tertiary);">
+              Leviers
+            </dt>
+            <dd style="margin: 4px 0 0; display: flex; gap: 4px;">
+              {leviers.map((c) => (
+                <i class="pastille" data-levier={c} title={LEVIERS.find((l) => l.cle === c)?.nom}>
+                  {LEVIERS.find((l) => l.cle === c)?.lettre}
+                </i>
+              ))}
+            </dd>
+          </div>
+        )}
       </dl>
     </div>
   </section>
+
+  <!-- Ce que ça donne à l'écran -->
+  {captures.length > 0 && (
+    <section class="sect">
+      <div class="contenant">
+        <div class="section__chapeau">
+          <p class="oeil">À l'écran</p>
+          <h2>Le module en production</h2>
+        </div>
+        <ul class="captures">
+          {captures.map((c) => (
+            <li>
+              <figure class="capture">
+                <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || module.nom} loading="lazy" decoding="async" />
+                {c.titre && <figcaption>{c.titre}</figcaption>}
+              </figure>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  )}
 
   <!-- Les problèmes traités -->
   {problemes.length > 0 && (
@@ -100,10 +138,10 @@ const stack = module.stack || [];
 
   <!-- Parcours principal -->
   {module.mermaid && (
-    <section class="section section--teinte">
+    <section class="sect sect--sombre">
       <div class="contenant">
         <div class="section__chapeau">
-          <p class="section__oeil">Parcours</p>
+          <p class="oeil oeil--clair">Parcours</p>
           <h2>Comment on s'en sert</h2>
         </div>
         <div class="schema">
