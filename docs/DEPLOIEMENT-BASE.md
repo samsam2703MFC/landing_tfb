@@ -1,0 +1,302 @@
+# Brancher la landing sur MySQL et écrire toute la structure
+
+De zéro à une base `tfb_landing` peuplée, avec les 8 modules et leurs captures.
+Chaque étape se vérifie avant de passer à la suivante.
+
+Prérequis : **Node ≥ 20**, **MySQL ≥ 8.0** (ou MariaDB ≥ 10.6), et un accès à la
+base — soit depuis le serveur applicatif, soit par un tunnel SSH (§1.3).
+
+---
+
+## 1. Créer la base et son utilisateur
+
+### 1.1 Se connecter à MySQL
+
+```bash
+mysql -u root -p
+```
+
+### 1.2 Créer la base, l'utilisateur, les droits
+
+L'encodage n'est pas optionnel : la landing stocke de l'arabe, du polonais et de
+l'ukrainien. **utf8mb4** ou rien.
+
+```sql
+CREATE DATABASE tfb_landing
+  CHARACTER SET utf8mb4
+  COLLATE utf8mb4_unicode_ci;
+
+-- 'localhost' si l'app tourne sur la même machine que MySQL, sinon '%'
+CREATE USER 'tfb'@'localhost' IDENTIFIED BY 'UN_MOT_DE_PASSE_SOLIDE';
+
+-- Prisma a besoin de créer, modifier et supprimer des tables (migrate deploy),
+-- pas seulement de lire et écrire des lignes.
+GRANT ALL PRIVILEGES ON tfb_landing.* TO 'tfb'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+Vérification :
+
+```sql
+SHOW CREATE DATABASE tfb_landing;   -- doit afficher utf8mb4 / utf8mb4_unicode_ci
+SHOW GRANTS FOR 'tfb'@'localhost';
+```
+
+### 1.3 Si la base n'est pas joignable depuis votre poste
+
+Sur un hébergement mutualisé, MySQL n'écoute souvent que sur `localhost`. Deux voies :
+
+**Tunnel SSH** — la base devient joignable en local sur le port 3307 :
+
+```bash
+ssh -N -L 3307:127.0.0.1:3306 utilisateur@185.180.206.46
+# puis, dans un autre terminal :
+# DATABASE_URL="mysql://tfb:MDP@127.0.0.1:3307/tfb_landing"
+```
+
+**Import SQL manuel** — si aucun tunnel n'est possible, sautez à [§6](#6-repli--sans-node-sur-le-serveur).
+
+---
+
+## 2. Configurer l'application
+
+```bash
+cd /chemin/vers/landing_tfb
+cp .env.example .env
+```
+
+Éditez `.env` :
+
+```dotenv
+DATABASE_URL="mysql://tfb:UN_MOT_DE_PASSE_SOLIDE@127.0.0.1:3306/tfb_landing"
+STORAGE_PATH=/var/www/tfb-storage
+ADMIN_SESSION_SECRET=<voir ci-dessous>
+DEFAULT_LOCALE=fr
+```
+
+Le secret de session (32 octets minimum, sinon la signature JWT est refusée) :
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+```
+
+**Mot de passe avec des caractères spéciaux :** `DATABASE_URL` est une URL. Un `@`,
+un `#`, un `/` ou un `?` dans le mot de passe doit être encodé, sinon Prisma lit
+l'URL de travers :
+
+```bash
+node -e "console.log(encodeURIComponent('mon:mot@de/passe'))"
+# → mon%3Amot%40de%2Fpasse
+```
+
+Installer les dépendances et générer le client :
+
+```bash
+npm ci
+npx prisma generate
+```
+
+---
+
+## 3. Écrire la structure
+
+C'est l'étape qui crée les **12 tables** `tfb_`.
+
+```bash
+npx prisma migrate deploy
+```
+
+Sortie attendue : les deux migrations appliquées —
+`20260730000000_init` (10 tables) et `20260730120000_module_features`
+(`tfb_module_features` + la colonne `feature_id` sur les captures).
+
+Vérification :
+
+```bash
+mysql -u tfb -p tfb_landing -e "SHOW TABLES;"
+```
+
+Les 12 tables attendues :
+
+| Table | Rôle |
+| --- | --- |
+| `tfb_languages` | les 8 locales, `is_default` = fr, `is_rtl` = ar |
+| `tfb_translations` | **toute** la copie du site, une ligne par champ et par langue |
+| `tfb_brands` | les enseignes du bandeau de confiance |
+| `tfb_sections` | l'ordre des sections de la page d'accueil |
+| `tfb_modules` | un module produit par ligne |
+| `tfb_module_features` | une fonction documentée par ligne |
+| `tfb_module_screenshots` | les captures, rattachées ou non à une fonction |
+| `tfb_plans` | les paliers tarifaires |
+| `tfb_subscriptions` | les abonnements Stripe |
+| `tfb_contact_messages` | la boîte de réception du formulaire |
+| `tfb_admin_users` | les comptes du back-office |
+| `tfb_settings` | les réglages clé/valeur |
+
+Plus `_prisma_migrations`, la table de suivi de Prisma — ne l'éditez jamais à la main.
+
+---
+
+## 4. Remplir la base
+
+### 4.1 Le seed — langues, sections, plans, compte admin
+
+```bash
+npm run seed
+```
+
+Écrit 8 langues, 8 sections, 6 enseignes, 8 modules, 3 plans, ~500 traductions
+FR/EN/AR, et le compte `admin@franchisebuddy.eu` / `changeme`.
+
+**Changez ce mot de passe.** Ou mieux, imposez-le avant de seeder :
+
+```bash
+SEED_ADMIN_EMAIL=vous@votredomaine.eu SEED_ADMIN_PASSWORD='…' npm run seed
+```
+
+Le seed est idempotent : il fait des upserts sur les clés naturelles, donc le
+relancer après des modifications en back-office ne casse rien (il réécrit les
+traductions des locales rédigées).
+
+### 4.2 La sync — les 8 modules réels et leurs captures
+
+```bash
+npm run sync:modules -- --dry-run   # valide et rapporte, n'écrit rien
+npm run sync:modules                # écrit
+```
+
+Elle lit le `.tfb/module.json` de chaque dépôt listé dans
+`content/modules.repos.json` et écrit modules, fonctions, captures et traductions.
+
+**Tant que les branches `claude/tfb-module-manifest` ne sont pas fusionnées dans le
+`main` de chaque dépôt module, la sync répond « 8 sans fiche » et n'écrit rien.**
+C'est voulu et ce n'est pas une erreur. Deux façons d'avancer :
+
+```bash
+# a) fusionner les 8 branches, puis :
+npm run sync:modules
+
+# b) ou tester tout de suite depuis des clones locaux :
+git clone https://github.com/samsam2703MFC/signage /tmp/repos/signage
+# … les 8 dépôts, dans /tmp/repos, chacun sur la branche claude/tfb-module-manifest
+npm run sync:modules -- --from-disk /tmp/repos
+```
+
+Pour un dépôt privé, exportez `GITHUB_TOKEN` (droit `contents: read`) avant de lancer.
+
+Vérification :
+
+```bash
+mysql -u tfb -p tfb_landing -e "
+SELECT m.\`key\`, m.module_group,
+       (SELECT COUNT(*) FROM tfb_module_features f WHERE f.module_id = m.id) AS fonctions,
+       (SELECT COUNT(*) FROM tfb_module_screenshots s WHERE s.module_id = m.id) AS captures
+FROM tfb_modules m ORDER BY m.sort_order;"
+```
+
+### 4.3 Retirer les modules de démonstration
+
+Le seed pose 7 modules inventés hérités de la maquette (`shop`, `invoicing`,
+`offers`, `scan`, `marketing`, `ceobot`, `pwa`). Une fois les vraies fiches
+chargées, sortez-les de la landing :
+
+```bash
+npm run sync:modules -- --retire-unlisted
+```
+
+Ils sont **désactivés**, pas supprimés : `is_active = 0`. Réversible d'un clic dans
+le back-office. La commande refuse d'agir si un seul dépôt n'a pas livré sa fiche,
+pour qu'un dépôt muet ne puisse jamais vider la page.
+
+---
+
+## 5. Le stockage des fichiers
+
+Les captures ne sont pas dans la base : la base garde le chemin, le disque garde
+le fichier.
+
+```bash
+mkdir -p /var/www/tfb-storage/screenshots /var/www/tfb-storage/brands
+chown -R <utilisateur-node>: /var/www/tfb-storage
+```
+
+`STORAGE_PATH` doit pointer là, et **survivre aux déploiements** — ne le mettez pas
+dans le dossier de l'application si celui-ci est réécrit à chaque mise en ligne.
+
+---
+
+## 6. Repli — sans Node sur le serveur
+
+Si le serveur n'a que PHP et phpMyAdmin, la structure s'importe telle quelle :
+
+```bash
+mysql -u tfb -p tfb_landing < docs/sql/tfb_landing_structure.sql
+```
+
+ou par l'onglet *Importer* de phpMyAdmin. Ce fichier contient les 12 `CREATE TABLE`
+et leurs clés étrangères, rien d'autre.
+
+Attention : cette voie **ne crée pas** `_prisma_migrations`. Les migrations
+suivantes devront être appliquées à la main de la même façon. Préférez
+`prisma migrate deploy` chaque fois que c'est possible — au besoin par le tunnel
+SSH de §1.3, depuis votre poste.
+
+Le contenu, lui, se charge depuis une machine ayant Node **et** l'accès à la base :
+`npm run seed` puis `npm run sync:modules` (voir §4).
+
+---
+
+## 7. Lancer et vérifier
+
+```bash
+npm run build
+npm start          # écoute sur le port 3000
+```
+
+Contrôles :
+
+```bash
+curl -s localhost:3000/api/languages | head -c 200          # les 8 locales
+curl -s "localhost:3000/api/landing?lang=fr" | head -c 200  # le payload complet
+curl -sI localhost:3000/fr | head -1                        # 200
+```
+
+Puis, dans un navigateur :
+
+- `/fr` — l'accueil, la grille de modules
+- `/fr/modules/signage` — l'explication du module puis chaque fonction avec sa capture
+- `/ar/modules/signage` — la même, en miroir
+- `/admin` — le back-office
+
+Si une capture reste sur son placeholder : le fichier n'est pas sous `STORAGE_PATH`.
+Vérifiez `curl -sI localhost:3000/api/storage/screenshots/<fichier>.png`.
+
+---
+
+## 8. Quand ça coince
+
+| Symptôme | Cause | Correctif |
+| --- | --- | --- |
+| `P1001: Can't reach database server` | MySQL n'écoute pas sur l'interface visée, ou pare-feu | `bind-address` dans `my.cnf`, ou tunnel SSH (§1.3) |
+| `P1000: Authentication failed` | mot de passe, ou hôte du compte (`'tfb'@'localhost'` ≠ `'tfb'@'%'`) | recréer l'utilisateur avec le bon hôte |
+| `P1010: User was denied access` | droits insuffisants pour créer des tables | `GRANT ALL PRIVILEGES ON tfb_landing.*` |
+| `P3009: migrate found failed migrations` | une migration a échoué à mi-course | corriger la cause, puis `npx prisma migrate resolve --rolled-back <nom>` |
+| Caractères arabes en `????` | base ou connexion en latin1 | recréer la base en `utf8mb4` et réimporter |
+| `Unknown collation: 'utf8mb4_0900_ai_ci'` | dump MySQL 8 importé dans MariaDB | le SQL de `docs/sql/` utilise `utf8mb4_unicode_ci`, compatible avec les deux |
+| La landing affiche les clés (`hero.title`) | `tfb_translations` vide | `npm run seed` n'a pas tourné, ou pas sur cette base |
+| Les modules réels n'apparaissent pas | manifestes absents de `main` | voir §4.2 |
+
+---
+
+## 9. Garder la landing à jour
+
+Une fois la base en place, la mise à jour du contenu ne passe plus par un
+déploiement. Trois voies, au choix :
+
+1. **Le back-office** — `/admin`, pour la copie, les sections, les tarifs, les visuels.
+2. **`npm run sync:modules`** à la main, après une évolution d'un module.
+3. **Le workflow** `.github/workflows/sync-modules.yml` — il valide les fiches
+   chaque nuit, et écrit en base si vous lui donnez le secret `DATABASE_URL`
+   (plus `STORAGE_PATH`, et `MODULE_READ_TOKEN` pour les dépôts privés). Un dépôt
+   module peut aussi déclencher la sync à son propre push : voir le README,
+   section « Rester à jour ».

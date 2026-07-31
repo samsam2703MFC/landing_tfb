@@ -43,6 +43,12 @@ npm run dev
 - Seeded account: `admin@franchisebuddy.eu` / `changeme` — **change it.** Override with
   `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` before seeding.
 
+Pour un vrai serveur — création de la base, droits, migration, seed, sync, stockage
+des fichiers et dépannage — la marche à suivre complète est dans
+[`docs/DEPLOIEMENT-BASE.md`](docs/DEPLOIEMENT-BASE.md). La structure des 12 tables
+est aussi disponible en SQL brut dans [`docs/sql/`](docs/sql/) pour les hébergements
+où seul phpMyAdmin est accessible.
+
 Generate a session secret with:
 
 ```bash
