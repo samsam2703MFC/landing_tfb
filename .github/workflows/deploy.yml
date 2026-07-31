@@ -105,6 +105,16 @@ jobs:
 
           cd infra
           docker compose up -d --build
+
+          # Les tables sont créées à chaque déploiement : le script ne crée que
+          # ce qui manque, donc une évolution du schéma est appliquée toute
+          # seule sans jamais toucher aux données existantes.
+          docker compose --profile outils run --rm --build pipeline node bootstrap-db.mjs
+
+          # Contenu de départ : uniquement si la base est vide. Un déploiement
+          # ne doit pas écraser ce que l'ingestion a généré depuis.
+          docker compose --profile outils run --rm pipeline node seed-contenu.mjs --si-vide
+
           docker image prune -f
           EOF
 

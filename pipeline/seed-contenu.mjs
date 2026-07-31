@@ -2,9 +2,10 @@
 /**
  * Charge le contenu de départ des huit modules, sans appeler l'API Anthropic.
  *
- * Deux usages :
+ * Trois usages :
  *   node seed-contenu.mjs            écrit directement dans la base
- *   node seed-contenu.mjs --sql      écrit contenu.sql sur la sortie standard
+ *   node seed-contenu.mjs --si-vide  n'écrit que si aucun module n'existe
+ *   node seed-contenu.mjs --sql      écrit le fichier contenu.sql
  *
  * Idempotent comme l'ingestion : upsert par `slug` pour les modules, par
  * (module_id, cle) pour les fonctions, et suppression de ce qui a disparu.
@@ -20,9 +21,18 @@ import { json, ouvrir, upsert } from './lib/db.mjs';
 // Écriture en base
 // ---------------------------------------------------------------------------
 
-async function ecrireEnBase() {
+async function ecrireEnBase({ siVide = false } = {}) {
   const db = await ouvrir();
   try {
+    // Utilisé au déploiement : on amorce une base neuve, mais on ne réécrit
+    // jamais par-dessus un contenu déjà généré par l'ingestion.
+    if (siVide) {
+      const [{ n }] = await db.requete('SELECT COUNT(*) AS n FROM tfb_modules');
+      if (Number(n) > 0) {
+        console.log(`${n} module(s) déjà en base — contenu de départ non rechargé.`);
+        return;
+      }
+    }
     for (const module of MODULES) {
       const { id, cree } = await upsert(db, 'tfb_modules', 'slug', module.slug, {
         repo: module.repo,
@@ -207,7 +217,7 @@ async function principal() {
     console.log(`✓ ${cible} écrit — ${MODULES.length} modules, ${total} fonctions.`);
     return;
   }
-  await ecrireEnBase();
+  await ecrireEnBase({ siVide: process.argv.includes('--si-vide') });
 }
 
 principal().catch((err) => {
