@@ -222,7 +222,7 @@ Relancer le workflow. Il fait alors tout le reste, sans intervention :
 
 1. installe les dépendances et vérifie Node
 2. crée les trois tables `landing_*`
-3. crée les fiches des modules encore absents de la base
+3. crée les fiches des modules encore absents de la base (13 aujourd’hui)
 4. construit la landing et (re)démarre le service `landing-tfb`
 
 La landing répond sur `https://<serveur>/landing_tfb/`, à côté des autres

@@ -21,7 +21,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
-import { LANGUES, TEXTES } from './contenu-textes.mjs';
+import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -155,6 +155,20 @@ async function ecrireEnBase({ siVide = false } = {}) {
       });
     }
     console.log(`✓ ${LANGUES.length} langues`);
+
+    // Les réseaux d'exemple de la maquette, déposés non publiés.
+    for (const [rang, client] of CLIENTS.entries()) {
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('clients')} WHERE nom = ? LIMIT 1`,
+        [client.nom],
+      );
+      if (dejaLa.length > 0) continue;
+      await db.executer(
+        `INSERT INTO ${table('clients')} (nom, note, actif, ordre) VALUES (?, ?, ?, ?)`,
+        [client.nom, client.note, false, rang + 1],
+      );
+    }
+    console.log(`✓ ${CLIENTS.length} réseaux d'exemple (non publiés)`);
 
     // Les questions de l'onboarding, repérées par leur clé.
     for (const [rang, question] of QUESTIONS.entries()) {

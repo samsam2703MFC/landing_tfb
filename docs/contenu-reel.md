@@ -752,21 +752,288 @@ flowchart TD
 
 ---
 
+## Redevances
+
+`redevances` · famille **Pilotage** · ordre 10 · 6 fonctions
+
+**Leviers** — O Overhead · R Récurrence
+
+**Public visé** — Direction financière du réseau
+
+**Accroche** (81 car.) — Royalties et redevance marketing calculées, encaissées et, au besoin, bloquantes.
+
+**Résumé** (258 car.)
+
+Les redevances se calculent sur le chiffre réel remonté des caisses : royalties, redevance marketing, minima contractuels. L'impayé suit une escalade écrite — relance, restriction, blocage — et le paiement reçu rouvre les services sans intervention manuelle.
+
+**Phrase d'onboarding** — À brancher dès que les ventes remontent. Le calcul part du chiffre réel, la facture part toute seule, et l'impayé suit une escalade écrite : relance, restriction, blocage — puis déblocage immédiat au paiement.
+
+### Ce que ce module fait disparaître
+
+- **La redevance se calcule sur du déclaratif** — Quand le franchisé déclare lui-même son chiffre, chaque facture devient une négociation. Le siège encaisse en retard, et en dessous.
+- **L'impayé n'a pas de conséquence** — Sans mécanisme gradué, un impayé traîne des mois. Le franchisé qui paie à l'heure se demande pourquoi il continue.
+- **Le contrat vit dans un classeur** — Taux, assiette et minima varient par contrat. Recalculés à la main chaque mois, ils finissent par diverger de ce qui est signé.
+
+### Ce qu'il apporte
+
+- **Calculées sur le chiffre réel** — L'assiette vient des encaissements remontés, pas d'une déclaration mensuelle.
+- **Une escalade écrite** — Relance, restriction, blocage : chaque étape est une règle datée et journalisée, connue d'avance.
+- **Le contrat est le paramétrage** — Taux, assiette, minima et exonérations se règlent boutique par boutique.
+- **Le déblocage est immédiat** — Le paiement reçu rouvre les services sans intervention manuelle.
+
+### Le menu, entrée par entrée (6)
+
+| Entrée | Leviers | À quoi elle sert | Le gain |
+| --- | --- | --- | --- |
+| **Calcul des redevances**<br>`calcul` | O | Royalties et redevance marketing calculées par période sur le chiffre remonté, avec taux, assiette et minima propres à chaque contrat. | La facture part juste, sans tableur. |
+| **Facturation automatique**<br>`facturation` | O | Les factures de redevances partent seules à la clôture de période, avec le détail du calcul joint. | Personne ne passe le premier du mois à facturer. |
+| **Prélèvement et encaissement**<br>`encaissement` | O | Prélèvement SEPA ou carte, rapprochement automatique du paiement et de la facture. | L'encaissement cesse d'être une relance téléphonique. |
+| **Relances graduées**<br>`relances` | O E | Les relances partent selon l'échéancier décidé au contrat, avec copie au consultant du magasin. | L'impayé se traite avant de devenir un litige. |
+| **Suspension et blocage**<br>`blocage` | O | L'impayé persistant restreint puis suspend les services selon la règle écrite : d'abord les modules de confort, jamais l'encaissement du magasin. | La conséquence est connue d'avance, donc rarement nécessaire. |
+| **Journal et audit**<br>`audit` | O | Chaque calcul, facture, relance et blocage est journalisé avec son auteur et sa règle. | Une contestation se tranche sur le journal, pas sur la mémoire. |
+
+### Ce qu'il échange avec les autres modules
+
+- reçoit de **pos** : les encaissements qui servent d'assiette au calcul
+- envoie vers **console-marque** : l'état des paiements du réseau
+
+### Description longue
+
+La redevance est le revenu du franchiseur, et c'est souvent le flux le plus mal outillé du réseau : une assiette déclarée par le franchisé, un calcul refait dans un tableur, et un impayé qui traîne parce que personne ne veut déclencher le conflit.
+
+Le module part du chiffre réel remonté des caisses. Taux, assiette, minima et exonérations sont posés dans le contrat de chaque boutique ; la facture part seule à la clôture de période, avec le détail du calcul joint. L'impayé suit une escalade écrite : relances datées, restriction des services de confort, puis blocage — jamais l'encaissement du magasin. Le paiement reçu débloque immédiatement, et chaque étape est journalisée avec son auteur et sa règle.
+
+### Schéma
+
+```mermaid
+flowchart TD
+  A[Encaissements remontes] --> B[Calcul par contrat]
+  B --> C[Facture automatique]
+  C --> D{Payee}
+  D -->|Oui| E[Rapprochement]
+  D -->|Non| F[Relances graduees]
+  F --> G[Restriction puis blocage]
+  G --> H[Paiement recu]
+  H --> I[Deblocage immediat]
+```
+
+---
+
+## Caisse POS
+
+`pos` · famille **Vente** · ordre 11 · 6 fonctions
+
+**Leviers** — T Trafic · R Récurrence · F Food Cost
+
+**Public visé** — Équipes de vente en point de vente
+
+**Accroche** (86 car.) — La caisse du magasin : bundles, promotions et encaissement reliés au catalogue réseau.
+
+**Résumé** (232 car.)
+
+La caisse lit le même catalogue que le webshop et les écrans : produits, bundles, promotions du siège et du magasin. L'encaissement remonte en continu — c'est lui qui alimente le tableau de bord du jour et l'assiette des redevances.
+
+**Phrase d'onboarding** — La caisse se branche sur le catalogue existant : l'équipe retrouve les mêmes produits, bundles et promotions que le webshop, et le chiffre remonte tout seul dès le premier ticket.
+
+### Ce que ce module fait disparaître
+
+- **La caisse raconte sa propre histoire** — Prix retapés, promotions oubliées : ce que la caisse applique diverge du catalogue dès la première opération commerciale.
+- **Le chiffre reste dans la caisse** — Le siège pilote sur des exports hebdomadaires. L'écart entre boutiques se découvre quand il est déjà installé.
+- **Le bundle vit sur une affiche** — La formule mise en avant n'existe pas dans la caisse : l'équipe la reconstitue à la main, chacun à sa façon.
+
+### Ce qu'il apporte
+
+- **Un seul référentiel, jusqu'à la caisse** — Produits, prix, bundles et promotions viennent du catalogue réseau.
+- **Le chiffre remonte en continu** — Chaque encaissement alimente le tableau de bord du jour et l'assiette des redevances.
+- **Les bundles se vendent tels que conçus** — La formule construite au siège arrive en caisse prête à encaisser, avec sa marge connue.
+- **La coupure ne ferme pas le magasin** — Le mode hors ligne encaisse et resynchronise à la reconnexion, sans doublon.
+
+### Le menu, entrée par entrée (6)
+
+| Entrée | Leviers | À quoi elle sert | Le gain |
+| --- | --- | --- | --- |
+| **Écran de vente**<br>`vente` | L | L'écran d'encaissement tenu à une main : produits, formules et remises, pensé pour l'heure de pointe. | Un nouvel équipier encaisse dès son premier service. |
+| **Bundles et formules**<br>`bundles` | F T | Les formules construites au siège arrivent en caisse prêtes à vendre, avec leur prix résolu et leur marge connue. | Le bundle vendu est celui qui a été conçu. |
+| **Promotions en caisse**<br>`promotions` | T R | Les promotions du siège et du magasin s'appliquent selon les mêmes règles que le webshop, sans saisie manuelle. | Le prix en caisse est celui de l'affiche. |
+| **Paiements et clôture**<br>`encaissement` | O | Espèces, carte et titres, avec la clôture de journée rapprochée automatiquement des encaissements. | La clôture prend cinq minutes, pas une heure. |
+| **Tickets et TVA**<br>`tickets` | O | Tickets conformes, taux de TVA par produit, et le journal légal tenu sans y penser. | Le contrôle fiscal se passe sur le journal, pas dans les cartons. |
+| **Hors ligne**<br>`hors-ligne` | L | La caisse encaisse pendant une coupure réseau et resynchronise à la reconnexion, dans l'ordre, sans doublon. | La coupure ne fait plus fermer le magasin. |
+
+### Ce qu'il échange avec les autres modules
+
+- reçoit de **console-marque** : le catalogue, les bundles et les promotions
+- envoie vers **console-franchise** : les ventes du jour, en continu
+- envoie vers **redevances** : les encaissements qui servent d'assiette
+
+### Description longue
+
+Une caisse déconnectée du catalogue raconte sa propre histoire : un prix retapé à la main, une promotion oubliée, un bundle qui n'existe que sur l'affiche. Et comme le chiffre reste dans la caisse, le siège pilote sur des exports.
+
+La caisse POS lit le référentiel réseau : produits, prix, formules et bundles viennent du catalogue, les promotions du siège et du magasin s'appliquent selon les mêmes règles que le webshop. L'encaissement remonte en continu vers la console du franchisé et sert d'assiette aux redevances. Le mode hors ligne encaisse pendant une coupure et resynchronise à la reconnexion, sans doublon.
+
+### Schéma
+
+```mermaid
+flowchart TD
+  A[Catalogue reseau] --> B[Ecran de vente]
+  C[Promotions siege et magasin] --> B
+  B --> D[Panier et bundles]
+  D --> E[Encaissement]
+  E --> F[Ticket et TVA]
+  E --> G[Remontee en continu]
+  G --> H[Console franchise]
+  G --> I[Assiette des redevances]
+```
+
+---
+
+## Recettes & Food Cost
+
+`recettes` · famille **Approvisionnement** · ordre 12 · 6 fonctions
+
+**Leviers** — F Food Cost · O Overhead
+
+**Public visé** — Direction réseau et responsables food cost
+
+**Accroche** (86 car.) — Produits, recettes et coûts matière suivis jusqu'à la rentabilité de chaque référence.
+
+**Résumé** (245 car.)
+
+Chaque produit vendu est relié à sa recette et à ses coûts matière. Le food cost se suit par référence et par boutique, les dérives déclenchent une alerte, et la discussion sur les prix s'appuie sur la marge réelle plutôt que sur une impression.
+
+**Phrase d'onboarding** — À ouvrir quand le catalogue et le fournisseur sont en place : les recettes existent déjà, le module les relie aux prix d'achat et la marge par référence apparaît sans ressaisie.
+
+### Ce que ce module fait disparaître
+
+- **La marge par référence n'existe nulle part** — Recettes dans un classeur, prix d'achat dans les factures : personne ne peut dire ce que rapporte réellement une référence.
+- **La dérive se découvre au bilan** — Un prix d'achat qui monte ou une portion qui gonfle se voit des mois plus tard, quand la marge du trimestre est déjà consommée.
+- **Le théorique ignore le réel** — Sans inventaires rapprochés, l'écart entre le food cost calculé et le food cost constaté reste une intuition.
+
+### Ce qu'il apporte
+
+- **Un food cost par référence** — Chaque produit vendu est relié à sa recette et à ses coûts matière réels.
+- **Les dérives déclenchent une alerte** — Prix d'achat, portions, pertes : ce qui bouge au-delà du seuil se signale le jour même.
+- **La rentabilité se compare** — Marge par référence, par boutique et par période — sur les mêmes règles partout.
+- **Le réel rejoint le théorique** — Inventaires et pertes ferment la boucle entre la recette et ce qui sort vraiment de la cuisine.
+
+### Le menu, entrée par entrée (6)
+
+| Entrée | Leviers | À quoi elle sert | Le gain |
+| --- | --- | --- | --- |
+| **Produits et compositions**<br>`produits` | F | Chaque produit vendu est relié à sa recette : composants, quantités, unités — la base du calcul. | Le food cost part de la recette, pas d'un ratio global. |
+| **Recettes et portions**<br>`recettes` | F E | Les fiches techniques donnent les portions théoriques ; ce qui sort de la cuisine se compare à ce qui devait sortir. | La portion qui gonfle se voit avant la fin du mois. |
+| **Food cost par référence**<br>`foodcost` | F | Le coût matière de chaque référence, recalculé quand un prix d'achat bouge, par boutique et par période. | Une référence vendue à perte se repère en jours. |
+| **Marges et rentabilité**<br>`marges` | F O | La marge réelle par référence, par famille et par boutique, sur les quantités réellement vendues. | La discussion prix s'appuie sur des chiffres. |
+| **Inventaires et pertes**<br>`inventaires` | F | Inventaires périodiques et pertes déclarées, rapprochés du théorique pour mesurer l'écart réel. | L'écart théorique-réel devient un chiffre suivi. |
+| **Alertes de dérive**<br>`alertes` | F | Un seuil par référence ou par famille : ce qui dérive — coût, portion, perte — se signale le jour même. | La marge se défend en semaine, pas au bilan. |
+
+### Ce qu'il échange avec les autres modules
+
+- reçoit de **fournisseurs** : les prix d'achat et les fiches techniques
+- reçoit de **pos** : les quantités réellement vendues
+- envoie vers **console-marque** : la marge par référence et par boutique
+
+### Description longue
+
+Le food cost est le levier le plus discuté des réseaux de restauration, et le moins mesuré : les recettes vivent dans un classeur, les prix d'achat dans les factures, et la marge par référence n'existe nulle part.
+
+Le module relie les trois. Les recettes et fiches techniques donnent la composition de chaque produit vendu, les prix d'achat remontent du fournisseur, et le food cost se calcule par référence, par boutique et par période. Une dérive — un prix d'achat qui monte, une portion qui gonfle — déclenche une alerte avant que la marge du trimestre ne soit consommée. Les inventaires et les pertes ferment la boucle entre le théorique et le réel.
+
+### Schéma
+
+```mermaid
+flowchart TD
+  A[Prix d'achat fournisseur] --> B[Recettes et fiches techniques]
+  B --> C[Food cost par reference]
+  C --> D[Marge par boutique et periode]
+  E[Inventaires et pertes] --> D
+  D --> F[Alertes de derive]
+  F --> G[Decision prix ou recette]
+```
+
+---
+
+## Facturation
+
+`facturation` · famille **Pilotage** · ordre 13 · 5 fonctions
+
+**Leviers** — O Overhead · E Expérience
+
+**Public visé** — Franchisés, assistantes de gestion, comptables
+
+**Accroche** (85 car.) — Des factures propres, simples à émettre pour l'équipe, simples à lire pour le client.
+
+**Résumé** (257 car.)
+
+La facturation du réseau, pensée pour ceux qui l'utilisent : l'équipe émet une facture juste en quelques gestes, le client B2B reçoit un document lisible, et la comptabilité exporte sans retraitement. Avoirs, corrections et relances suivent le même dossier.
+
+**Phrase d'onboarding** — Se branche sur ce qui vend déjà : webshop, caisse, B2B. Première semaine, vous posez les modèles du réseau et l'export du comptable — ensuite les factures partent du bon montant, du premier coup.
+
+### Ce que ce module fait disparaître
+
+- **Le même montant se ressaisit trois fois** — La vente, la facture et l'écriture comptable vivent dans trois outils. Chaque ressaisie est une erreur possible.
+- **La facture est illisible** — Un document généré pour le comptable, pas pour le client : le service facturé se devine, et le téléphone sonne.
+- **L'avoir se perd** — Une correction faite dans un coin sans lien avec la facture d'origine : au rapprochement, plus personne ne sait pourquoi.
+
+### Ce qu'il apporte
+
+- **Émise depuis la vente** — Webshop, caisse et commandes B2B deviennent des factures sans ressaisie.
+- **Lisible par le client** — Modèles du réseau, libellés clairs, TVA par ligne : le document s'explique tout seul.
+- **L'avoir reste rattaché** — Corrections et avoirs suivent la facture d'origine, avec leur motif.
+- **L'export part sans retraitement** — Le comptable reçoit son format ; personne ne repasse derrière.
+
+### Le menu, entrée par entrée (5)
+
+| Entrée | Leviers | À quoi elle sert | Le gain |
+| --- | --- | --- | --- |
+| **Émission et modèles**<br>`emission` | O | Les factures partent des ventes réelles, sur les modèles du réseau : mentions, numérotation et TVA justes par construction. | Émettre une facture ne demande aucune connaissance comptable. |
+| **Comptes clients B2B**<br>`clients` | R | Sociétés, services et adresses de facturation tenus au même endroit que les commandes, avec le numéro de TVA vérifié. | La facture part au bon service du premier coup. |
+| **Avoirs et corrections**<br>`avoirs` | O | Toute correction reste rattachée à la facture d'origine, avec son motif et son auteur. | Le rapprochement se fait sans archéologie. |
+| **Relances à échéance**<br>`relances` | O | Les factures échues se relancent selon l'échéancier du réseau, avec l'historique dans le dossier client. | L'encours client baisse sans y passer ses soirées. |
+| **Exports comptables**<br>`export` | O | L'export part dans le format du cabinet — journal, pièces et TVA — sans retraitement manuel. | Le comptable cesse de retaper le mois. |
+
+### Ce qu'il échange avec les autres modules
+
+- reçoit de **webshop** : les commandes en ligne facturables
+- reçoit de **pos** : les tickets et clôtures de caisse
+- envoie vers **console-franchise** : l'état des paiements clients
+
+### Description longue
+
+La facturation d'un point de vente se joue entre trois personnes qui ne se parlent pas : l'équipe qui vend, le client qui attend sa facture, et le comptable qui retraite. Chacun a son outil, et le même montant se ressaisit trois fois.
+
+Le module prend les ventes là où elles naissent — webshop, caisse, commandes B2B — et en fait des factures propres : modèles du réseau, mentions justes, TVA par ligne. L'équipe émet en quelques gestes, sans connaître la comptabilité. Les avoirs et corrections restent rattachés à la facture d'origine, les relances suivent l'échéance, et l'export part vers le comptable dans son format, sans retraitement.
+
+### Schéma
+
+```mermaid
+flowchart TD
+  A[Webshop] --> D[Factures]
+  B[Caisse POS] --> D
+  C[Commandes B2B] --> D
+  D --> E[Envoi au client]
+  D --> F[Avoirs et corrections]
+  E --> G[Relances a echeance]
+  D --> H[Export comptable]
+```
+
+---
+
 ## Volumes — ce qu'une mise en page doit encaisser
 
 | Élément | Étendue |
 | --- | --- |
-| Modules | 9 |
+| Modules | 13 |
 | Familles | Vente, Pilotage, Approvisionnement, Terrain, Développement |
-| Fonctions par module | 6 à 22 |
+| Fonctions par module | 5 à 22 |
 | Leviers par module | 2 à 6 |
 | Liens par module | 1 à 4 |
 | Problèmes par module | 3 à 4 |
 | Bénéfices par module | 4 à 5 |
 | Accroche (caractères) | 60 à 94 |
-| Résumé (caractères) | 236 à 320 |
-| Description (caractères) | 1091 à 1834 |
+| Résumé (caractères) | 232 à 320 |
+| Description (caractères) | 617 à 1834 |
 | Nom de fonction (caractères) | 9 à 33 |
 | Description de fonction (caractères) | 65 à 220 |
 
-Le cas de test d'une maquette : **Recrutement de franchisés** et ses 22 entrées de menu, à côté de **Tournées de livraison** qui en a 6. Les deux dans la même mise en page.
+Le cas de test d'une maquette : **Recrutement de franchisés** et ses 22 entrées de menu, à côté de **Facturation** qui en a 5. Les deux dans la même mise en page.

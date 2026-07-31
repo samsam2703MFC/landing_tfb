@@ -20,6 +20,7 @@ export const TEXTES = [
   { cle: 'nav.contact', section: 'En-tête et pied', valeur: 'Contact', aide: 'Menu principal.' },
   { cle: 'nav.onboarding', section: 'En-tête et pied', valeur: 'Onboarding', aide: 'Bouton braise de l’en-tête.' },
   { cle: 'nav.demo', section: 'En-tête et pied', valeur: 'Demander une démonstration', aide: 'Bouton principal, partout.' },
+  { cle: 'pied.fiches', section: 'En-tête et pied', valeur: 'Fiches modules' },
   { cle: 'pied.leviers', section: 'En-tête et pied', valeur: 'Les 6 leviers' },
   { cle: 'pied.mention', section: 'En-tête et pied', valeur: '© 2026 The Franchise Buddy — ERP pour réseaux de franchise' },
   { cle: 'pied.note', section: 'En-tête et pied', valeur: 'Le contenu de ce site est généré depuis le code source des modules.' },
@@ -106,4 +107,19 @@ export const LANGUES = [
   { code: 'uk', nom: 'Українська', rtl: false, defaut: false, publiee: false },
   { code: 'ru', nom: 'Русский', rtl: false, defaut: false, publiee: false },
   { code: 'ar', nom: 'العربية', rtl: true, defaut: false, publiee: false },
+];
+
+/**
+ * Les réseaux du bandeau, tels que la maquette les propose.
+ *
+ * Ils arrivent **non publiés** : ce sont des exemples de mise en page, pas des
+ * références réelles. Les afficher tels quels reviendrait à annoncer des
+ * clients qui n'en sont pas. Un clic dans la console les active, une fois
+ * remplacés par de vrais réseaux.
+ */
+export const CLIENTS = [
+  { nom: 'Belleville Bistro', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
+  { nom: 'Kebab House', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
+  { nom: 'Sushi Loop', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
+  { nom: 'Café Nord', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
 ];

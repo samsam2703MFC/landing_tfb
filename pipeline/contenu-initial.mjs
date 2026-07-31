@@ -1,5 +1,5 @@
 /**
- * Contenu de départ des neuf modules, rédigé à partir du code et des fiches
+ * Contenu de départ des treize modules, rédigé à partir du code et des fiches
  * `.tfb/module.json` de chaque dépôt.
  *
  * Sert à alimenter la landing sans clé Anthropic. Une ingestion ultérieure
@@ -811,6 +811,317 @@ Les emplacements sont une table unique servie aux trois fronts : ils alimentent 
       { cle: 'acces', icone: 'settings', nom: 'Comptes et journal de connexion', leviers: ["overhead"], description: "Les comptes consultants avec leur rôle, révocables, et le journal de chaque connexion, échec et déconnexion avec l'adresse et le navigateur.", benefice: "L'accès aux dossiers candidats est traçable." },
     ],
   },
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    slug: "redevances",
+    repo: "samsam2703MFC/royalties",
+    groupe: "Pilotage",
+    icone: "wallet",
+    ordre: 10,
+    nom: "Redevances",
+    accroche: "Royalties et redevance marketing calculées, encaissées et, au besoin, bloquantes.",
+    resume:
+      "Les redevances se calculent sur le chiffre réel remonté des caisses : royalties, redevance marketing, minima contractuels. L'impayé suit une escalade écrite — relance, restriction, blocage — et le paiement reçu rouvre les services sans intervention manuelle.",
+    public_cible: "Direction financière du réseau",
+    description: `La redevance est le revenu du franchiseur, et c'est souvent le flux le plus mal outillé du réseau : une assiette déclarée par le franchisé, un calcul refait dans un tableur, et un impayé qui traîne parce que personne ne veut déclencher le conflit.
+
+Le module part du chiffre réel remonté des caisses. Taux, assiette, minima et exonérations sont posés dans le contrat de chaque boutique ; la facture part seule à la clôture de période, avec le détail du calcul joint. L'impayé suit une escalade écrite : relances datées, restriction des services de confort, puis blocage — jamais l'encaissement du magasin. Le paiement reçu débloque immédiatement, et chaque étape est journalisée avec son auteur et sa règle.`,
+    stack: ["PHP","MySQL","SEPA"],
+    mots_cles: ["royalties","redevance marketing","prélèvement","blocage"],
+    problemes: [
+      {
+        titre: "La redevance se calcule sur du déclaratif",
+        texte:
+          "Quand le franchisé déclare lui-même son chiffre, chaque facture devient une négociation. Le siège encaisse en retard, et en dessous.",
+      },
+      {
+        titre: "L'impayé n'a pas de conséquence",
+        texte:
+          "Sans mécanisme gradué, un impayé traîne des mois. Le franchisé qui paie à l'heure se demande pourquoi il continue.",
+      },
+      {
+        titre: "Le contrat vit dans un classeur",
+        texte:
+          "Taux, assiette et minima varient par contrat. Recalculés à la main chaque mois, ils finissent par diverger de ce qui est signé.",
+      },
+    ],
+    benefices: [
+      {
+        titre: "Calculées sur le chiffre réel",
+        texte:
+          "L'assiette vient des encaissements remontés, pas d'une déclaration mensuelle.",
+      },
+      {
+        titre: "Une escalade écrite",
+        texte:
+          "Relance, restriction, blocage : chaque étape est une règle datée et journalisée, connue d'avance.",
+      },
+      {
+        titre: "Le contrat est le paramétrage",
+        texte:
+          "Taux, assiette, minima et exonérations se règlent boutique par boutique.",
+      },
+      {
+        titre: "Le déblocage est immédiat",
+        texte:
+          "Le paiement reçu rouvre les services sans intervention manuelle.",
+      },
+    ],
+    mermaid: `flowchart TD
+  A[Encaissements remontes] --> B[Calcul par contrat]
+  B --> C[Facture automatique]
+  C --> D{Payee}
+  D -->|Oui| E[Rapprochement]
+  D -->|Non| F[Relances graduees]
+  F --> G[Restriction puis blocage]
+  G --> H[Paiement recu]
+  H --> I[Deblocage immediat]`,
+    leviers: ["overhead","recurrence"],
+    liens: [{"slug":"pos","sens":"recoit","quoi":"les encaissements qui servent d'assiette au calcul"},{"slug":"console-marque","sens":"envoie","quoi":"l'état des paiements du réseau"}],
+    onboarding:
+      "À brancher dès que les ventes remontent. Le calcul part du chiffre réel, la facture part toute seule, et l'impayé suit une escalade écrite : relance, restriction, blocage — puis déblocage immédiat au paiement.",
+    fonctions: [
+      { cle: "calcul", icone: "percent", nom: "Calcul des redevances", leviers: ["overhead"], description: "Royalties et redevance marketing calculées par période sur le chiffre remonté, avec taux, assiette et minima propres à chaque contrat.", benefice: "La facture part juste, sans tableur." },
+      { cle: "facturation", icone: "receipt", nom: "Facturation automatique", leviers: ["overhead"], description: "Les factures de redevances partent seules à la clôture de période, avec le détail du calcul joint.", benefice: "Personne ne passe le premier du mois à facturer." },
+      { cle: "encaissement", icone: "credit-card", nom: "Prélèvement et encaissement", leviers: ["overhead"], description: "Prélèvement SEPA ou carte, rapprochement automatique du paiement et de la facture.", benefice: "L'encaissement cesse d'être une relance téléphonique." },
+      { cle: "relances", icone: "bell", nom: "Relances graduées", leviers: ["overhead","xp"], description: "Les relances partent selon l'échéancier décidé au contrat, avec copie au consultant du magasin.", benefice: "L'impayé se traite avant de devenir un litige." },
+      { cle: "blocage", icone: "lock", nom: "Suspension et blocage", leviers: ["overhead"], description: "L'impayé persistant restreint puis suspend les services selon la règle écrite : d'abord les modules de confort, jamais l'encaissement du magasin.", benefice: "La conséquence est connue d'avance, donc rarement nécessaire." },
+      { cle: "audit", icone: "search", nom: "Journal et audit", leviers: ["overhead"], description: "Chaque calcul, facture, relance et blocage est journalisé avec son auteur et sa règle.", benefice: "Une contestation se tranche sur le journal, pas sur la mémoire." },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    slug: "pos",
+    repo: "samsam2703MFC/pos",
+    groupe: "Vente",
+    icone: "credit-card",
+    ordre: 11,
+    nom: "Caisse POS",
+    accroche: "La caisse du magasin : bundles, promotions et encaissement reliés au catalogue réseau.",
+    resume:
+      "La caisse lit le même catalogue que le webshop et les écrans : produits, bundles, promotions du siège et du magasin. L'encaissement remonte en continu — c'est lui qui alimente le tableau de bord du jour et l'assiette des redevances.",
+    public_cible: "Équipes de vente en point de vente",
+    description: `Une caisse déconnectée du catalogue raconte sa propre histoire : un prix retapé à la main, une promotion oubliée, un bundle qui n'existe que sur l'affiche. Et comme le chiffre reste dans la caisse, le siège pilote sur des exports.
+
+La caisse POS lit le référentiel réseau : produits, prix, formules et bundles viennent du catalogue, les promotions du siège et du magasin s'appliquent selon les mêmes règles que le webshop. L'encaissement remonte en continu vers la console du franchisé et sert d'assiette aux redevances. Le mode hors ligne encaisse pendant une coupure et resynchronise à la reconnexion, sans doublon.`,
+    stack: ["React","PWA","MySQL"],
+    mots_cles: ["caisse","POS","bundles","promotions","encaissement"],
+    problemes: [
+      {
+        titre: "La caisse raconte sa propre histoire",
+        texte:
+          "Prix retapés, promotions oubliées : ce que la caisse applique diverge du catalogue dès la première opération commerciale.",
+      },
+      {
+        titre: "Le chiffre reste dans la caisse",
+        texte:
+          "Le siège pilote sur des exports hebdomadaires. L'écart entre boutiques se découvre quand il est déjà installé.",
+      },
+      {
+        titre: "Le bundle vit sur une affiche",
+        texte:
+          "La formule mise en avant n'existe pas dans la caisse : l'équipe la reconstitue à la main, chacun à sa façon.",
+      },
+    ],
+    benefices: [
+      {
+        titre: "Un seul référentiel, jusqu'à la caisse",
+        texte:
+          "Produits, prix, bundles et promotions viennent du catalogue réseau.",
+      },
+      {
+        titre: "Le chiffre remonte en continu",
+        texte:
+          "Chaque encaissement alimente le tableau de bord du jour et l'assiette des redevances.",
+      },
+      {
+        titre: "Les bundles se vendent tels que conçus",
+        texte:
+          "La formule construite au siège arrive en caisse prête à encaisser, avec sa marge connue.",
+      },
+      {
+        titre: "La coupure ne ferme pas le magasin",
+        texte:
+          "Le mode hors ligne encaisse et resynchronise à la reconnexion, sans doublon.",
+      },
+    ],
+    mermaid: `flowchart TD
+  A[Catalogue reseau] --> B[Ecran de vente]
+  C[Promotions siege et magasin] --> B
+  B --> D[Panier et bundles]
+  D --> E[Encaissement]
+  E --> F[Ticket et TVA]
+  E --> G[Remontee en continu]
+  G --> H[Console franchise]
+  G --> I[Assiette des redevances]`,
+    leviers: ["trafic","recurrence","food"],
+    liens: [{"slug":"console-marque","sens":"recoit","quoi":"le catalogue, les bundles et les promotions"},{"slug":"console-franchise","sens":"envoie","quoi":"les ventes du jour, en continu"},{"slug":"redevances","sens":"envoie","quoi":"les encaissements qui servent d'assiette"}],
+    onboarding:
+      "La caisse se branche sur le catalogue existant : l'équipe retrouve les mêmes produits, bundles et promotions que le webshop, et le chiffre remonte tout seul dès le premier ticket.",
+    fonctions: [
+      { cle: "vente", icone: "credit-card", nom: "Écran de vente", leviers: ["labour"], description: "L'écran d'encaissement tenu à une main : produits, formules et remises, pensé pour l'heure de pointe.", benefice: "Un nouvel équipier encaisse dès son premier service." },
+      { cle: "bundles", icone: "layers", nom: "Bundles et formules", leviers: ["food","trafic"], description: "Les formules construites au siège arrivent en caisse prêtes à vendre, avec leur prix résolu et leur marge connue.", benefice: "Le bundle vendu est celui qui a été conçu." },
+      { cle: "promotions", icone: "percent", nom: "Promotions en caisse", leviers: ["trafic","recurrence"], description: "Les promotions du siège et du magasin s'appliquent selon les mêmes règles que le webshop, sans saisie manuelle.", benefice: "Le prix en caisse est celui de l'affiche." },
+      { cle: "encaissement", icone: "wallet", nom: "Paiements et clôture", leviers: ["overhead"], description: "Espèces, carte et titres, avec la clôture de journée rapprochée automatiquement des encaissements.", benefice: "La clôture prend cinq minutes, pas une heure." },
+      { cle: "tickets", icone: "receipt", nom: "Tickets et TVA", leviers: ["overhead"], description: "Tickets conformes, taux de TVA par produit, et le journal légal tenu sans y penser.", benefice: "Le contrôle fiscal se passe sur le journal, pas dans les cartons." },
+      { cle: "hors-ligne", icone: "refresh-cw", nom: "Hors ligne", leviers: ["labour"], description: "La caisse encaisse pendant une coupure réseau et resynchronise à la reconnexion, dans l'ordre, sans doublon.", benefice: "La coupure ne fait plus fermer le magasin." },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    slug: "recettes",
+    repo: "samsam2703MFC/foodcost",
+    groupe: "Approvisionnement",
+    icone: "utensils",
+    ordre: 12,
+    nom: "Recettes & Food Cost",
+    accroche: "Produits, recettes et coûts matière suivis jusqu'à la rentabilité de chaque référence.",
+    resume:
+      "Chaque produit vendu est relié à sa recette et à ses coûts matière. Le food cost se suit par référence et par boutique, les dérives déclenchent une alerte, et la discussion sur les prix s'appuie sur la marge réelle plutôt que sur une impression.",
+    public_cible: "Direction réseau et responsables food cost",
+    description: `Le food cost est le levier le plus discuté des réseaux de restauration, et le moins mesuré : les recettes vivent dans un classeur, les prix d'achat dans les factures, et la marge par référence n'existe nulle part.
+
+Le module relie les trois. Les recettes et fiches techniques donnent la composition de chaque produit vendu, les prix d'achat remontent du fournisseur, et le food cost se calcule par référence, par boutique et par période. Une dérive — un prix d'achat qui monte, une portion qui gonfle — déclenche une alerte avant que la marge du trimestre ne soit consommée. Les inventaires et les pertes ferment la boucle entre le théorique et le réel.`,
+    stack: ["React","MySQL"],
+    mots_cles: ["food cost","recettes","marge","rentabilité","inventaire"],
+    problemes: [
+      {
+        titre: "La marge par référence n'existe nulle part",
+        texte:
+          "Recettes dans un classeur, prix d'achat dans les factures : personne ne peut dire ce que rapporte réellement une référence.",
+      },
+      {
+        titre: "La dérive se découvre au bilan",
+        texte:
+          "Un prix d'achat qui monte ou une portion qui gonfle se voit des mois plus tard, quand la marge du trimestre est déjà consommée.",
+      },
+      {
+        titre: "Le théorique ignore le réel",
+        texte:
+          "Sans inventaires rapprochés, l'écart entre le food cost calculé et le food cost constaté reste une intuition.",
+      },
+    ],
+    benefices: [
+      {
+        titre: "Un food cost par référence",
+        texte:
+          "Chaque produit vendu est relié à sa recette et à ses coûts matière réels.",
+      },
+      {
+        titre: "Les dérives déclenchent une alerte",
+        texte:
+          "Prix d'achat, portions, pertes : ce qui bouge au-delà du seuil se signale le jour même.",
+      },
+      {
+        titre: "La rentabilité se compare",
+        texte:
+          "Marge par référence, par boutique et par période — sur les mêmes règles partout.",
+      },
+      {
+        titre: "Le réel rejoint le théorique",
+        texte:
+          "Inventaires et pertes ferment la boucle entre la recette et ce qui sort vraiment de la cuisine.",
+      },
+    ],
+    mermaid: `flowchart TD
+  A[Prix d'achat fournisseur] --> B[Recettes et fiches techniques]
+  B --> C[Food cost par reference]
+  C --> D[Marge par boutique et periode]
+  E[Inventaires et pertes] --> D
+  D --> F[Alertes de derive]
+  F --> G[Decision prix ou recette]`,
+    leviers: ["food","overhead"],
+    liens: [{"slug":"fournisseurs","sens":"recoit","quoi":"les prix d'achat et les fiches techniques"},{"slug":"pos","sens":"recoit","quoi":"les quantités réellement vendues"},{"slug":"console-marque","sens":"envoie","quoi":"la marge par référence et par boutique"}],
+    onboarding:
+      "À ouvrir quand le catalogue et le fournisseur sont en place : les recettes existent déjà, le module les relie aux prix d'achat et la marge par référence apparaît sans ressaisie.",
+    fonctions: [
+      { cle: "produits", icone: "book-open", nom: "Produits et compositions", leviers: ["food"], description: "Chaque produit vendu est relié à sa recette : composants, quantités, unités — la base du calcul.", benefice: "Le food cost part de la recette, pas d'un ratio global." },
+      { cle: "recettes", icone: "chef-hat", nom: "Recettes et portions", leviers: ["food","xp"], description: "Les fiches techniques donnent les portions théoriques ; ce qui sort de la cuisine se compare à ce qui devait sortir.", benefice: "La portion qui gonfle se voit avant la fin du mois." },
+      { cle: "foodcost", icone: "percent", nom: "Food cost par référence", leviers: ["food"], description: "Le coût matière de chaque référence, recalculé quand un prix d'achat bouge, par boutique et par période.", benefice: "Une référence vendue à perte se repère en jours." },
+      { cle: "marges", icone: "trending-up", nom: "Marges et rentabilité", leviers: ["food","overhead"], description: "La marge réelle par référence, par famille et par boutique, sur les quantités réellement vendues.", benefice: "La discussion prix s'appuie sur des chiffres." },
+      { cle: "inventaires", icone: "clipboard-check", nom: "Inventaires et pertes", leviers: ["food"], description: "Inventaires périodiques et pertes déclarées, rapprochés du théorique pour mesurer l'écart réel.", benefice: "L'écart théorique-réel devient un chiffre suivi." },
+      { cle: "alertes", icone: "triangle-alert", nom: "Alertes de dérive", leviers: ["food"], description: "Un seuil par référence ou par famille : ce qui dérive — coût, portion, perte — se signale le jour même.", benefice: "La marge se défend en semaine, pas au bilan." },
+    ],
+  },
+
+  // ─────────────────────────────────────────────────────────────────────────
+  {
+    slug: "facturation",
+    repo: "samsam2703MFC/invoicing",
+    groupe: "Pilotage",
+    icone: "receipt",
+    ordre: 13,
+    nom: "Facturation",
+    accroche: "Des factures propres, simples à émettre pour l'équipe, simples à lire pour le client.",
+    resume:
+      "La facturation du réseau, pensée pour ceux qui l'utilisent : l'équipe émet une facture juste en quelques gestes, le client B2B reçoit un document lisible, et la comptabilité exporte sans retraitement. Avoirs, corrections et relances suivent le même dossier.",
+    public_cible: "Franchisés, assistantes de gestion, comptables",
+    description: `La facturation d'un point de vente se joue entre trois personnes qui ne se parlent pas : l'équipe qui vend, le client qui attend sa facture, et le comptable qui retraite. Chacun a son outil, et le même montant se ressaisit trois fois.
+
+Le module prend les ventes là où elles naissent — webshop, caisse, commandes B2B — et en fait des factures propres : modèles du réseau, mentions justes, TVA par ligne. L'équipe émet en quelques gestes, sans connaître la comptabilité. Les avoirs et corrections restent rattachés à la facture d'origine, les relances suivent l'échéance, et l'export part vers le comptable dans son format, sans retraitement.`,
+    stack: ["PHP","MySQL"],
+    mots_cles: ["facture","avoir","B2B","export comptable","relance"],
+    problemes: [
+      {
+        titre: "Le même montant se ressaisit trois fois",
+        texte:
+          "La vente, la facture et l'écriture comptable vivent dans trois outils. Chaque ressaisie est une erreur possible.",
+      },
+      {
+        titre: "La facture est illisible",
+        texte:
+          "Un document généré pour le comptable, pas pour le client : le service facturé se devine, et le téléphone sonne.",
+      },
+      {
+        titre: "L'avoir se perd",
+        texte:
+          "Une correction faite dans un coin sans lien avec la facture d'origine : au rapprochement, plus personne ne sait pourquoi.",
+      },
+    ],
+    benefices: [
+      {
+        titre: "Émise depuis la vente",
+        texte:
+          "Webshop, caisse et commandes B2B deviennent des factures sans ressaisie.",
+      },
+      {
+        titre: "Lisible par le client",
+        texte:
+          "Modèles du réseau, libellés clairs, TVA par ligne : le document s'explique tout seul.",
+      },
+      {
+        titre: "L'avoir reste rattaché",
+        texte:
+          "Corrections et avoirs suivent la facture d'origine, avec leur motif.",
+      },
+      {
+        titre: "L'export part sans retraitement",
+        texte:
+          "Le comptable reçoit son format ; personne ne repasse derrière.",
+      },
+    ],
+    mermaid: `flowchart TD
+  A[Webshop] --> D[Factures]
+  B[Caisse POS] --> D
+  C[Commandes B2B] --> D
+  D --> E[Envoi au client]
+  D --> F[Avoirs et corrections]
+  E --> G[Relances a echeance]
+  D --> H[Export comptable]`,
+    leviers: ["overhead","xp"],
+    liens: [{"slug":"webshop","sens":"recoit","quoi":"les commandes en ligne facturables"},{"slug":"pos","sens":"recoit","quoi":"les tickets et clôtures de caisse"},{"slug":"console-franchise","sens":"envoie","quoi":"l'état des paiements clients"}],
+    onboarding:
+      "Se branche sur ce qui vend déjà : webshop, caisse, B2B. Première semaine, vous posez les modèles du réseau et l'export du comptable — ensuite les factures partent du bon montant, du premier coup.",
+    fonctions: [
+      { cle: "emission", icone: "receipt", nom: "Émission et modèles", leviers: ["overhead"], description: "Les factures partent des ventes réelles, sur les modèles du réseau : mentions, numérotation et TVA justes par construction.", benefice: "Émettre une facture ne demande aucune connaissance comptable." },
+      { cle: "clients", icone: "users", nom: "Comptes clients B2B", leviers: ["recurrence"], description: "Sociétés, services et adresses de facturation tenus au même endroit que les commandes, avec le numéro de TVA vérifié.", benefice: "La facture part au bon service du premier coup." },
+      { cle: "avoirs", icone: "percent", nom: "Avoirs et corrections", leviers: ["overhead"], description: "Toute correction reste rattachée à la facture d'origine, avec son motif et son auteur.", benefice: "Le rapprochement se fait sans archéologie." },
+      { cle: "relances", icone: "bell", nom: "Relances à échéance", leviers: ["overhead"], description: "Les factures échues se relancent selon l'échéancier du réseau, avec l'historique dans le dossier client.", benefice: "L'encours client baisse sans y passer ses soirées." },
+      { cle: "export", icone: "download", nom: "Exports comptables", leviers: ["overhead"], description: "L'export part dans le format du cabinet — journal, pièces et TVA — sans retraitement manuel.", benefice: "Le comptable cesse de retaper le mois." },
+    ],
+  },
 ];
 
 /** Contenu de la page d'accueil. */
@@ -926,6 +1237,14 @@ export const QUESTIONS = [
     texte: 'Livrer vos points de vente avec une preuve datée et sans litige ?' },
   { cle: 'recrutement', tag: 'Problème', cible: 'Recrutement', slugs: ['recrutement'],
     texte: 'Recruter un franchisé prend un an et le dossier vit dans une boîte mail ?' },
+  { cle: 'caisse', tag: 'Problème', cible: 'Caisse POS', slugs: ['pos'],
+    texte: 'Le prix en caisse diverge du catalogue, les bundles se reconstituent à la main ?' },
+  { cle: 'redevances', tag: 'Problème', cible: 'Redevances', slugs: ['redevances'],
+    texte: 'Des redevances calculées sur du déclaratif, des impayés qui traînent ?' },
+  { cle: 'factures', tag: 'Problème', cible: 'Facturation', slugs: ['facturation'],
+    texte: 'Le même montant se ressaisit trois fois entre la vente et le comptable ?' },
+  { cle: 'foodcost', tag: 'Besoin', cible: 'Recettes & Food Cost', slugs: ['recettes'],
+    texte: 'Connaître la marge de chaque référence, et voir la dérive avant le bilan ?' },
   { cle: 'transmission', tag: 'Besoin', cible: 'Tout le catalogue', slugs: ['console-marque', 'console-franchise', 'consultant', 'cuisine'],
     texte: 'Rendre votre réseau transmissible : que ce qui est fait laisse une trace datée ?' },
 ];

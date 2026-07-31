@@ -1,15 +1,84 @@
 {
-  "_commentaire": "Liste des dépôts ingérés par le pipeline. Ajouter un module = ajouter une ligne ici. `slug` sert d'identifiant stable en base (URL /modules/<slug>) : ne jamais le changer une fois publié, et il doit être exactement celui de pipeline/contenu-initial.mjs — c'est par lui que les captures d'écran retrouvent leur module. `ref` est facultatif et surcharge `defaultRef`.",
+  "_commentaire": "Liste des dépôts ingérés par le pipeline. Ajouter un module = ajouter une ligne ici. `slug` sert d'identifiant stable en base (URL /modules/<slug>) : ne jamais le changer une fois publié, et il doit être exactement celui de pipeline/contenu-initial.mjs — c'est par lui que les captures d'écran retrouvent leur module. `ref` est facultatif et surcharge `defaultRef`. Un dépôt encore inexistant est normal : la fiche vit dans contenu-initial.mjs, l'ingestion IA la reprendra le jour où le dépôt sera créé.",
   "defaultRef": "main",
   "modules": [
-    { "slug": "webshop", "repo": "samsam2703MFC/WebShop", "groupe": "Vente", "ordre": 1 },
-    { "slug": "console-marque", "repo": "samsam2703MFC/back_office_ws_franchisor", "groupe": "Pilotage", "ordre": 2 },
-    { "slug": "console-franchise", "repo": "samsam2703MFC/back_office_ws_franchisee", "groupe": "Pilotage", "ordre": 3 },
-    { "slug": "fournisseurs", "repo": "samsam2703MFC/supplier_atl", "groupe": "Approvisionnement", "ordre": 4 },
-    { "slug": "cuisine", "repo": "samsam2703MFC/pwa_kitchen", "groupe": "Terrain", "ordre": 5 },
-    { "slug": "consultant", "repo": "samsam2703MFC/pwa_consultant", "groupe": "Terrain", "ordre": 6 },
-    { "slug": "livraison", "repo": "samsam2703MFC/pwa_delivery", "groupe": "Approvisionnement", "ordre": 7 },
-    { "slug": "affichage", "repo": "samsam2703MFC/signage", "groupe": "Vente", "ordre": 8 },
-    { "slug": "recrutement", "repo": "samsam2703MFC/atelier-espace-candidat", "groupe": "Développement", "ordre": 9 }
+    {
+      "slug": "webshop",
+      "repo": "samsam2703MFC/WebShop",
+      "groupe": "Vente",
+      "ordre": 1
+    },
+    {
+      "slug": "console-marque",
+      "repo": "samsam2703MFC/back_office_ws_franchisor",
+      "groupe": "Pilotage",
+      "ordre": 2
+    },
+    {
+      "slug": "console-franchise",
+      "repo": "samsam2703MFC/back_office_ws_franchisee",
+      "groupe": "Pilotage",
+      "ordre": 3
+    },
+    {
+      "slug": "fournisseurs",
+      "repo": "samsam2703MFC/supplier_atl",
+      "groupe": "Approvisionnement",
+      "ordre": 4
+    },
+    {
+      "slug": "cuisine",
+      "repo": "samsam2703MFC/pwa_kitchen",
+      "groupe": "Terrain",
+      "ordre": 5
+    },
+    {
+      "slug": "consultant",
+      "repo": "samsam2703MFC/pwa_consultant",
+      "groupe": "Terrain",
+      "ordre": 6
+    },
+    {
+      "slug": "livraison",
+      "repo": "samsam2703MFC/pwa_delivery",
+      "groupe": "Approvisionnement",
+      "ordre": 7
+    },
+    {
+      "slug": "affichage",
+      "repo": "samsam2703MFC/signage",
+      "groupe": "Vente",
+      "ordre": 8
+    },
+    {
+      "slug": "recrutement",
+      "repo": "samsam2703MFC/atelier-espace-candidat",
+      "groupe": "Développement",
+      "ordre": 9
+    },
+    {
+      "slug": "redevances",
+      "repo": "samsam2703MFC/royalties",
+      "groupe": "Pilotage",
+      "ordre": 10
+    },
+    {
+      "slug": "pos",
+      "repo": "samsam2703MFC/pos",
+      "groupe": "Vente",
+      "ordre": 11
+    },
+    {
+      "slug": "recettes",
+      "repo": "samsam2703MFC/foodcost",
+      "groupe": "Approvisionnement",
+      "ordre": 12
+    },
+    {
+      "slug": "facturation",
+      "repo": "samsam2703MFC/invoicing",
+      "groupe": "Pilotage",
+      "ordre": 13
+    }
   ]
 }

@@ -318,7 +318,7 @@ const NAV = [
           <Icone nom="sparkles" taille={14} />
           {t('nav.onboarding')}
         </a>
-        {langues.length > 1 && (
+        {langues.length > 0 && (
           <span class="langues">
             <Icone nom="globe" taille={14} />
             {langues.map((l) => (
@@ -344,7 +344,7 @@ const NAV = [
           <span class="pied__nom">The Franchise Buddy</span>
           <nav class="pied__nav">
             <a href={lien('/onboarding')}>{t('nav.onboarding')}</a>
-            <a href={lien('/#modules')}>{t('nav.modules')}</a>
+            <a href={lien('/#modules')}>{t('pied.fiches')}</a>
             <a href={lien('/#leviers')}>{t('pied.leviers')}</a>
             <a href={lien('/#contact')}>{t('nav.contact')}</a>
           </nav>

@@ -9,18 +9,16 @@
 import Layout from '../components/Layout.astro';
 import Icone from '../components/Icone.astro';
 import Pastille from '../components/Pastille.astro';
-import Reseau from '../components/Reseau.astro';
-import { chargerCaptures, chargerClients, chargerParcours, chargerSite } from '../lib/db.mjs';
+import { chargerClients, chargerParcours, chargerSite } from '../lib/db.mjs';
 import { textes } from '../lib/textes.mjs';
 import { LEVIERS, leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const [t, site, modules, captures, clients] = await Promise.all([
+const [t, site, modules, clients] = await Promise.all([
   textes(),
   chargerSite(),
   // Le parcours complet : on a besoin des fonctions pour l'icône et le compte.
   chargerParcours(),
-  chargerCaptures(8),
   chargerClients(),
 ]);
 
@@ -65,7 +63,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
   <section class="bande bande--serree">
     <div class="dedans plis">
       {problemes.length > 0 && (
-        <details class="pli" open>
+        <details class="pli">
           <summary class="pli__tete">
             <span class="pli__intitule">
               <span class="oeil">{t('accueil.problemes.oeil')}</span>
@@ -106,23 +104,6 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
       )}
     </div>
   </section>
-
-  <!-- ── Comment l'information circule ───────────────────────────────── -->
-  {modules.length > 0 && (
-    <section class="bande bande--sombre" id="flux">
-      <div class="dedans">
-        <div class="entete-section" data-monte>
-          <span class="oeil oeil--clair">{t('accueil.flux.oeil')}</span>
-          <h2 class="h-section" style="color:#fff">{t('accueil.flux.titre')}</h2>
-          <p class="chapo chapo--clair">
-            {t('accueil.flux.chapo')}
-            <a href={lien('/onboarding')} style="color:var(--teal-300)"> {t('accueil.flux.lien')}</a>
-          </p>
-        </div>
-        <Reseau modules={modules} />
-      </div>
-    </section>
-  )}
 
   <!-- ── Les six leviers ─────────────────────────────────────────────── -->
   <section class="bande" id="leviers">
@@ -193,32 +174,6 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
       </div>
     </div>
   </section>
-
-  <!-- ── Le produit à l'écran ────────────────────────────────────────── -->
-  {captures.length > 0 && (
-    <section class="bande bande--serree" id="ecrans">
-      <div class="dedans">
-        <div class="entete-section" data-monte style="margin-block-end:24px">
-          <span class="oeil">{t('accueil.ecrans.oeil')}</span>
-          <h2 class="h-section">{t('accueil.ecrans.titre')}</h2>
-          <p class="chapo">{t('accueil.ecrans.chapo')}</p>
-        </div>
-        <ul class="captures">
-          {captures.map((c) => (
-            <li data-monte>
-              <a class="capture" href={lien(`/modules/${c.module_slug}`)}>
-                <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || c.module_nom} loading="lazy" decoding="async" />
-                <span class="capture__pied">
-                  <strong>{c.module_nom}</strong>
-                  {c.titre && <span>{c.titre}</span>}
-                </span>
-              </a>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </section>
-  )}
 
   <!-- ── Les réseaux qui travaillent avec nous ───────────────────────── -->
   {clients.length > 0 && (
