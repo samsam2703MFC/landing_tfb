@@ -1,0 +1,43 @@
+# Service systemd de la landing (Astro en rendu serveur, adaptateur Node).
+#
+# Ce fichier est un gabarit : le workflow de déploiement remplace
+# __DEPLOY_PATH__ et __PORT__ puis l'installe dans /etc/systemd/system/.
+# Ne pas l'éditer directement sur le serveur, il serait écrasé.
+
+[Unit]
+Description=Landing TFB — site vitrine de l'ERP réseau
+Documentation=https://github.com/samsam2703MFC/landing_tfb
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=__DEPLOY_PATH__/apps/web
+
+# Identifiants de la base et domaine. Les valeurs viennent du même fichier
+# que celui lu par le pipeline.
+EnvironmentFile=__DEPLOY_PATH__/infra/.env
+
+# Placés APRÈS EnvironmentFile pour l'emporter dessus.
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=__PORT__
+
+ExecStart=/usr/bin/env node __DEPLOY_PATH__/apps/web/dist/server/entry.mjs
+Restart=on-failure
+RestartSec=5
+
+# Durcissement raisonnable. On évite ProtectSystem=strict : l'adaptateur Node
+# d'Astro écrit ses sessions sur disque, et un /var en lecture seule
+# provoquerait une panne difficile à relier à sa cause.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=landing-tfb
+
+[Install]
+WantedBy=multi-user.target

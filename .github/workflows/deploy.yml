@@ -103,52 +103,77 @@ jobs:
             exit 1
           fi
 
-          cd infra
+          # --- Node ---------------------------------------------------------
+          if ! command -v node > /dev/null 2>&1; then
+            echo "Node.js absent du serveur. L'installer (version 20 minimum) puis relancer." >&2
+            exit 1
+          fi
+          MAJEUR=\$(node -p "process.versions.node.split('.')[0]")
+          if [ "\$MAJEUR" -lt 20 ]; then
+            echo "Node.js \$MAJEUR est trop ancien : version 20 minimum." >&2
+            exit 1
+          fi
+          echo "Node.js \$(node --version)"
 
-          # Sans vrai domaine, Caddy sert en clair sur « :80 » plutôt que
-          # d'échouer à obtenir un certificat pour un domaine d'exemple.
-          DOMAINE=\$(grep -E '^SITE_DOMAIN=' .env | head -n 1 | cut -d= -f2- | tr -d '"'"'"' ')
-          case "\$DOMAINE" in
-            ''|*example.com|*example.org|*example.net) ADRESSE=':80' ;;
-            *[!0-9.]*) ADRESSE="\$DOMAINE" ;;
-            *) ADRESSE=':80' ;;
-          esac
-          if [ "\$ADRESSE" = ':80' ]; then
-            echo "Aucun domaine exploitable dans SITE_DOMAIN — la landing sera servie en HTTP sur l'IP du serveur."
-          else
-            echo "Caddy servira https://\$ADRESSE"
+          # Sans Docker, « host.docker.internal » ne résout pas : la base est
+          # jointe en direct sur la boucle locale.
+          if grep -q '^DB_HOST=host.docker.internal' infra/.env; then
+            sed -i 's/^DB_HOST=host.docker.internal/DB_HOST=127.0.0.1/' infra/.env
+            echo "DB_HOST ramené à 127.0.0.1 — il visait le réseau Docker."
           fi
 
-          SITE_ADDRESS="\$ADRESSE" docker compose up -d --build
+          set -a
+          . ./infra/.env
+          set +a
+          PORT_WEB="\${HTTP_PORT:-8090}"
 
-          # Les tables sont créées à chaque déploiement : le script ne crée que
-          # ce qui manque, donc une évolution du schéma est appliquée toute
-          # seule sans jamais toucher aux données existantes.
-          docker compose --profile outils run --rm --build pipeline node bootstrap-db.mjs
+          # --- Base : tables puis contenu de départ --------------------------
+          npm --prefix pipeline ci --omit=dev --no-audit --no-fund
+          node pipeline/bootstrap-db.mjs
+          node pipeline/seed-contenu.mjs --si-vide
 
-          # Contenu de départ : uniquement si la base est vide. Un déploiement
-          # ne doit pas écraser ce que l'ingestion a généré depuis.
-          docker compose --profile outils run --rm pipeline node seed-contenu.mjs --si-vide
+          # --- Construction de la landing ------------------------------------
+          npm --prefix apps/web ci --no-audit --no-fund
+          npm --prefix apps/web run build
 
-          docker image prune -f
+          # --- Service systemd -------------------------------------------------
+          sed -e "s#__DEPLOY_PATH__#\$DEPLOY_PATH#g" \
+              -e "s#__PORT__#\$PORT_WEB#g" \
+              deploy/landing-tfb.service > /etc/systemd/system/landing-tfb.service
+          systemctl daemon-reload
+          systemctl enable landing-tfb > /dev/null 2>&1
+          systemctl restart landing-tfb
+
+          # Laisser le temps au serveur d'ouvrir son port avant de conclure.
+          for essai in 1 2 3 4 5 6 7 8 9 10; do
+            if curl -fsS -o /dev/null "http://127.0.0.1:\$PORT_WEB/"; then
+              echo "La landing répond sur le port \$PORT_WEB."
+              exit 0
+            fi
+            sleep 2
+          done
+
+          echo "La landing ne répond pas sur le port \$PORT_WEB :" >&2
+          systemctl status landing-tfb --no-pager -l | head -20 >&2
+          journalctl -u landing-tfb -n 30 --no-pager >&2
+          exit 1
           EOF
 
-      - name: Vérifier que le site répond
+      # Le service a déjà été vérifié depuis le serveur lui-même. Ce contrôle
+      # dit seulement si le port est ouvert vers l'extérieur ; un pare-feu
+      # fermé n'est pas une erreur de déploiement.
+      - name: Vérifier l'accès depuis l'extérieur
+        continue-on-error: true
         env:
-          SITE_DOMAIN: ${{ vars.SITE_DOMAIN }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          PORT_WEB: ${{ vars.HTTP_PORT || '8090' }}
         run: |
-          if [ -z "${SITE_DOMAIN:-}" ]; then
-            echo "SITE_DOMAIN non renseigné dans les variables du dépôt — vérification ignorée."
-            exit 0
+          code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "http://$SSH_HOST:$PORT_WEB/" || echo 000)
+          if [ "$code" = "200" ]; then
+            echo "::notice::La landing répond depuis l'extérieur sur le port $PORT_WEB."
+          else
+            echo "::warning::Pas de réponse depuis l'extérieur (HTTP $code). Le service tourne, mais le port $PORT_WEB est probablement fermé par le pare-feu."
           fi
-          for tentative in 1 2 3 4 5; do
-            code=$(curl -s -o /dev/null -w '%{http_code}' "https://$SITE_DOMAIN/" || echo 000)
-            echo "tentative $tentative : HTTP $code"
-            [ "$code" = "200" ] && exit 0
-            sleep 10
-          done
-          echo "Le site ne répond pas 200 après le déploiement." >&2
-          exit 1
 
       - name: Effacer la clé
         if: always()
