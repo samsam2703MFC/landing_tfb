@@ -299,15 +299,116 @@ Vérifiez `curl -sI localhost:3000/api/storage/screenshots/<fichier>.png`.
 
 ---
 
-## 9. Garder la landing à jour
+## 9. Mettre les modules en ligne automatiquement
+
+La chaîne complète, du `git push` dans un dépôt module à l'affichage public :
+
+```
+dépôt module            landing_tfb                    base            navigateur
+.tfb/module.json  ──▶  npm run sync:modules  ──▶  tfb_modules   ──▶  /fr/modules/…
+   (vous éditez)        (minuteur, 10 min)        tfb_module_*      (ISR, 60 s)
+```
+
+**Aucun redéploiement n'est nécessaire.** Les pages de la landing sont rendues en
+ISR — `export const revalidate = 60` dans `src/app/(site)/[locale]/page.tsx` et
+`modules/[slug]/page.tsx` — donc dès que la base change, la page suivante servie
+après 60 secondes est régénérée avec le nouveau contenu.
+
+Le seul maillon à automatiser est donc la sync.
+
+### 9.1 Le minuteur systemd (recommandé)
+
+```bash
+sudo mkdir -p /etc/tfb
+sudo tee /etc/tfb/landing.env >/dev/null <<'ENV'
+DATABASE_URL=mysql://tfb:MOTDEPASSE@127.0.0.1:3306/tfb_landing
+STORAGE_PATH=/var/www/tfb-storage
+# GITHUB_TOKEN=ghp_…   # seulement si un dépôt module est privé
+ENV
+sudo chmod 600 /etc/tfb/landing.env
+
+sudo cp deploy/tfb-sync.service deploy/tfb-sync.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tfb-sync.timer
+```
+
+Vérifier :
+
+```bash
+systemctl list-timers tfb-sync          # prochain passage
+sudo systemctl start tfb-sync.service   # passage immédiat
+journalctl -u tfb-sync -n 40 --no-pager # ce qu'il a écrit
+```
+
+Délai maximum entre un push dans un dépôt module et l'affichage en ligne :
+**~11 minutes** (10 min de minuteur + 60 s d'ISR).
+
+Sans systemd, la même chose en cron :
+
+```cron
+*/10 * * * * cd /var/www/landing_tfb && /usr/bin/npm run sync:modules >> /var/log/tfb-sync.log 2>&1
+```
+
+(avec `DATABASE_URL` et `STORAGE_PATH` exportés dans l'environnement de la tâche).
+
+### 9.2 Pourquoi pas depuis GitHub Actions
+
+`.github/workflows/sync-modules.yml` **valide** les fiches, il n'écrit pas en base.
+C'est délibéré : la sync copie les captures dans `STORAGE_PATH`, et le disque d'un
+runner GitHub est détruit à la fin du job. Écrire depuis là remplirait la base de
+chemins vers des fichiers qui n'existent nulle part, et tous les carrousels
+retomberaient sur leur placeholder — sans la moindre erreur pour vous prévenir.
+
+La validation en CI reste utile : une fiche cassée se voit avant que le serveur ne
+la lise.
+
+### 9.3 Pour du quasi-immédiat
+
+Si dix minutes sont trop, faites déclencher la sync par le dépôt module lui-même.
+Le plus simple est un pas SSH dans son workflow :
+
+```yaml
+- name: Rafraîchir la landing
+  run: |
+    ssh -o StrictHostKeyChecking=accept-new deploy@VOTRE_SERVEUR \
+      'sudo systemctl start tfb-sync.service'
+  env:
+    SSH_AUTH_SOCK: ${{ env.SSH_AUTH_SOCK }}
+```
+
+avec une clé de déploiement dédiée et une règle sudoers limitée à cette seule
+commande :
+
+```sudoers
+deploy ALL=(root) NOPASSWD: /bin/systemctl start tfb-sync.service
+```
+
+Gardez le minuteur en place malgré tout : il rattrape les déclenchements perdus.
+
+### 9.4 Vérifier que c'est passé
+
+```bash
+mysql -u tfb -p tfb_landing -e "
+SELECT m.\`key\`, m.is_active, COUNT(f.id) AS fonctions, m.updated_at
+FROM tfb_modules m LEFT JOIN tfb_module_features f ON f.module_id = m.id
+GROUP BY m.id ORDER BY m.updated_at DESC;"
+
+curl -s "https://VOTRE_DOMAINE/api/landing?lang=fr" | grep -o '"key":"[a-z_]*"' | head -20
+```
+
+Puis la page elle-même, une minute plus tard : `https://VOTRE_DOMAINE/fr#modules`.
+
+---
+
+## 10. Garder la landing à jour
 
 Une fois la base en place, la mise à jour du contenu ne passe plus par un
 déploiement. Trois voies, au choix :
 
-1. **Le back-office** — `/admin`, pour la copie, les sections, les tarifs, les visuels.
-2. **`npm run sync:modules`** à la main, après une évolution d'un module.
-3. **Le workflow** `.github/workflows/sync-modules.yml` — il valide les fiches
-   chaque nuit, et écrit en base si vous lui donnez le secret `DATABASE_URL`
-   (plus `STORAGE_PATH`, et `MODULE_READ_TOKEN` pour les dépôts privés). Un dépôt
-   module peut aussi déclencher la sync à son propre push : voir le README,
-   section « Rester à jour ».
+1. **Le minuteur** — `tfb-sync.timer`, qui fait tout le travail sans vous (§9).
+2. **Le back-office** — `/admin`, pour la copie, les sections, les tarifs, les visuels.
+3. **`npm run sync:modules`** à la main, quand vous ne voulez pas attendre le minuteur.
+
+Et en garde-fou, le workflow `.github/workflows/sync-modules.yml`, qui valide les
+fiches à chaque nuit sans écrire en base — pour qu'une fiche cassée se voie avant
+que le serveur ne la lise (§9.2).

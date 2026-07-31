@@ -124,18 +124,15 @@ Un dépôt qui n'a **pas encore** publié sa fiche est signalé et ignoré, sans
 échouer la commande — c'est un état connu, pas une panne. Une fiche **malformée ou
 injoignable**, elle, sort en code 1 : c'est ce qui doit réveiller quelqu'un.
 
-La liste des dépôts interrogés est `content/modules.repos.json`. Le workflow
-`.github/workflows/sync-modules.yml` valide les manifestes à chaque nuit (et écrit
-en base si le secret `DATABASE_URL` existe). Pour qu'un dépôt module déclenche la
-mise à jour sans attendre la nuit, ajoutez-y ce pas :
+La liste des dépôts interrogés est `content/modules.repos.json`.
 
-```yaml
-- name: Prévenir la landing
-  run: |
-    curl -sf -X POST -H "Authorization: Bearer ${{ secrets.LANDING_SYNC_TOKEN }}" \
-      https://api.github.com/repos/samsam2703MFC/landing_tfb/dispatches \
-      -d '{"event_type":"module-manifest-updated"}'
-```
+**En production, la sync tourne sur le serveur**, pas dans GitHub Actions —
+`deploy/tfb-sync.timer`, toutes les 10 minutes. La CI se contente de valider les
+fiches : elle ne peut pas écrire, parce que la sync copie les captures dans
+`STORAGE_PATH` et que le disque d'un runner disparaît avec le job. Les pages étant
+en ISR (`revalidate = 60`), un `git push` dans un dépôt module est en ligne en une
+dizaine de minutes, sans redéploiement. La mise en place complète est dans
+[`docs/DEPLOIEMENT-BASE.md`](docs/DEPLOIEMENT-BASE.md) §9.
 
 ### Fallback
 
