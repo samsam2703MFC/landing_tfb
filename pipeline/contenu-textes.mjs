@@ -15,6 +15,8 @@
 
 export const TEXTES = [
   // ── Gabarit commun ──────────────────────────────────────────────────────
+  { cle: 'site.marque', section: 'En-tête et pied', valeur: 'The Franchise Buddy', aide: 'Nom affiché dans l’en-tête, le pied et le titre des onglets.' },
+  { cle: 'site.titre_defaut', section: 'En-tête et pied', valeur: 'ERP pour réseaux de franchise', aide: 'Titre d’onglet des pages qui n’en portent pas.' },
   { cle: 'nav.accueil', section: 'En-tête et pied', valeur: 'Accueil', aide: 'Menu principal.' },
   { cle: 'nav.modules', section: 'En-tête et pied', valeur: 'Modules', aide: 'Menu principal.' },
   { cle: 'nav.contact', section: 'En-tête et pied', valeur: 'Contact', aide: 'Menu principal.' },
@@ -46,6 +48,7 @@ export const TEXTES = [
   { cle: 'accueil.leviers.note2', section: 'Accueil', valeur: 'chaque levier garde sa couleur — la lettre fait l’identité' },
 
   { cle: 'accueil.modules.oeil', section: 'Accueil', valeur: 'Les modules' },
+  { cle: 'accueil.modules.titre', section: 'Accueil', valeur: '{n} modules, {f} familles', aide: '{n} et {f} sont remplacés par les nombres réels.' },
   { cle: 'accueil.modules.lien', section: 'Accueil', valeur: 'Suivre le fil d’onboarding' },
 
   { cle: 'accueil.ecrans.oeil', section: 'Accueil', valeur: 'À l’écran' },
@@ -68,12 +71,16 @@ export const TEXTES = [
   { cle: 'accueil.contact.merci', section: 'Accueil', valeur: 'Nous revenons vers vous sous un jour ouvré.' },
 
   // ── Onboarding ──────────────────────────────────────────────────────────
+  { cle: 'onboarding.meta_titre', section: 'Onboarding', valeur: 'Onboarding', aide: 'Titre de l’onglet du navigateur.' },
+  { cle: 'onboarding.meta_description', section: 'Onboarding', valeur: 'Cochez ce qui ressemble à votre réseau : votre système s’assemble, module par module.', aide: 'Description lue par les moteurs de recherche.' },
   { cle: 'onboarding.oeil', section: 'Onboarding', valeur: 'Onboarding' },
   { cle: 'onboarding.titre', section: 'Onboarding', valeur: 'De quoi votre réseau a-t-il besoin ?' },
   { cle: 'onboarding.chapo', section: 'Onboarding', valeur: 'Cochez ce qui vous ressemble — problèmes d’abord, besoins ensuite. Votre système s’assemble en bas de page, module par module.' },
   { cle: 'onboarding.cta', section: 'Onboarding', valeur: 'Voir mon système' },
   { cle: 'onboarding.note', section: 'Onboarding', valeur: 'Rien n’est envoyé : la sélection ne quitte pas votre navigateur.' },
   { cle: 'onboarding.systeme.oeil', section: 'Onboarding', valeur: 'Votre système' },
+  { cle: 'onboarding.systeme.compte', section: 'Onboarding', valeur: 'sur {n} modules', aide: '{n} est remplacé par le nombre.' },
+  { cle: 'onboarding.systeme.composants', section: 'Onboarding', valeur: '{n} composants', aide: '{n} est remplacé par le nombre.' },
   { cle: 'onboarding.systeme.vide', section: 'Onboarding', valeur: 'Rien encore — cochez au moins un besoin ci-dessus, les modules correspondants apparaîtront ici.' },
   { cle: 'onboarding.systeme.fiche', section: 'Onboarding', valeur: 'Voir la fiche complète →' },
   { cle: 'onboarding.systeme.sans_capture', section: 'Onboarding', valeur: 'capture à venir' },
@@ -91,7 +98,11 @@ export const TEXTES = [
   { cle: 'module.detail', section: 'Fiche module', valeur: 'Le module en détail' },
   { cle: 'module.entrees', section: 'Fiche module', valeur: 'À quoi sert chaque entrée' },
   { cle: 'module.flux', section: 'Fiche module', valeur: 'Le flux, en clair' },
-  { cle: 'module.autres.oeil', section: 'Fiche module', valeur: 'Le reste du catalogue' },
+  { cle: 'module.carrousel', section: 'Fiche module', valeur: 'Le catalogue', aide: 'Libellé du carrousel, en haut de la fiche.' },
+  { cle: 'module.carrousel.aide', section: 'Fiche module', valeur: 'Faites défiler pour changer de module.' },
+  { cle: 'module.precedent', section: 'Fiche module', valeur: 'Module précédent' },
+  { cle: 'module.suivant', section: 'Fiche module', valeur: 'Module suivant' },
+  { cle: 'module.compte_fonctions', section: 'Fiche module', valeur: '{n} fonctions', aide: '{n} est remplacé par le nombre.' },
   { cle: 'module.envoie', section: 'Fiche module', valeur: 'envoie vers' },
   { cle: 'module.recoit', section: 'Fiche module', valeur: 'reçoit de' },
 ];

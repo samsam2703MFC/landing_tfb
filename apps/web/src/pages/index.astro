@@ -144,9 +144,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
       <div class="entete-modules">
         <div class="entete-section" data-monte>
           <span class="oeil">{t('accueil.modules.oeil')}</span>
-          <h2 class="h-section">
-            {modules.length} modules, {familles.length} famille{familles.length > 1 ? 's' : ''}
-          </h2>
+          <h2 class="h-section">{t('accueil.modules.titre', { n: modules.length, f: familles.length })}</h2>
         </div>
         <a href={lien('/onboarding')} class="entete-modules__lien">{t('accueil.modules.lien')}</a>
       </div>
@@ -166,7 +164,7 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
               <span class="pastilles">
                 {leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}
               </span>
-              <span class="module__compte fb-num">{(m.fonctions || []).length} fonctions</span>
+              <span class="module__compte fb-num">{t('module.compte_fonctions', { n: (m.fonctions || []).length })}</span>
               <Icone nom="chevron-right" taille={14} classe="icone--miroir module__fleche" />
             </div>
           </a>

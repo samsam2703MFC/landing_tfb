@@ -53,8 +53,8 @@ function capturesDe(module) {
 ---
 
 <Layout
-  titre="Onboarding"
-  description="Cochez ce qui ressemble à votre réseau : votre système s'assemble, module par module."
+  titre={t('onboarding.meta_titre')}
+  description={t('onboarding.meta_description')}
   actif="onboarding"
   fond="var(--slate-50)"
 >
@@ -101,7 +101,7 @@ function capturesDe(module) {
     <div class="dedans etroit">
       <div class="systeme__tete">
         <span class="oeil">{t('onboarding.systeme.oeil')}</span>
-        <span class="fb-num systeme__compte">sur {modules.length} modules</span>
+        <span class="fb-num systeme__compte">{t('onboarding.systeme.compte', { n: modules.length })}</span>
       </div>
 
       <p class="systeme__vide">{t('onboarding.systeme.vide')}</p>
@@ -128,7 +128,7 @@ function capturesDe(module) {
                   </span>
                   <span class="fil__droite">
                     <span class="pastilles">{leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}</span>
-                    <span class="fb-num fil__nb">{(m.fonctions || []).length} composants</span>
+                    <span class="fb-num fil__nb">{t('onboarding.systeme.composants', { n: (m.fonctions || []).length })}</span>
                     <Icone nom="chevron-down" taille={16} classe="fil__chevron" />
                   </span>
                 </summary>

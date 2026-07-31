@@ -9,6 +9,7 @@
  */
 import { marked } from 'marked';
 import Layout from '../../components/Layout.astro';
+import CarrouselModules from '../../components/CarrouselModules.astro';
 import Icone from '../../components/Icone.astro';
 import Pastille from '../../components/Pastille.astro';
 import { chargerModule, chargerModules } from '../../lib/db.mjs';
@@ -26,7 +27,6 @@ if (!module) {
 const t = await textes();
 const modules = await chargerModules();
 const parSlug = new Map(modules.map((m) => [m.slug, m]));
-const autres = modules.filter((m) => m.slug !== module.slug);
 
 const problemes = module.problemes || [];
 const benefices = module.benefices || [];
@@ -50,6 +50,9 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
 ---
 
 <Layout titre={module.nom || module.slug} description={module.accroche} actif="modules">
+  <!-- ── Le catalogue, en carrousel ──────────────────────────────────── -->
+  <CarrouselModules modules={modules} actif={module.slug} t={t} />
+
   <!-- ── En-tête ─────────────────────────────────────────────────────── -->
   <section class="fiche-tete">
     <div class="dedans">
@@ -226,36 +229,6 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
     </div>
   </section>
 
-  <!-- ── Les autres modules ──────────────────────────────────────────── -->
-  {autres.length > 0 && (
-    <section class="bande bande--grise">
-      <div class="dedans">
-        <div class="entete-section" style="margin-block-end:24px">
-          <span class="oeil">{t('module.autres.oeil')}</span>
-          <h2 class="h-section">Les {autres.length} autres modules</h2>
-        </div>
-        <div class="grille-modules">
-          {autres.map((m) => (
-            <a class="module" href={lien(`/modules/${m.slug}`)}>
-              <div class="module__tete">
-                <span class="module__icone"><Icone nom={m.icone || m.fonctions?.[0]?.icone || 'layers'} taille={20} /></span>
-                <span class="module__noms">
-                  <span class="module__nom">{m.nom || m.slug}</span>
-                  <span class="module__groupe">{m.groupe}</span>
-                </span>
-              </div>
-              <p class="texte module__accroche">{m.accroche}</p>
-              <div class="module__pied">
-                <span class="pastilles">{leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}</span>
-                <span class="module__compte fb-num">{(m.fonctions || []).length} fonctions</span>
-                <Icone nom="chevron-right" taille={14} classe="icone--miroir module__fleche" />
-              </div>
-            </a>
-          ))}
-        </div>
-      </div>
-    </section>
-  )}
 </Layout>
 
 <style is:global>

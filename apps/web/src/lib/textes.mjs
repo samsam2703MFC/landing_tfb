@@ -26,9 +26,18 @@ export async function textes() {
   const lignes = await chargerTextes();
   const base = Object.fromEntries((lignes || []).map((l) => [l.cle, l.valeur]));
 
-  return function t(cle) {
-    const valeur = base[cle];
-    if (valeur !== undefined && valeur !== null && String(valeur).trim() !== '') return valeur;
-    return ORIGINE[cle] ?? cle;
+  /**
+   * `t('accueil.modules.titre', { n: 13 })` remplace `{n}` dans la valeur.
+   * C'est ce qui permet de garder une phrase entière en base — pluriel
+   * compris — au lieu de la recomposer dans le gabarit.
+   */
+  return function t(cle, valeurs = null) {
+    const brut = base[cle];
+    const valeur =
+      brut !== undefined && brut !== null && String(brut).trim() !== '' ? brut : ORIGINE[cle] ?? cle;
+    if (!valeurs) return valeur;
+    return String(valeur).replace(/\{(\w+)\}/g, (tout, nom) =>
+      valeurs[nom] === undefined ? tout : String(valeurs[nom]),
+    );
   };
 }

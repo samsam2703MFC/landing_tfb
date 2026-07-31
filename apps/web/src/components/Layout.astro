@@ -25,11 +25,15 @@ const {
   actif = null,       // 'accueil' | 'modules' | 'contact'
 } = Astro.props;
 
-const titreComplet = titre ? `${titre} — The Franchise Buddy` : 'The Franchise Buddy — ERP pour réseaux de franchise';
+const t = await textes();
+
+// La marque et le titre de repli viennent de la base : rien à recompiler
+// pour changer ce que lit un onglet de navigateur.
+const marque = t('site.marque');
+const titreComplet = titre ? `${titre} — ${marque}` : `${marque} — ${t('site.titre_defaut')}`;
 const canonique = Astro.site ? new URL(Astro.url.pathname, Astro.site).href : undefined;
 const largeur = large ? '1200px' : '1080px';
 
-const t = await textes();
 // Les langues publiées seulement : un sélecteur qui propose une langue non
 // traduite mentirait au visiteur.
 const langues = (await chargerLangues()).filter((l) => l.publiee);
@@ -163,6 +167,12 @@ const NAV = [
       @media (max-width: 900px) {
         .entete { padding-inline: 20px; gap: 16px; }
         .entete__nav, .entete__droite .bouton { display: none; }
+      }
+      /* Sous 560 px, le mot-symbole suffit : garder le nom écrit poussait la
+         barre à 465 px de large et décalait toute la page vers la gauche. */
+      @media (max-width: 560px) {
+        .entete { padding-inline: 14px; gap: 10px; }
+        .entete__marque span { display: none; }
       }
 
       .langues {
@@ -306,7 +316,7 @@ const NAV = [
     <header class="entete">
       <a class="entete__marque" href={lien('/')}>
         <img src={lien('/brand/logo-mark.png')} alt="" width="30" height="30" />
-        <span>The Franchise Buddy</span>
+        <span>{marque}</span>
       </a>
       <nav class="entete__nav">
         {NAV.map((e) => (
@@ -341,7 +351,7 @@ const NAV = [
       <div class="pied__dedans">
         <div class="pied__haut">
           <img src={lien('/brand/logo-mark-inverse.png')} alt="" width="28" height="28" />
-          <span class="pied__nom">The Franchise Buddy</span>
+          <span class="pied__nom">{marque}</span>
           <nav class="pied__nav">
             <a href={lien('/onboarding')}>{t('nav.onboarding')}</a>
             <a href={lien('/#modules')}>{t('pied.fiches')}</a>
