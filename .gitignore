@@ -21,3 +21,4 @@ pipeline/out/
 *.log
 npm-debug.log*
 .DS_Store
+captures-a-publier/
