@@ -20,7 +20,7 @@ import { writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { MODULES, SITE } from './contenu-initial.mjs';
+import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -117,6 +117,18 @@ async function ecrireEnBase({ siVide = false } = {}) {
         `${cree ? '✓ créé  ' : '· maj   '} ${module.slug.padEnd(20)} ${module.fonctions.length} fonctions`,
       );
     }
+
+    // Les questions de l'onboarding, repérées par leur clé.
+    for (const [rang, question] of QUESTIONS.entries()) {
+      await upsert(db, table('questions'), 'cle', question.cle, {
+        tag: question.tag,
+        texte: question.texte,
+        cible: question.cible,
+        slugs: json(question.slugs),
+        ordre: rang + 1,
+      });
+    }
+    console.log(`✓ ${QUESTIONS.length} questions d'onboarding`);
 
     // Page d'accueil : une seule ligne. En mode « complète », on ne l'écrit
     // que si elle est encore vide — sinon on écraserait un texte retouché.

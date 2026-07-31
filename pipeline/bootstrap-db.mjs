@@ -93,6 +93,20 @@ function modele(pg) {
       ],
     },
     {
+      // Les questions de l'onboarding : ce que le franchiseur coche pour
+      // voir son système s'assembler. `slugs` porte les modules déclenchés.
+      nom: table('questions'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['tag', t.chaine(20)],
+        ['texte', t.texte],
+        ['cible', t.chaine(120)],
+        ['slugs', t.objet],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
       nom: table('site'),
       colonnes: [
         ['id', t.id],

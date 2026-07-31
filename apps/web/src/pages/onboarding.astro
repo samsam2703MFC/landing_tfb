@@ -1,231 +1,352 @@
 ---
 /**
- * Onboarding — le parcours d'un nouveau client.
+ * Onboarding, d'après la maquette Claude Design.
  *
- * Le fil des modules dans l'ordre où l'information circule. Un clic sur un
- * module ouvre son panneau : ce qu'on y gagne, pourquoi le prendre, l'inventaire
- * de son menu et à quoi sert chaque entrée, et ce qu'il échange avec les autres
- * modules. Tout est rattaché aux 6 leviers de gestion.
+ * Le franchiseur ne choisit pas des modules : il coche ce qui lui ressemble,
+ * et son système s'assemble en dessous. C'est la même idée que la page
+ * d'accueil — ses problèmes d'abord — poussée jusqu'à la composition.
  *
- * Le panneau est rendu côté serveur pour les huit modules et révélé au clic :
- * pas d'appel réseau, et la page reste lisible sans JavaScript.
+ * Sans JavaScript la page reste entière : les cases restent cochables, et le
+ * mécanisme d'affichage repose sur `:has()`, donc sur le navigateur seul. Là
+ * où `:has()` manque, tous les modules sont montrés — mieux vaut tout voir
+ * que rien.
  */
 import Layout from '../components/Layout.astro';
-import { LEVIERS, chargerParcours } from '../lib/db.mjs';
+import Icone from '../components/Icone.astro';
+import Pastille from '../components/Pastille.astro';
+import { chargerParcours, chargerQuestions } from '../lib/db.mjs';
+import { leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const modules = await chargerParcours();
-const parSlug = new Map(modules.map((m) => [m.slug, m]));
+const [modules, questions] = await Promise.all([chargerParcours(), chargerQuestions()]);
 
-/** Combien de modules actionnent chaque levier — la barre de couverture. */
-const couverture = LEVIERS.map((l) => ({
-  ...l,
-  modules: modules.filter((m) => (m.leviers || []).includes(l.cle)),
-}));
+/** Pour chaque module, les clés de question qui le déclenchent. */
+const declencheurs = new Map(modules.map((m) => [m.slug, []]));
+for (const q of questions) {
+  for (const s of q.slugs || []) {
+    if (declencheurs.has(s)) declencheurs.get(s).push(q.cle);
+  }
+}
+
+/**
+ * La règle CSS qui montre un module dès qu'une de ses questions est cochée.
+ * On la construit ici plutôt que dans la feuille de style : elle dépend
+ * entièrement du contenu de la base.
+ */
+const reveleurs = modules
+  .filter((m) => declencheurs.get(m.slug).length > 0)
+  .map((m) => {
+    const conditions = declencheurs.get(m.slug).map((cle) => `#q-${cle}:checked`).join(', ');
+    return `body:has(:is(${conditions})) [data-module='${m.slug}'] { display: grid; }`;
+  })
+  .join('\n');
+
+/** Les captures d'un module, rangées par clé de fonction. */
+function capturesDe(module) {
+  const parCle = new Map();
+  for (const c of module.captures || []) {
+    if (c.fonction_cle) parCle.set(c.fonction_cle, c);
+  }
+  return parCle;
+}
 ---
 
 <Layout
   titre="Onboarding"
-  description="Comment l'information circule entre les modules de l'ERP, et ce que chacun apporte aux 6 leviers de gestion."
-  modules={modules}
+  description="Cochez ce qui ressemble à votre réseau : votre système s'assemble, module par module."
+  actif="onboarding"
+  fond="var(--slate-50)"
 >
-  <!-- Ouverture -->
-  <section class="sect sect--haut">
-    <div class="contenant">
-      <p class="oeil">Prise en main</p>
-      <h1 class="titre-geant">Comment l'information circule</h1>
-      <p class="chapo">
-        Huit modules, une seule donnée. Suivez le fil : chaque étape montre ce qu'elle
-        reçoit, ce qu'elle produit, et sur lesquels des six leviers de gestion elle agit.
-        Cliquez sur un module pour ouvrir sa fiche.
+  <!-- ── L'accroche ──────────────────────────────────────────────────── -->
+  <section class="bande bande--sombre" style="padding:64px 40px 56px">
+    <div class="dedans" style="max-width:880px;display:flex;flex-direction:column;gap:16px">
+      <span class="oeil oeil--clair">Onboarding</span>
+      <h1 class="h-grand" style="color:#fff">De quoi votre réseau a-t-il besoin ?</h1>
+      <p class="chapo chapo--clair" style="max-width:58ch">
+        Cochez ce qui vous ressemble — problèmes d'abord, besoins ensuite.
+        Votre système s'assemble en bas de page, module par module.
       </p>
     </div>
   </section>
 
-  <!-- Les 6 leviers -->
-  <section class="sect" id="leviers">
-    <div class="contenant">
-      <p class="oeil">La grille de lecture</p>
-      <h2>Les 6 leviers de gestion</h2>
-      <p class="chapo chapo--court">
-        Tout ce que fait la plateforme se juge à ces six questions. Chaque module,
-        chaque écran, y répond ou n'a pas de raison d'exister.
-      </p>
-
-      <ol class="leviers">
-        {couverture.map((l) => (
-          <li class="levier" data-levier={l.cle}>
-            <span class="levier__lettre">{l.lettre}</span>
-            <span class="levier__nom">{l.nom}</span>
-            <span class="levier__q">{l.question}</span>
-            <span class="levier__n">{l.modules.length} module{l.modules.length > 1 ? 's' : ''}</span>
-          </li>
-        ))}
-      </ol>
-    </div>
-  </section>
-
-  <!-- Le fil -->
-  <section class="sect sect--sombre" id="fil">
-    <div class="contenant">
-      <p class="oeil oeil--clair">Le parcours</p>
-      <h2 class="sur-sombre">Le fil, de la vente au terrain</h2>
-
-      <div class="fil">
-        {modules.map((m, i) => (
-          <button
-            class="noeud"
-            type="button"
-            data-cible={m.slug}
-            aria-expanded="false"
-            aria-controls={`fiche-${m.slug}`}
-          >
-            <span class="noeud__rang">{String(i + 1).padStart(2, '0')}</span>
-            <span class="noeud__nom">{m.nom}</span>
-            <span class="noeud__groupe">{m.groupe}</span>
-            <span class="noeud__leviers">
-              {(m.leviers || []).map((c) => (
-                <i class="pastille" data-levier={c}>{LEVIERS.find((l) => l.cle === c)?.lettre}</i>
-              ))}
-            </span>
-          </button>
+  <!-- ── Le questionnaire ────────────────────────────────────────────── -->
+  <section class="bande bande--serree" style="padding-block:48px 24px">
+    <div class="dedans etroit">
+      <div class="questions">
+        {questions.map((q) => (
+          <div class="question">
+            <input type="checkbox" id={`q-${q.cle}`} class="question__case" />
+            <label for={`q-${q.cle}`} class="question__cadre">
+              <span class="question__coche"><Icone nom="check" taille={14} /></span>
+              <span class="question__texte">
+                <span class={`question__tag question__tag--${q.tag === 'Besoin' ? 'besoin' : 'probleme'}`}>{q.tag}</span>
+                <span class="question__phrase">{q.texte}</span>
+                <span class="question__cible fb-num">→ {q.cible}</span>
+              </span>
+            </label>
+          </div>
         ))}
       </div>
 
-      <!-- Les fiches, une par module -->
-      {modules.map((m) => (
-        <article class="fiche" id={`fiche-${m.slug}`} hidden>
-          <header class="fiche__tete">
-            <div>
-              <p class="oeil oeil--clair">{m.groupe}</p>
-              <h3 class="sur-sombre">{m.nom}</h3>
-              <p class="fiche__accroche">{m.accroche}</p>
-            </div>
-            <a class="bouton bouton--fantome" href={lien(`/modules/${m.slug}`)}>Fiche complète</a>
-          </header>
-
-          {m.onboarding && (
-            <p class="fiche__onboarding">{m.onboarding}</p>
-          )}
-
-          <!-- À quoi ça ressemble, avant d'expliquer à quoi ça sert -->
-          {(m.captures || []).length > 0 && (
-            <ul class="captures captures--sombre">
-              {m.captures.slice(0, 3).map((c) => (
-                <li>
-                  <figure class="capture">
-                    <img src={lien(`/captures/${c.fichier}`)} alt={c.titre || m.nom} loading="lazy" decoding="async" />
-                    {c.titre && <figcaption>{c.titre}</figcaption>}
-                  </figure>
-                </li>
-              ))}
-            </ul>
-          )}
-
-          <div class="fiche__colonnes">
-            <!-- Ce qu'on y gagne -->
-            <div>
-              <h4 class="fiche__titre">Ce que vous y gagnez</h4>
-              <ul class="gains">
-                {(m.benefices || []).map((b) => (
-                  <li><strong>{b.titre}</strong><span>{b.texte}</span></li>
-                ))}
-              </ul>
-            </div>
-
-            <!-- Pourquoi le prendre -->
-            <div>
-              <h4 class="fiche__titre">Pourquoi le prendre</h4>
-              <ul class="pourquoi">
-                {(m.problemes || []).map((p) => (
-                  <li><strong>{p.titre}</strong><span>{p.texte}</span></li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          <!-- Le menu, item par item -->
-          <h4 class="fiche__titre">Le menu du module, et à quoi sert chaque entrée</h4>
-          <ul class="menu">
-            {(m.fonctions || []).map((f) => (
-              <li class="menu__item">
-                <div class="menu__tete">
-                  <span class="menu__nom">{f.nom}</span>
-                  <span class="menu__leviers">
-                    {(f.leviers || []).map((c) => (
-                      <i class="pastille pastille--sm" data-levier={c} title={LEVIERS.find((l) => l.cle === c)?.nom}>
-                        {LEVIERS.find((l) => l.cle === c)?.lettre}
-                      </i>
-                    ))}
-                  </span>
-                </div>
-                <p class="menu__desc">{f.description}</p>
-                {f.benefice && <p class="menu__benef">{f.benefice}</p>}
-              </li>
-            ))}
-          </ul>
-
-          <!-- Les liens avec les autres modules -->
-          {(m.liens || []).length > 0 && (
-            <>
-              <h4 class="fiche__titre">Ce qu'il échange avec les autres</h4>
-              <ul class="liens">
-                {m.liens.map((l) => {
-                  const autre = parSlug.get(l.slug);
-                  return (
-                    <li class={`lien lien--${l.sens}`}>
-                      <span class="lien__sens">{l.sens === 'envoie' ? 'envoie vers' : 'reçoit de'}</span>
-                      <a href={lien(`/modules/${l.slug}`)}>{autre ? autre.nom : l.slug}</a>
-                      <span class="lien__quoi">{l.quoi}</span>
-                    </li>
-                  );
-                })}
-              </ul>
-            </>
-          )}
-        </article>
-      ))}
+      <div class="questions__actions">
+        <a class="bouton bouton--marque" href="#systeme">
+          Voir mon système
+          <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
+        </a>
+        <span class="questions__note">
+          Rien n'est envoyé : la sélection ne quitte pas votre navigateur.
+        </span>
+      </div>
     </div>
   </section>
 
-  <!-- Appel -->
-  <section class="sect">
-    <div class="contenant" style="max-width: 60ch;">
-      <p class="oeil">La suite</p>
-      <h2>Commencer par la console marque</h2>
-      <p class="chapo chapo--court">
-        C'est l'entrée du réseau : les boutiques, le catalogue, et ce que chaque
-        franchisé peut modifier chez lui. Tout le reste lit ces décisions.
+  <!-- ── Le système assemblé ─────────────────────────────────────────── -->
+  <section class="bande" id="systeme" style="padding-block:40px 96px">
+    <div class="dedans etroit">
+      <div class="systeme__tete">
+        <span class="oeil">Votre système</span>
+        <span class="fb-num systeme__compte">sur {modules.length} modules</span>
+      </div>
+
+      <p class="systeme__vide">
+        Rien encore — cochez au moins un besoin ci-dessus, les modules
+        correspondants apparaîtront ici.
       </p>
-      <p style="margin-top: var(--space-6);">
-        <a class="bouton" href={lien('/#contact')}>Demander une démonstration</a>
-      </p>
+
+      <div class="fil">
+        {modules.map((m, i) => {
+          const captures = capturesDe(m);
+          return (
+            <div class="fil__ligne" data-module={m.slug}>
+              <div class="fil__rail">
+                <span class="fil__noeud"><Icone nom={m.icone || 'layers'} taille={20} /></span>
+                {i < modules.length - 1 && <span class="fil__trait"></span>}
+              </div>
+
+              <details class="fil__module">
+                <summary class="fil__tete">
+                  <span class="fb-num fil__num">{String(i + 1).padStart(2, '0')}</span>
+                  <span class="fil__intitule">
+                    <span class="fil__nom">
+                      {m.nom || m.slug}
+                      <span class="fil__groupe">{m.groupe}</span>
+                    </span>
+                    <span class="texte">{m.accroche}</span>
+                  </span>
+                  <span class="fil__droite">
+                    <span class="pastilles">{leviersDe(m.leviers).map((l) => <Pastille levier={l} />)}</span>
+                    <span class="fb-num fil__nb">{(m.fonctions || []).length} composants</span>
+                    <Icone nom="chevron-down" taille={16} classe="fil__chevron" />
+                  </span>
+                </summary>
+
+                <div class="fil__corps">
+                  {m.onboarding && <p class="fil__phrase">{m.onboarding}</p>}
+
+                  {(m.fonctions || []).map((f) => {
+                    const capture = captures.get(f.cle);
+                    return (
+                      <div class="composant">
+                        <div class="composant__vue">
+                          {capture ? (
+                            <img
+                              src={lien(`/captures/${capture.fichier}`)}
+                              alt={capture.titre || f.nom}
+                              loading="lazy"
+                              decoding="async"
+                            />
+                          ) : (
+                            <span class="composant__sans">
+                              <Icone nom="image" taille={14} />
+                              <code>capture à venir</code>
+                            </span>
+                          )}
+                        </div>
+                        <div class="composant__texte">
+                          <span class="composant__nom">
+                            {f.nom || f.cle}
+                            <span class="pastilles">{leviersDe(f.leviers).map((l) => <Pastille levier={l} />)}</span>
+                          </span>
+                          <p class="texte">{f.description}</p>
+                          {f.benefice && <p class="composant__gain">{f.benefice}</p>}
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <a class="fil__fiche" href={lien(`/modules/${m.slug}`)}>Voir la fiche complète →</a>
+                </div>
+              </details>
+            </div>
+          );
+        })}
+      </div>
+
+      <div class="systeme__appel">
+        <span>On regarde votre système ensemble, sur vos cas réels ?</span>
+        <a class="bouton bouton--chaud" href={lien('/#contact')}>
+          Demander une démonstration
+          <Icone nom="arrow-right" taille={14} classe="icone--miroir" />
+        </a>
+      </div>
     </div>
   </section>
 </Layout>
 
-<script is:inline>
-  // Ouvrir une fiche, fermer les autres. Sans JavaScript, toutes les fiches
-  // restent masquées mais les fiches modules complètes demeurent accessibles.
-  const noeuds = document.querySelectorAll('.noeud');
-  const fiches = document.querySelectorAll('.fiche');
+<style is:global>
+  .etroit { max-width: 880px; }
 
-  function ouvrir(slug) {
-    fiches.forEach((f) => { f.hidden = f.id !== `fiche-${slug}`; });
-    noeuds.forEach((n) => {
-      const actif = n.dataset.cible === slug;
-      n.classList.toggle('noeud--actif', actif);
-      n.setAttribute('aria-expanded', String(actif));
-    });
-    const cible = document.getElementById(`fiche-${slug}`);
-    if (cible) cible.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  /* ── Questionnaire ─────────────────────────────────────────────────── */
+  .questions { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; }
+  .question__case { position: absolute; opacity: 0; inline-size: 1px; block-size: 1px; }
+  .question__cadre {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: #fff; border: 1px solid var(--slate-200);
+    border-radius: var(--radius-card); padding: 14px 16px;
+    cursor: pointer; block-size: 100%;
+    box-shadow: var(--shadow-xs);
+    transition: var(--transition-control);
+  }
+  .question__cadre:hover { border-color: var(--slate-300); }
+  .question__coche {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 22px; block-size: 22px; border-radius: var(--radius-sm);
+    flex: none; margin-block-start: 2px;
+    border: 1px solid var(--slate-300); background: #fff; color: transparent;
+    transition: var(--transition-control);
+  }
+  .question__case:checked + .question__cadre { background: var(--plum-50); border-color: var(--plum-400); }
+  .question__case:checked + .question__cadre .question__coche {
+    background: var(--plum-500); border-color: var(--plum-500); color: #fff;
+  }
+  .question__case:focus-visible + .question__cadre { box-shadow: var(--shadow-focus); }
+  .question__texte { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+  .question__tag {
+    font: 600 10px/1.2 var(--font-sans); letter-spacing: var(--tracking-caps); text-transform: uppercase;
+  }
+  .question__tag--probleme { color: var(--red-500); }
+  .question__tag--besoin { color: var(--teal-700); }
+  .question__phrase { font: 500 14.5px/1.45 var(--font-sans); }
+  .question__cible { font: 400 11.5px/1.4 var(--font-mono); color: var(--slate-400); }
+
+  .questions__actions { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-block-start: 20px; }
+  .questions__note { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500); }
+
+  /* ── Le système ────────────────────────────────────────────────────── */
+  .systeme__tete {
+    display: flex; align-items: baseline; gap: 12px;
+    border-block-start: 1px solid var(--slate-200); padding-block-start: 32px; margin-block-end: 16px;
+  }
+  .systeme__compte { font: 500 var(--text-xs) / 1 var(--font-mono); color: var(--slate-400); }
+  .systeme__vide {
+    display: none;
+    border: 1px dashed var(--slate-300); border-radius: var(--radius-card);
+    padding: 28px; text-align: center; margin: 0 0 16px;
+    font: 400 14px/1.6 var(--font-sans); color: var(--slate-500);
   }
 
-  noeuds.forEach((n) => n.addEventListener('click', () => ouvrir(n.dataset.cible)));
-
-  // Le premier module est ouvert d'emblée : une page vide n'apprend rien.
-  if (noeuds.length > 0) {
-    const depart = location.hash.replace('#', '') || noeuds[0].dataset.cible;
-    ouvrir(document.getElementById(`fiche-${depart}`) ? depart : noeuds[0].dataset.cible);
+  .fil { display: flex; flex-direction: column; }
+  .fil__ligne { display: grid; grid-template-columns: 56px 1fr; column-gap: 20px; }
+  .fil__rail { display: flex; flex-direction: column; align-items: center; }
+  .fil__noeud {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 44px; block-size: 44px; border-radius: var(--radius-lg);
+    border: 1px solid var(--slate-200); background: #fff; color: var(--plum-600);
+    flex: none; box-shadow: var(--shadow-xs);
   }
-</script>
+  .fil__trait { inline-size: 2px; flex: 1; background: var(--slate-200); min-block-size: 20px; }
+
+  .fil__module { padding-block-end: 20px; min-inline-size: 0; }
+  .fil__tete {
+    display: flex; align-items: center; gap: 14px;
+    background: #fff; border: 1px solid var(--slate-200);
+    border-radius: var(--radius-card); padding: 14px 18px;
+    cursor: pointer; list-style: none;
+    box-shadow: var(--shadow-xs);
+    transition: var(--transition-control);
+  }
+  .fil__tete::-webkit-details-marker { display: none; }
+  .fil__tete::marker { content: ''; }
+  .fil__tete:hover { background: var(--slate-25); }
+  .fil__module[open] .fil__tete { border-radius: var(--radius-card) var(--radius-card) 0 0; border-color: var(--slate-300); }
+  .fil__num { font: 500 var(--text-xs) / 1 var(--font-mono); color: var(--slate-400); flex: none; }
+  .fil__intitule { display: flex; flex-direction: column; gap: 3px; min-inline-size: 0; }
+  .fil__nom {
+    display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    font: 600 17px/1.2 var(--font-display); letter-spacing: var(--tracking-tight);
+  }
+  .fil__groupe {
+    font: 600 10px/1.2 var(--font-sans); letter-spacing: var(--tracking-caps);
+    text-transform: uppercase; color: var(--slate-400);
+  }
+  .fil__droite { margin-inline-start: auto; display: flex; align-items: center; gap: 12px; flex: none; }
+  .fil__nb { font: 400 var(--text-xs) / 1 var(--font-mono); color: var(--slate-400); white-space: nowrap; }
+  .fil__module .fil__chevron { color: var(--slate-400); transition: transform var(--duration-slow) var(--ease-standard); }
+  .fil__module[open] .fil__chevron { transform: rotate(180deg); }
+
+  .fil__corps {
+    background: #fff; border: 1px solid var(--slate-300); border-block-start: 0;
+    border-radius: 0 0 var(--radius-card) var(--radius-card);
+    padding: 6px 22px 16px;
+    box-shadow: var(--shadow-xs);
+  }
+  .fil__phrase {
+    border-inline-start: 3px solid var(--teal-500);
+    padding-inline-start: 14px; margin: 12px 0 4px;
+    font: 400 14px/1.6 var(--font-sans); color: var(--slate-700);
+  }
+  .fil__fiche { display: inline-block; margin-block-start: 12px; font: 500 13px/1.3 var(--font-sans); }
+
+  .composant {
+    display: flex; gap: 16px; align-items: flex-start;
+    padding-block: 14px; border-block-end: 1px solid var(--slate-100);
+  }
+  .composant:last-of-type { border-block-end: 0; }
+  .composant__vue {
+    flex: none; inline-size: 150px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-md);
+    overflow: hidden; background: #fff;
+  }
+  .composant__vue img { display: block; inline-size: 100%; block-size: auto; }
+  .composant__sans {
+    aspect-ratio: 16 / 10; background: var(--slate-50);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--slate-400);
+  }
+  .composant__sans code { font: 400 8.5px/1.3 var(--font-mono); }
+  .composant__texte { display: flex; flex-direction: column; gap: 4px; min-inline-size: 0; }
+  .composant__nom {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font: 600 14.5px/1.3 var(--font-sans);
+  }
+  .composant__gain { margin: 0; font: 500 12.5px/1.5 var(--font-sans); color: var(--teal-700); }
+
+  .systeme__appel {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    background: var(--gradient-plum-navy); border-radius: var(--radius-panel);
+    padding: 24px 28px; color: #fff; margin-block-start: 16px;
+  }
+  .systeme__appel > span {
+    font: 600 17px/1.4 var(--font-display); letter-spacing: var(--tracking-tight);
+    flex: 1; min-inline-size: 240px;
+  }
+
+  @media (max-width: 700px) {
+    .fil__ligne { grid-template-columns: 36px 1fr; column-gap: 12px; }
+    .fil__noeud { inline-size: 34px; block-size: 34px; }
+    .fil__droite { display: none; }
+    .composant { flex-direction: column; }
+    .composant__vue { inline-size: 100%; }
+  }
+</style>
+
+<!-- Le filtrage vit dans le navigateur, sans script : `:has()` suffit.
+     Là où il manque, la règle entière est ignorée et tout reste visible. -->
+<style is:inline set:html={`
+@supports selector(:has(*)) {
+  [data-module] { display: none; }
+  ${reveleurs}
+  .systeme__vide { display: block; }
+  body:has(.question__case:checked) .systeme__vide { display: none; }
+}
+`}></style>

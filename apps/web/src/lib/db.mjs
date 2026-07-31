@@ -272,6 +272,15 @@ export async function chargerParcours() {
 }
 
 /**
+ * Les questions de l'onboarding, dans l'ordre. Chacune porte les slugs des
+ * modules qu'elle déclenche.
+ */
+export async function chargerQuestions() {
+  const lignes = await lire('questions', `SELECT * FROM ${table('questions')} ORDER BY ordre, id`);
+  return (lignes || []).map((q) => ({ ...q, slugs: lireJson(q.slugs, []) }));
+}
+
+/**
  * Toutes les captures des modules affichés, avec le module d'où elles
  * viennent. Sert la galerie de la page d'accueil : sans elle, les copies
  * d'écran ne seraient visibles que sur la fiche de chaque module.

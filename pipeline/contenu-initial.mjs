@@ -894,3 +894,38 @@ Nos neuf modules couvrent l'exploitation réelle d'un réseau : le recrutement d
   K --> A
   G --> K`,
 };
+
+/**
+ * Les questions de l'onboarding.
+ *
+ * Le franchiseur coche ce qui lui ressemble — ses problèmes d'abord, ses
+ * besoins ensuite — et son système s'assemble en dessous. Chaque question
+ * désigne les modules qu'elle déclenche par leur `slug` : ajouter une
+ * question, c'est ajouter une ligne ici, sans toucher à la page.
+ */
+export const QUESTIONS = [
+  { cle: 'chiffres', tag: 'Problème', cible: 'Console marque', slugs: ['console-marque'],
+    texte: 'Les chiffres remontent par tableur en fin de mois, recopiés au moins deux fois ?' },
+  { cle: 'promo', tag: 'Problème', cible: 'Console marque', slugs: ['console-marque', 'affichage'],
+    texte: 'Une opération commerciale met des semaines à se déployer sur tout le réseau ?' },
+  { cle: 'enligne', tag: 'Besoin', cible: 'Webshop', slugs: ['webshop', 'console-franchise'],
+    texte: "Vendre en ligne sans accepter de commandes que la cuisine ne peut pas produire ?" },
+  { cle: 'journee', tag: 'Problème', cible: 'Console franchisé', slugs: ['console-franchise'],
+    texte: 'Le point de vente découvre sa journée sur un papier imprimé la veille ?' },
+  { cle: 'ecrans', tag: 'Problème', cible: "Régie d'affichage", slugs: ['affichage'],
+    texte: "Vos écrans en magasin affichent encore l'ancienne promotion ?" },
+  { cle: 'fournisseur', tag: 'Problème', cible: 'Fournisseur', slugs: ['fournisseurs'],
+    texte: 'Les commandes fournisseur se passent sur un tarif PDF périmé ?' },
+  { cle: 'marge', tag: 'Problème', cible: 'Fournisseur', slugs: ['fournisseurs', 'cuisine'],
+    texte: "La marge par référence n'existe nulle part, la dérive se découvre au bilan ?" },
+  { cle: 'savoir', tag: 'Problème', cible: 'Cuisine', slugs: ['cuisine'],
+    texte: "Le savoir-faire part quand un responsable s'en va ?" },
+  { cle: 'visites', tag: 'Problème', cible: 'Panel consultant', slugs: ['consultant'],
+    texte: 'Vos visites de réseau tiennent dans un compte rendu écrit le soir, de mémoire ?' },
+  { cle: 'livraison', tag: 'Besoin', cible: 'Tournées de livraison', slugs: ['livraison', 'console-franchise'],
+    texte: 'Livrer vos points de vente avec une preuve datée et sans litige ?' },
+  { cle: 'recrutement', tag: 'Problème', cible: 'Recrutement', slugs: ['recrutement'],
+    texte: 'Recruter un franchisé prend un an et le dossier vit dans une boîte mail ?' },
+  { cle: 'transmission', tag: 'Besoin', cible: 'Tout le catalogue', slugs: ['console-marque', 'console-franchise', 'consultant', 'cuisine'],
+    texte: 'Rendre votre réseau transmissible : que ce qui est fait laisse une trace datée ?' },
+];
