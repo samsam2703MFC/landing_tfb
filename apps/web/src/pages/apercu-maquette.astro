@@ -1,0 +1,31 @@
+---
+/**
+ * Page d'essai, le temps de trancher entre capture et maquette.
+ * À supprimer une fois la décision prise.
+ */
+import Layout from '../components/Layout.astro';
+import Maquette from '../components/Maquette.astro';
+import { chargerModule } from '../lib/db.mjs';
+import { textes } from '../lib/textes.mjs';
+
+const t = await textes();
+const slugs = ['consultant', 'console-marque', 'webshop'];
+const modules = [];
+for (const s of slugs) {
+  const m = await chargerModule(s).catch(() => null);
+  if (m) modules.push(m);
+}
+---
+
+<Layout titre="Aperçu maquettes" large={true}>
+  <section class="bande">
+    <div class="dedans" style="display:flex;flex-direction:column;gap:48px">
+      {modules.map((m) => (
+        <div style="display:flex;flex-direction:column;gap:12px">
+          <h2 class="h-section">{m.nom}</h2>
+          <Maquette module={m} entrees={m.fonctions || []} t={t} />
+        </div>
+      ))}
+    </div>
+  </section>
+</Layout>

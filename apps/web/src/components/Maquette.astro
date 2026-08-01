@@ -1,0 +1,163 @@
+---
+/**
+ * La maquette d'un module : sa structure réelle, dessinée.
+ *
+ * Ce n'est ni une photo ni une invention. Les entrées de menu, leurs
+ * icônes et leurs leviers viennent de `landing_fonctions` — donc du code du
+ * dépôt, via l'ingestion. Si une entrée disparaît de l'application, elle
+ * disparaît d'ici au déploiement suivant, sans que personne ait à y penser.
+ *
+ * Ce que la maquette ne fait pas : afficher des chiffres. Un montant dessiné
+ * est un montant inventé, et une vitrine qui invente ses chiffres ment. Les
+ * zones de données sont donc rendues en aplats — on montre la forme de
+ * l'écran, pas des résultats qu'on n'a pas.
+ */
+import Icone from './Icone.astro';
+import Pastille from './Pastille.astro';
+import { leviersDe } from '../lib/leviers.mjs';
+
+const { module, entrees = [], t } = Astro.props;
+
+// La première entrée est celle qu'on met en avant : c'est l'écran d'ouverture.
+const [ouverture, ...suivantes] = entrees;
+const icone = module.icone || 'layers';
+---
+
+<figure class="maquette">
+  <div class="maquette__cadre">
+    <!-- La barre d'application -->
+    <div class="maquette__barre">
+      <span class="maquette__marque">
+        <span class="maquette__logo"><Icone nom={icone} taille={14} /></span>
+        {module.nom || module.slug}
+      </span>
+      <span class="maquette__points"><i></i><i></i><i></i></span>
+    </div>
+
+    <div class="maquette__corps">
+      <!-- Le menu, tel qu'il existe -->
+      <nav class="maquette__menu">
+        {entrees.map((f, i) => (
+          <span class={`maquette__entree ${i === 0 ? 'est-active' : ''}`}>
+            <Icone nom={f.icone || 'layers'} taille={13} />
+            <span>{f.nom || f.cle}</span>
+          </span>
+        ))}
+      </nav>
+
+      <!-- La zone de travail : la forme, pas les chiffres -->
+      <div class="maquette__vue">
+        <div class="maquette__tete">
+          <span class="maquette__titre">{ouverture?.nom || module.nom}</span>
+          <span class="pastilles">
+            {leviersDe(ouverture?.leviers || module.leviers).map((l) => <Pastille levier={l} />)}
+          </span>
+        </div>
+
+        <div class="maquette__tuiles">
+          {[0, 1, 2, 3].map(() => (
+            <span class="maquette__tuile"><i class="bloc bloc--court"></i><i class="bloc bloc--large"></i></span>
+          ))}
+        </div>
+
+        <div class="maquette__lignes">
+          {suivantes.slice(0, 4).map((f) => (
+            <span class="maquette__ligne">
+              <i class="rond"></i>
+              <span class="maquette__ligne-nom">{f.nom || f.cle}</span>
+              <i class="bloc bloc--moyen"></i>
+              <span class="pastilles">{leviersDe(f.leviers).map((l) => <Pastille levier={l} />)}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <figcaption class="maquette__legende">
+    {t
+      ? t('module.maquette.note', { n: entrees.length })
+      : `${entrees.length} entrées de menu, reprises du code du module.`}
+  </figcaption>
+</figure>
+
+<style is:global>
+  /* ── La maquette ───────────────────────────────────────────────────────
+     Un poste de travail dessiné aux jetons du design system : la landing et
+     le produit se ressemblent, ce qui est la moitié de l'argument. */
+  .maquette { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+  .maquette__cadre {
+    border-radius: var(--radius-panel);
+    border: 1px solid var(--slate-200);
+    background: #fff;
+    overflow: hidden;
+    box-shadow: 0 18px 44px -18px rgba(12, 19, 41, 0.28), 0 2px 6px rgba(12, 19, 41, 0.05);
+  }
+
+  .maquette__barre {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 14px;
+    background: var(--gradient-ink); color: #fff;
+  }
+  .maquette__marque { display: flex; align-items: center; gap: 9px; font: 600 var(--text-sm) / 1 var(--font-display); }
+  .maquette__logo {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 24px; block-size: 24px; border-radius: 6px;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .maquette__points { margin-inline-start: auto; display: flex; gap: 4px; }
+  .maquette__points i { inline-size: 5px; block-size: 5px; border-radius: 50%; background: rgba(255, 255, 255, 0.32); }
+
+  .maquette__corps { display: grid; grid-template-columns: 13.5rem 1fr; min-block-size: 300px; }
+
+  .maquette__menu {
+    display: flex; flex-direction: column; gap: 1px;
+    padding: 10px 8px;
+    background: var(--slate-25);
+    border-inline-end: 1px solid var(--slate-100);
+  }
+  .maquette__entree {
+    display: flex; align-items: center; gap: 9px;
+    padding: 7px 9px; border-radius: var(--radius-control);
+    font: 400 12.5px/1.2 var(--font-sans); color: var(--slate-600);
+  }
+  .maquette__entree span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .maquette__entree.est-active { background: var(--plum-50); color: var(--plum-600); font-weight: var(--weight-semibold); }
+
+  .maquette__vue { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .maquette__tete { display: flex; align-items: center; gap: 12px; }
+  .maquette__titre { font: 600 var(--text-base) / 1.2 var(--font-display); }
+  .maquette__tete .pastilles { margin-inline-start: auto; display: flex; gap: 3px; }
+
+  .maquette__tuiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .maquette__tuile {
+    display: flex; flex-direction: column; gap: 7px;
+    padding: 12px; border-radius: var(--radius-card);
+    background: var(--slate-25); border: 1px solid var(--slate-100);
+  }
+
+  .maquette__lignes { display: flex; flex-direction: column; gap: 7px; }
+  .maquette__ligne {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: var(--radius-card);
+    border: 1px solid var(--slate-100);
+  }
+  .maquette__ligne-nom { font: 500 12.5px/1.2 var(--font-sans); color: var(--navy-900); }
+  .maquette__ligne .pastilles { margin-inline-start: auto; display: flex; gap: 3px; }
+
+  /* Les aplats : la place d'une donnée, pas une donnée inventée. */
+  .maquette .bloc { display: block; block-size: 8px; border-radius: 4px; background: var(--slate-100); }
+  .maquette .bloc--court { inline-size: 42%; }
+  .maquette .bloc--moyen { inline-size: 5rem; }
+  .maquette .bloc--large { inline-size: 78%; block-size: 12px; background: var(--slate-200); }
+  .maquette .rond { inline-size: 20px; block-size: 20px; border-radius: 6px; background: var(--plum-50); flex: none; }
+
+  .maquette__legende { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
+
+  @media (max-width: 720px) {
+    .maquette__corps { grid-template-columns: 1fr; }
+    .maquette__menu { flex-direction: row; overflow-x: auto; border-inline-end: 0; border-block-end: 1px solid var(--slate-100); }
+    .maquette__entree { flex: none; }
+    .maquette__tuiles { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
