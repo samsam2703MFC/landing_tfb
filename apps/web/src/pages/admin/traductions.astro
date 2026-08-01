@@ -188,7 +188,12 @@ const hauteur = (champ) => champ.lignes || (champ.fr.length > 90 ? 3 : 1);
                       <span class="trad__drapeau">fr</span>
                       {champ.json && <span class="jeton">liste JSON</span>}
                     </label>
-                    <textarea class="trad__source" rows={hauteur(champ)} readonly>{champ.fr}</textarea>
+                    <textarea
+                      class="trad__source"
+                      rows={hauteur(champ)}
+                      readonly
+                      aria-label={`${champ.libelle} en français — référence`}
+                    >{champ.fr}</textarea>
                   </div>
 
                   <div class="trad__cote">

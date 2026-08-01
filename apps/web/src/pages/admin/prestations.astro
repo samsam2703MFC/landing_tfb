@@ -205,11 +205,11 @@ const actives = prestations.filter((p) => p.actif).length;
       <input type="hidden" name="action" value="ajout" />
       <div class="duo">
         <div class="champ">
-          <label for="p-nom">Nom</label>
+          <label for="p-nom">Nom<span class="champ__requis" aria-hidden="true"> *</span></label>
           <input id="p-nom" type="text" name="nom" required placeholder="Reprise de données" />
         </div>
         <div class="champ">
-          <label for="p-prix">Prix, une seule fois</label>
+          <label for="p-prix">Prix, une seule fois<span class="champ__requis" aria-hidden="true"> *</span></label>
           <span class="tarif__saisie">
             <input id="p-prix" type="text" name="prix" required inputmode="decimal" placeholder="500" />
             <span class="tarif__unite">€</span>

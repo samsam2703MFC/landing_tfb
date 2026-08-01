@@ -68,9 +68,9 @@ const total = sections.reduce((n, s) => n + s.textes.length, 0);
                   <td>
                     <input type="hidden" name="texte_id" value={texte.id} />
                     {String(texte.valeur || '').length > 90 ? (
-                      <textarea name="texte_valeur" rows="3">{texte.valeur || ''}</textarea>
+                      <textarea name="texte_valeur" rows="3" aria-label={texte.cle}>{texte.valeur || ''}</textarea>
                     ) : (
-                      <input type="text" name="texte_valeur" value={texte.valeur || ''} />
+                      <input type="text" name="texte_valeur" value={texte.valeur || ''} aria-label={texte.cle} />
                     )}
                   </td>
                 </tr>

@@ -103,11 +103,11 @@ const message = Astro.url.searchParams.get('ok');
                 <div class="duo">
                   <div class="champ">
                     <label>Titre</label>
-                    <input type="text" name="titre" value={capture.titre || ''} />
+                    <input type="text" name="titre" value={capture.titre || ''} aria-label={`Titre de ${capture.fichier}`} />
                   </div>
                   <div class="champ">
                     <label>Fonction rattachée</label>
-                    <select name="fonction_cle">
+                    <select name="fonction_cle" aria-label={`Composant illustré par ${capture.fichier}`}>
                       <option value="">— le module entier —</option>
                       {(clesParModule.get(capture.module_slug) || []).map((f) => (
                         <option value={f.cle} selected={f.cle === capture.fonction_cle}>
@@ -118,7 +118,7 @@ const message = Astro.url.searchParams.get('ok');
                   </div>
                   <div class="champ">
                     <label>Ordre</label>
-                    <input type="number" name="ordre" min="1" value={capture.ordre ?? 100} />
+                    <input type="number" name="ordre" min="1" value={capture.ordre ?? 100} aria-label={`Ordre de ${capture.fichier}`} />
                   </div>
                 </div>
 

@@ -93,10 +93,10 @@ const reponses = site ? [...site.reponses, { titre: '', texte: '' }] : [];
         </div>
         <div class="bloc__corps">
           <div class="repet">
-            {problemes.map((bloc) => (
+            {problemes.map((bloc, i) => (
               <div class="repet__item">
-                <input type="text" name="probleme_titre" value={bloc.titre} placeholder="Titre du problème" />
-                <textarea name="probleme_texte" rows="3">{bloc.texte}</textarea>
+                <input type="text" name="probleme_titre" value={bloc.titre} placeholder="Titre du problème" aria-label={`Titre du problème ${i + 1}`} />
+                <textarea name="probleme_texte" rows="3" aria-label={`Texte du problème ${i + 1}`}>{bloc.texte}</textarea>
               </div>
             ))}
           </div>
@@ -112,10 +112,10 @@ const reponses = site ? [...site.reponses, { titre: '', texte: '' }] : [];
         </div>
         <div class="bloc__corps">
           <div class="repet">
-            {reponses.map((bloc) => (
+            {reponses.map((bloc, i) => (
               <div class="repet__item">
-                <input type="text" name="reponse_titre" value={bloc.titre} placeholder="Titre de la réponse" />
-                <textarea name="reponse_texte" rows="3">{bloc.texte}</textarea>
+                <input type="text" name="reponse_titre" value={bloc.titre} placeholder="Titre de la réponse" aria-label={`Titre de la réponse ${i + 1}`} />
+                <textarea name="reponse_texte" rows="3" aria-label={`Texte de la réponse ${i + 1}`}>{bloc.texte}</textarea>
               </div>
             ))}
           </div>

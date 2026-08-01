@@ -117,24 +117,24 @@ const muettes = questions.filter((q) => (q.slugs || []).length === 0);
             <code class="jeton">{q.cle}</code>
             <label class="question-ligne__tag">
               <span class="legende">Étiquette</span>
-              <select name="tag">
+              <select name="tag" aria-label={`Étiquette de ${q.cle}`}>
                 {TAGS.map((t) => <option value={t} selected={t === q.tag}>{t}</option>)}
               </select>
             </label>
             <label class="question-ligne__ordre">
               <span class="legende">Ordre</span>
-              <input type="number" name="ordre" min="1" value={q.ordre ?? 100} />
+              <input type="number" name="ordre" min="1" value={q.ordre ?? 100} aria-label={`Ordre de ${q.cle}`} />
             </label>
           </div>
 
           <div class="duo">
             <div class="champ">
               <label>La phrase que lit le franchiseur</label>
-              <input type="text" name="texte" value={q.texte || ''} required />
+              <input type="text" name="texte" value={q.texte || ''} required aria-label={`Question ${q.cle}`} />
             </div>
             <div class="champ">
               <label>Ce que ça vise</label>
-              <input type="text" name="cible" value={q.cible || ''} placeholder="Traçabilité des lots" />
+              <input type="text" name="cible" value={q.cible || ''} placeholder="Traçabilité des lots" aria-label={`Ce que vise ${q.cle}`} />
               <span class="champ__aide">Affiché sous la phrase, précédé d'une flèche.</span>
             </div>
           </div>
@@ -172,27 +172,27 @@ const muettes = questions.filter((q) => (q.slugs || []).length === 0);
 
           <div class="duo">
             <div class="champ">
-              <label>Clé technique</label>
-              <input type="text" name="cle" required placeholder="tracabilite" />
+              <label for="q-cle">Clé technique<span class="champ__requis" aria-hidden="true"> *</span></label>
+              <input id="q-cle" type="text" name="cle" required placeholder="tracabilite" />
               <span class="champ__aide">Minuscules et tirets. Elle sert d'ancre HTML : la changer casse les liens.</span>
             </div>
             <div class="champ">
-              <label>Étiquette</label>
-              <select name="tag">{TAGS.map((t) => <option value={t}>{t}</option>)}</select>
+              <label for="q-tag">Étiquette</label>
+              <select id="q-tag" name="tag">{TAGS.map((t) => <option value={t}>{t}</option>)}</select>
             </div>
             <div class="champ">
-              <label>Ordre</label>
-              <input type="number" name="ordre" min="1" value="100" />
+              <label for="q-ordre">Ordre</label>
+              <input id="q-ordre" type="number" name="ordre" min="1" value="100" />
             </div>
           </div>
 
           <div class="champ">
-            <label>La phrase que lit le franchiseur</label>
-            <input type="text" name="texte" required />
+            <label for="q-texte">La phrase que lit le franchiseur<span class="champ__requis" aria-hidden="true"> *</span></label>
+            <input id="q-texte" type="text" name="texte" required />
           </div>
           <div class="champ">
-            <label>Ce que ça vise</label>
-            <input type="text" name="cible" />
+            <label for="q-cible">Ce que ça vise</label>
+            <input id="q-cible" type="text" name="cible" />
           </div>
 
           <div class="champ">

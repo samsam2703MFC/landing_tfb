@@ -306,6 +306,9 @@ const RUBRIQUES = TOUTES
       .champ { display: grid; gap: 5px; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
+      /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
+         mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
+      .champ__requis { color: var(--plum-600); }
       /* Tous les champs de saisie, désignés par ce qu'ils ne sont pas : une
          liste blanche de types en oublie toujours un — `email` et `date` y
          manquaient, et se retrouvaient sans style ni taille de police. */

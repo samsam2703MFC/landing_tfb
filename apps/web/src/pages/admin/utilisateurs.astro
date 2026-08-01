@@ -219,7 +219,7 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       <input type="hidden" name="action" value="ajout" />
       <div class="duo">
         <div class="champ">
-          <label for="u-identifiant">Identifiant</label>
+          <label for="u-identifiant">Identifiant<span class="champ__requis" aria-hidden="true"> *</span></label>
           <input
             id="u-identifiant"
             type="text"
@@ -239,7 +239,7 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       </div>
       <div class="duo" style="margin-block-start:12px">
         <div class="champ">
-          <label for="u-mdp">Mot de passe</label>
+          <label for="u-mdp">Mot de passe<span class="champ__requis" aria-hidden="true"> *</span></label>
           <input
             id="u-mdp"
             type="password"

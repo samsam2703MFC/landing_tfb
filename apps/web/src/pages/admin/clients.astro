@@ -112,8 +112,8 @@ const affiches = clients.filter((c) => c.actif).length;
                       <input type="file" name="logo" accept={TYPES_ACCEPTES} aria-label={`Logo de ${c.nom}`} />
                     </span>
                     <input type="text" name="nom" value={c.nom} aria-label="Nom" />
-                    <input type="text" name="note" value={c.note || ''} placeholder="Ne s'affiche pas sur le site" />
-                    <input type="number" name="ordre" min="1" value={c.ordre ?? 100} />
+                    <input type="text" name="note" value={c.note || ''} placeholder="Ne s'affiche pas sur le site" aria-label={`Note interne de ${c.nom}`} />
+                    <input type="number" name="ordre" min="1" value={c.ordre ?? 100} aria-label={`Ordre de ${c.nom}`} />
                     <label style="display:flex;align-items:center;gap:8px;font:var(--type-body-sm)">
                       <input type="checkbox" name="actif" checked={c.actif} style="inline-size:auto" />
                       Affiché
@@ -150,16 +150,16 @@ const affiches = clients.filter((c) => c.actif).length;
         <input type="hidden" name="action" value="ajout" />
         <div class="duo">
           <div class="champ">
-            <label>Nom du réseau</label>
-            <input type="text" name="nom" required placeholder="L'Atelier By" />
+            <label for="cl-nom">Nom du réseau<span class="champ__requis" aria-hidden="true"> *</span></label>
+            <input id="cl-nom" type="text" name="nom" required placeholder="L'Atelier By" />
           </div>
           <div class="champ">
-            <label>Note interne</label>
-            <input type="text" name="note" placeholder="Ne s'affiche pas sur le site" />
+            <label for="cl-note">Note interne</label>
+            <input id="cl-note" type="text" name="note" placeholder="Ne s'affiche pas sur le site" />
           </div>
           <div class="champ">
-            <label>Ordre</label>
-            <input type="number" name="ordre" min="1" value="100" />
+            <label for="cl-ordre">Ordre</label>
+            <input id="cl-ordre" type="number" name="ordre" min="1" value="100" />
           </div>
           <div class="champ">
             <label for="c-logo">Logo</label>
