@@ -11,6 +11,7 @@
 
 import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
 import { enCents, lireTarif, saisirTarif } from '../offres/montants.mjs';
+import { calculerOffre, lignesDe } from '../offres/calcul.mjs';
 import { ROLES, empreinteValide, hacher } from './session.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
@@ -21,6 +22,19 @@ function vrai(valeur) {
 /** Sérialise une valeur destinée à une colonne JSON. */
 function json(valeur) {
   return JSON.stringify(valeur ?? []);
+}
+
+/**
+ * Insère et rend l'identifiant créé.
+ *
+ * `executer` prend en troisième argument le nom de la colonne à récupérer :
+ * PostgreSQL la rend par `RETURNING`, MySQL par `insertId` et ignore
+ * l'argument. Cette enveloppe évite d'avoir à s'en souvenir à chaque appel.
+ */
+async function insererEtRendreId(db, sql, params) {
+  const { id } = await db.executer(sql, params, 'id');
+  if (id === null || id === undefined) throw new Error("L'insertion n'a rendu aucun identifiant.");
+  return Number(id);
 }
 
 /** Les colonnes du module éditables depuis la console, dans l'ordre du formulaire. */
@@ -819,6 +833,413 @@ export async function supprimerPrestation(id) {
   const db = await connexion();
   await db.executer(`DELETE FROM ${table('prestations')} WHERE id = ?`, [Number(id)]);
   viderCache();
+}
+
+// ---------------------------------------------------------------------------
+// Prospects et offres
+// ---------------------------------------------------------------------------
+
+/** Les statuts d'une offre, dans l'ordre du cycle de vie. */
+export const STATUTS_OFFRE = ['brouillon', 'envoyee', 'acceptee', 'refusee', 'expiree'];
+
+/**
+ * Une offre partie chez un client ne se modifie plus.
+ *
+ * On en fait une nouvelle version plutôt que de réécrire celle qu'il a reçue :
+ * sans quoi le document dans sa boîte et celui en base finiraient par dire
+ * deux prix différents, et c'est nous qui aurions tort.
+ */
+export function offreFigee(offre) {
+  return Boolean(offre) && offre.statut !== 'brouillon';
+}
+
+/** Décode les colonnes JSON d'une offre. */
+function normaliserOffre(ligne) {
+  return {
+    ...ligne,
+    tva_exoneree: Boolean(ligne.tva_exoneree),
+    prestations: lireJson(ligne.prestations, []),
+    vues: lireJson(ligne.vues, []),
+  };
+}
+
+export async function listerProspects() {
+  const db = await connexion();
+  return db.requete(`SELECT * FROM ${table('prospects')} ORDER BY raison_sociale`);
+}
+
+export async function chargerProspect(id) {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('prospects')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  return lignes[0] || null;
+}
+
+/** Les champs du prospect, dans l'ordre du formulaire. */
+export const CHAMPS_PROSPECT = [
+  { nom: 'raison_sociale', libelle: 'Raison sociale', requis: true },
+  { nom: 'tva', libelle: 'Numéro de TVA', exemple: 'BE0123456789' },
+  { nom: 'adresse', libelle: 'Adresse', zone: true },
+  { nom: 'pays', libelle: 'Pays', exemple: 'BE', taille: 2 },
+  { nom: 'site_web', libelle: 'Site web' },
+  { nom: 'contact_nom', libelle: 'Contact', requis: true },
+  { nom: 'contact_role', libelle: 'Fonction' },
+  { nom: 'contact_email', libelle: 'Courriel', requis: true, type: 'email' },
+  { nom: 'contact_tel', libelle: 'Téléphone' },
+];
+
+/**
+ * Contrôle de forme d'un numéro de TVA intracommunautaire.
+ *
+ * Deux lettres de pays puis huit à douze caractères. Ce n'est pas une
+ * validation auprès de VIES — on n'appelle aucun service ici — seulement de
+ * quoi arrêter une faute de frappe évidente. Un champ vide reste permis :
+ * un prospect n'a pas toujours son numéro sous la main au premier rendez-vous.
+ */
+export function tvaMalFormee(valeur) {
+  const brut = String(valeur || '').replace(/[\s.-]/g, '').toUpperCase();
+  if (!brut) return null;
+  return /^[A-Z]{2}[0-9A-Z]{8,12}$/.test(brut) ? null : brut;
+}
+
+/** Contrôle de forme d'une adresse de courriel. */
+function courrielMalForme(valeur) {
+  const brut = String(valeur || '').trim();
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(brut) ? null : brut;
+}
+
+function lireProspect(valeurs) {
+  const propre = {};
+  for (const champ of CHAMPS_PROSPECT) {
+    const brut = String(valeurs[champ.nom] ?? '').trim();
+    if (champ.requis && !brut) throw new Error(`« ${champ.libelle} » est obligatoire.`);
+    propre[champ.nom] = brut || null;
+  }
+  if (courrielMalForme(propre.contact_email)) {
+    throw new Error(`« ${propre.contact_email} » n'est pas une adresse de courriel.`);
+  }
+  const tva = tvaMalFormee(propre.tva);
+  if (tva) throw new Error(`« ${tva} » ne ressemble pas à un numéro de TVA (deux lettres de pays puis 8 à 12 caractères).`);
+  if (propre.tva) propre.tva = propre.tva.replace(/[\s.-]/g, '').toUpperCase();
+  if (propre.pays) propre.pays = propre.pays.slice(0, 2).toUpperCase();
+  return propre;
+}
+
+export async function ajouterProspect(valeurs, auteurId = 0) {
+  const db = await connexion();
+  const p = lireProspect(valeurs);
+  const colonnes = CHAMPS_PROSPECT.map((c) => c.nom);
+  const marqueurs = colonnes.map(() => '?').join(', ');
+  const id = await insererEtRendreId(db,
+    `INSERT INTO ${table('prospects')} (${colonnes.join(', ')}, lead_id, cree_par, cree_le)
+     VALUES (${marqueurs}, ?, ?, ?)`,
+    [...colonnes.map((c) => p[c]), Number(valeurs.lead_id) || null, Number(auteurId) || null, new Date()],
+  );
+  viderCache();
+  return id;
+}
+
+export async function enregistrerProspect(id, valeurs) {
+  const db = await connexion();
+  const p = lireProspect(valeurs);
+  const colonnes = CHAMPS_PROSPECT.map((c) => c.nom);
+  await db.executer(
+    `UPDATE ${table('prospects')} SET ${colonnes.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
+    [...colonnes.map((c) => p[c]), Number(id)],
+  );
+  viderCache();
+}
+
+/**
+ * La prochaine référence libre de l'année : `TFB-2026-0001`.
+ *
+ * Comptée depuis la base plutôt que tenue dans un compteur : deux commerciaux
+ * qui créent une offre à la même seconde peuvent tomber sur le même numéro,
+ * mais l'index unique (référence, version) le refuse et l'appelant réessaie.
+ * Un compteur en base coûterait une table et un verrou pour un cas qui se
+ * produit une fois par an.
+ */
+async function prochaineReference(db, annee) {
+  const prefixe = `TFB-${annee}-`;
+  const lignes = await db.requete(
+    `SELECT reference FROM ${table('offres')} WHERE reference LIKE ? ORDER BY reference DESC LIMIT 1`,
+    [`${prefixe}%`],
+  );
+  const dernier = lignes[0] ? Number(String(lignes[0].reference).slice(prefixe.length)) : 0;
+  return `${prefixe}${String((Number.isFinite(dernier) ? dernier : 0) + 1).padStart(4, '0')}`;
+}
+
+/**
+ * Crée une offre vide pour un prospect, aux tarifs du jour.
+ *
+ * Les tarifs sont recopiés sur la ligne : c'est ce qui garantit qu'une offre
+ * envoyée garde son montant quand la grille change.
+ */
+export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
+  const db = await connexion();
+  const tarifs = await tarifsEnVigueur();
+  const annee = new Date().getFullYear();
+
+  const valideJusquAu = new Date();
+  valideJusquAu.setDate(valideJusquAu.getDate() + (tarifs.validite_jours || 30));
+
+  // Trois essais : la collision de référence est improbable et se résout au
+  // premier réessai. Boucler indéfiniment masquerait une vraie panne.
+  for (let essai = 0; essai < 3; essai += 1) {
+    const reference = await prochaineReference(db, annee);
+    try {
+      const id = await insererEtRendreId(db,
+        `INSERT INTO ${table('offres')}
+         (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
+          remise_type, remise_valeur, tva_taux, tva_exoneree, option_app, jours_formation,
+          prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents)
+         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?)`,
+        [
+          Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
+          tarifs.tva_defaut, vrai(false), json([]), json([]),
+          tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
+          tarifs.taux_annuel, tarifs.prix_jour_formation_cents,
+        ],
+      );
+      viderCache();
+      return { id, reference };
+    } catch (err) {
+      if (essai === 2 || !/duplicate|unique/i.test(err.message)) throw err;
+    }
+  }
+  throw new Error('Référence introuvable après trois essais.');
+}
+
+/** Une offre avec son prospect, son auteur et ses lignes. */
+export async function chargerOffre(reference, version = null) {
+  const db = await connexion();
+  const lignes = version
+    ? await db.requete(
+        `SELECT * FROM ${table('offres')} WHERE reference = ? AND version = ? LIMIT 1`,
+        [String(reference), Number(version)],
+      )
+    : await db.requete(
+        `SELECT * FROM ${table('offres')} WHERE reference = ? ORDER BY version DESC LIMIT 1`,
+        [String(reference)],
+      );
+  if (lignes.length === 0) return null;
+  const offre = normaliserOffre(lignes[0]);
+
+  offre.prospect = await chargerProspect(offre.prospect_id);
+  offre.auteur = await utilisateurParId(offre.cree_par);
+  offre.lignes = await db.requete(
+    `SELECT * FROM ${table('offre_lignes')} WHERE offre_id = ? ORDER BY ordre, id`,
+    [offre.id],
+  );
+  offre.versions = await db.requete(
+    `SELECT version, statut, envoyee_le FROM ${table('offres')} WHERE reference = ? ORDER BY version`,
+    [String(reference)],
+  );
+  return offre;
+}
+
+/** La configuration d'une offre, dans la forme que le calculateur attend. */
+export function configDe(offre) {
+  return {
+    prestations: (offre.prestations || []).map((p) => ({
+      nom: p.nom,
+      description: p.description || null,
+      prix_cents: p.prix_cents,
+      quantite: p.quantite || 1,
+    })),
+    jours_formation: offre.jours_formation || 0,
+    option_app: offre.option_app || 'aucune',
+    vues: offre.vues || [],
+    tarifs: {
+      prix_par_vue_cents: offre.prix_par_vue_cents,
+      multiplicateur_achat: offre.multiplicateur_achat,
+      taux_annuel: offre.taux_annuel,
+      prix_jour_formation_cents: offre.prix_jour_formation_cents,
+    },
+    remise: { type: offre.remise_type, valeur: offre.remise_valeur },
+    tva: { taux: offre.tva_taux, exoneree: offre.tva_exoneree },
+  };
+}
+
+/**
+ * Enregistre la configuration d'une offre et régénère ses lignes.
+ *
+ * Les lignes sont stockées plutôt que recalculées à l'affichage : une offre
+ * envoyée doit garder ses montants même si le calculateur évolue. Elles ne
+ * sont donc régénérées que tant que l'offre est un brouillon.
+ */
+export async function enregistrerOffre(id, config) {
+  const db = await connexion();
+  const [ligne] = await db.requete(`SELECT * FROM ${table('offres')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (!ligne) throw new Error('Offre introuvable.');
+  const offre = normaliserOffre(ligne);
+  if (offreFigee(offre)) {
+    throw new Error(
+      `Cette offre est ${offre.statut} : elle ne se modifie plus. Créez-en une nouvelle version.`,
+    );
+  }
+
+  await db.executer(
+    `UPDATE ${table('offres')} SET
+       langue = ?, jours_formation = ?, option_app = ?, prestations = ?, vues = ?,
+       remise_type = ?, remise_valeur = ?, tva_taux = ?, tva_exoneree = ?, tva_mention = ?,
+       portee = ?, delai = ?, valide_jusqu_au = ?
+     WHERE id = ?`,
+    [
+      config.langue, config.jours_formation, config.option_app,
+      json(config.prestations), json(config.vues),
+      config.remise_type, config.remise_valeur,
+      config.tva_taux, vrai(config.tva_exoneree), config.tva_mention || null,
+      config.portee || null, config.delai || null, config.valide_jusqu_au || null,
+      Number(id),
+    ],
+  );
+
+  const lignes = lignesDe({
+    prestations: config.prestations,
+    jours_formation: config.jours_formation,
+    option_app: config.option_app,
+    vues: config.vues,
+    tarifs: {
+      prix_par_vue_cents: offre.prix_par_vue_cents,
+      multiplicateur_achat: offre.multiplicateur_achat,
+      taux_annuel: offre.taux_annuel,
+      prix_jour_formation_cents: offre.prix_jour_formation_cents,
+    },
+  });
+
+  await db.executer(`DELETE FROM ${table('offre_lignes')} WHERE offre_id = ?`, [Number(id)]);
+  for (const l of lignes) {
+    await db.executer(
+      `INSERT INTO ${table('offre_lignes')}
+       (offre_id, type, libelle, note, quantite, prix_unitaire_cents, recurrence, ordre)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(id), l.type, l.libelle, l.note, l.quantite, l.prix_unitaire_cents, l.recurrence, l.ordre],
+    );
+  }
+  viderCache();
+}
+
+/**
+ * Duplique une offre en une version suivante, remise en brouillon.
+ *
+ * La nouvelle version repart des **tarifs d'aujourd'hui** : rouvrir une offre
+ * de l'an dernier pour la renégocier au prix de l'an dernier n'aurait pas de
+ * sens. C'est la différence entre une nouvelle version et une correction.
+ */
+export async function nouvelleVersion(reference) {
+  const db = await connexion();
+  const source = await chargerOffre(reference);
+  if (!source) throw new Error('Offre introuvable.');
+
+  const tarifs = await tarifsEnVigueur();
+  const [{ total }] = await db.requete(
+    `SELECT MAX(version) AS total FROM ${table('offres')} WHERE reference = ?`,
+    [String(reference)],
+  );
+  const version = Number(total || 0) + 1;
+
+  const valideJusquAu = new Date();
+  valideJusquAu.setDate(valideJusquAu.getDate() + (tarifs.validite_jours || 30));
+
+  const id = await insererEtRendreId(db,
+    `INSERT INTO ${table('offres')}
+     (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
+      remise_type, remise_valeur, tva_taux, tva_exoneree, tva_mention, option_app, jours_formation,
+      prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
+      portee, delai)
+     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      source.prospect_id, String(reference), version, source.langue, source.devise,
+      source.cree_par, new Date(), valideJusquAu,
+      source.remise_type, source.remise_valeur, source.tva_taux, vrai(source.tva_exoneree),
+      source.tva_mention, source.option_app, source.jours_formation,
+      json(source.prestations), json(source.vues),
+      tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
+      tarifs.taux_annuel, tarifs.prix_jour_formation_cents,
+      source.portee, source.delai,
+    ],
+  );
+
+  // Les lignes sont recalculées aux nouveaux tarifs, pas recopiées.
+  const rechargee = await db.requete(`SELECT * FROM ${table('offres')} WHERE id = ?`, [id]);
+  const neuve = normaliserOffre(rechargee[0]);
+  const lignes = lignesDe(configDe(neuve));
+  for (const l of lignes) {
+    await db.executer(
+      `INSERT INTO ${table('offre_lignes')}
+       (offre_id, type, libelle, note, quantite, prix_unitaire_cents, recurrence, ordre)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [id, l.type, l.libelle, l.note, l.quantite, l.prix_unitaire_cents, l.recurrence, l.ordre],
+    );
+  }
+  viderCache();
+  return { id, reference: String(reference), version };
+}
+
+export async function changerStatutOffre(id, statut) {
+  if (!STATUTS_OFFRE.includes(statut)) throw new Error(`Statut inconnu : ${statut}.`);
+  const db = await connexion();
+  const champs = statut === 'envoyee' ? ', envoyee_le = ?' : '';
+  const params = statut === 'envoyee' ? [statut, new Date(), Number(id)] : [statut, Number(id)];
+  await db.executer(`UPDATE ${table('offres')} SET statut = ?${champs} WHERE id = ?`, params);
+  viderCache();
+}
+
+export async function supprimerOffre(id) {
+  const db = await connexion();
+  const [ligne] = await db.requete(`SELECT statut FROM ${table('offres')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  if (ligne && ligne.statut !== 'brouillon') {
+    throw new Error("Seul un brouillon se supprime. Une offre partie chez un client reste au dossier.");
+  }
+  await db.executer(`DELETE FROM ${table('offre_lignes')} WHERE offre_id = ?`, [Number(id)]);
+  await db.executer(`DELETE FROM ${table('offres')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/**
+ * Le chiffrage d'une offre, à partir de sa seule configuration.
+ *
+ * Sert la liste, qui a besoin des totaux sans charger les lignes de chaque
+ * offre. Le résultat est identique à celui de la fiche : c'est le même
+ * calculateur, sur les mêmes tarifs recopiés.
+ */
+export function calculerTotauxOffre(offre) {
+  return calculerOffre(configDe(offre));
+}
+
+/**
+ * La liste des offres, filtrable. Seule la dernière version de chaque
+ * référence est montrée : les précédentes se lisent depuis la fiche.
+ */
+export async function listerOffres({ prospect = '', statut = '', auteur = '' } = {}) {
+  const db = await connexion();
+  const offres = await db.requete(
+    `SELECT o.*, p.raison_sociale, p.contact_nom, u.nom AS auteur_nom
+     FROM ${table('offres')} o
+     LEFT JOIN ${table('prospects')} p ON p.id = o.prospect_id
+     LEFT JOIN ${table('utilisateurs')} u ON u.id = o.cree_par
+     ORDER BY o.reference DESC, o.version DESC`,
+  );
+
+  // On filtre **avant** de ne garder qu'une version par référence.
+  //
+  // L'inverse donnait un résultat faux : une offre envoyée puis rouverte en
+  // brouillon disparaissait du filtre « envoyée », alors qu'elle a bel et bien
+  // été envoyée. Ici, chercher « envoyée » montre la dernière version qui
+  // porte ce statut.
+  const cherche = String(prospect).trim().toLowerCase();
+  const retenues = offres.filter((o) => {
+    if (statut && o.statut !== statut) return false;
+    if (auteur && String(o.cree_par) !== String(auteur)) return false;
+    if (cherche && !String(o.raison_sociale || '').toLowerCase().includes(cherche)) return false;
+    return true;
+  });
+
+  // `offres` arrive déjà triée par version décroissante : la première vue est
+  // donc la plus récente.
+  const derniere = new Map();
+  for (const o of retenues) if (!derniere.has(o.reference)) derniere.set(o.reference, o);
+  return [...derniere.values()].map(normaliserOffre);
 }
 
 // ---------------------------------------------------------------------------

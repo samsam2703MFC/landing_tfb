@@ -1,0 +1,523 @@
+---
+/**
+ * La fiche d'une offre : on la configure et on la lit chiffrée, au même
+ * endroit.
+ *
+ * Le récapitulatif se met à jour à chaque enregistrement, par un
+ * POST-redirection-GET. C'est volontairement un aller-retour serveur plutôt
+ * qu'un calcul dans le navigateur : la formule n'existe qu'à un seul endroit.
+ * La recopier en JavaScript pour gagner cent millisecondes reviendrait à
+ * pouvoir afficher un prix et en facturer un autre.
+ *
+ * Une offre envoyée ne se modifie plus. Le formulaire passe en lecture seule
+ * et le seul geste possible est d'en faire une nouvelle version — sinon le
+ * document dans la boîte du client et celui en base finiraient par dire deux
+ * prix différents.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import RecapOffre from '../../../components/RecapOffre.astro';
+import {
+  STATUTS_OFFRE,
+  changerStatutOffre,
+  chargerOffre,
+  compteurs,
+  configDe,
+  enregistrerOffre,
+  listerPrestations,
+  nouvelleVersion,
+  offreFigee,
+  supprimerOffre,
+  tarifsEnVigueur,
+} from '../../../lib/admin/donnees.mjs';
+import { calculerOffre, formater } from '../../../lib/offres/calcul.mjs';
+import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { reference } = Astro.params;
+const versionDemandee = Astro.url.searchParams.get('version');
+let erreur = null;
+
+/** Lit la configuration soumise. Toute saisie invalide arrête l'enregistrement. */
+async function lireConfig(f, catalogue) {
+  const choisies = new Set(f.getAll('prestation').map(String));
+  const prestations = catalogue
+    .filter((p) => choisies.has(String(p.id)))
+    // Le prix est recopié : une remise de catalogue le mois prochain ne doit
+    // pas changer le montant d'une offre déjà chiffrée.
+    .map((p) => ({ cle: p.cle, nom: p.nom, description: p.description, prix_cents: p.prix_cents }));
+
+  const nombres = f.getAll('vue_nombre');
+  const notes = f.getAll('vue_note');
+  const vues = [];
+  for (let i = 0; i < nombres.length; i += 1) {
+    const note = String(notes[i] || '').trim();
+    const brut = String(nombres[i] || '').trim();
+    // Une ligne entièrement vide est un reliquat du formulaire, pas une vue.
+    if (!note && !brut) continue;
+    vues.push({ nombre: enEntier(brut || '0', `Nombre de vues « ${note || i + 1} »`), note });
+  }
+
+  const remiseType = String(f.get('remise_type') || 'pourcent');
+  const remiseBrute = String(f.get('remise_valeur') || '0').trim() || '0';
+  const exoneree = f.get('tva_exoneree') === '1';
+
+  return {
+    langue: String(f.get('langue') || 'fr'),
+    jours_formation: enEntier(String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation'),
+    option_app: String(f.get('option_app') || 'aucune'),
+    prestations,
+    vues,
+    remise_type: remiseType,
+    remise_valeur: remiseType === 'fixe' ? enCents(remiseBrute, 'Remise') : enPoints(remiseBrute, 'Remise'),
+    tva_taux: enPoints(String(f.get('tva_taux') || '21').trim() || '0', 'TVA'),
+    tva_exoneree: exoneree,
+    tva_mention: exoneree ? String(f.get('tva_mention') || '').trim() : null,
+    portee: String(f.get('portee') || '').trim(),
+    delai: String(f.get('delai') || '').trim(),
+    valide_jusqu_au: f.get('valide_jusqu_au') ? new Date(String(f.get('valide_jusqu_au'))) : null,
+  };
+}
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'enregistrer');
+    const courante = await chargerOffre(reference, versionDemandee);
+    if (!courante) throw new Error('Offre introuvable.');
+
+    if (action === 'version') {
+      const neuve = await nouvelleVersion(reference);
+      return Astro.redirect(
+        `${BASE}/admin/offres/${neuve.reference}?version=${neuve.version}&ok=${encodeURIComponent(`Version ${neuve.version} créée, aux tarifs d'aujourd'hui.`)}`,
+        303,
+      );
+    }
+
+    if (action === 'statut') {
+      await changerStatutOffre(courante.id, String(f.get('statut')));
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Statut mis à jour.')}`,
+        303,
+      );
+    }
+
+    if (action === 'suppression') {
+      await supprimerOffre(courante.id);
+      return Astro.redirect(`${BASE}/admin/offres?ok=${encodeURIComponent('Brouillon supprimé.')}`, 303);
+    }
+
+    const catalogue = await listerPrestations();
+    const config = await lireConfig(f, catalogue);
+    // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
+    // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
+    // le meilleur moyen de faire détester l'écran.
+    if (action === 'ajouter_vue') config.vues.push({ nombre: 1, note: '' });
+    await enregistrerOffre(courante.id, config);
+    return Astro.redirect(`${BASE}/admin/offres/${reference}?version=${courante.version}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let offre = null;
+let catalogue = [];
+let vigueur = null;
+let chiffres = {};
+try {
+  offre = await chargerOffre(reference, versionDemandee);
+  catalogue = await listerPrestations({ activesSeulement: true });
+  vigueur = await tarifsEnVigueur();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if (!offre && !erreur) return new Response('Offre introuvable', { status: 404 });
+
+const figee = offreFigee(offre);
+const resultat = offre ? calculerOffre(configDe(offre)) : null;
+const message = Astro.url.searchParams.get('ok');
+const choisies = new Set((offre?.prestations || []).map((p) => p.cle));
+
+// Une ligne vide en réserve : on peut décrire une vue sans avoir à demander
+// d'abord une ligne au serveur.
+const vues = [...(offre?.vues || [])];
+if (!figee && vues.length === 0) vues.push({ nombre: 1, note: '' });
+
+/** Une date au format que `<input type="date">` attend. */
+const pourChamp = (valeur) => (valeur ? new Date(valeur).toISOString().slice(0, 10) : '');
+
+const ETAT_STATUT = {
+  brouillon: 'etat',
+  envoyee: 'etat etat--on',
+  acceptee: 'etat etat--on',
+  refusee: 'etat etat--manque',
+  expiree: 'etat etat--manque',
+};
+---
+
+<Console
+  titre={offre ? `Offre ${offre.reference}` : 'Offre'}
+  fil={`TFB Admin · Commercial · ${reference}`}
+  actif="offres"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {offre && (
+    <>
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>
+              {offre.prospect?.raison_sociale || 'Client inconnu'}
+              <span class={ETAT_STATUT[offre.statut]}>{offre.statut}</span>
+            </h2>
+            <p>
+              <code class="slug">{offre.reference}</code> version {offre.version}
+              {offre.auteur?.nom && <> · par {offre.auteur.nom}</>}
+              {offre.prospect?.contact_nom && <> · {offre.prospect.contact_nom} — {offre.prospect.contact_email}</>}
+              {offre.prospect && (
+                <> · <a href={`${BASE}/admin/prospects/${offre.prospect.id}`}>corriger ses coordonnées</a></>
+              )}
+            </p>
+          </div>
+          <div class="actions">
+            {offre.versions.length > 1 && (
+              <span class="champ__aide">
+                {offre.versions.map((v) => (
+                  <a
+                    class="jeton"
+                    href={`${BASE}/admin/offres/${offre.reference}?version=${v.version}`}
+                    aria-current={v.version === offre.version ? 'page' : undefined}
+                  >v{v.version}</a>
+                ))}
+              </span>
+            )}
+          </div>
+        </div>
+
+        {figee && (
+          <div class="bloc__pied">
+            Cette offre est <strong>{offre.statut}</strong> : elle ne se modifie plus. Le client
+            a reçu ces montants — les réécrire ferait dire deux prix différents au même document.
+            Créez une nouvelle version pour renégocier.
+          </div>
+        )}
+      </section>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le chiffrage</h2>
+            <p>
+              Recalculé à chaque enregistrement, côté serveur. Tarifs de cette offre :
+              {' '}{formater(offre.prix_par_vue_cents)} par vue et par mois,
+              {' '}achat à {offre.multiplicateur_achat} mois,
+              {' '}maintenance {offre.taux_annuel / 100} %.
+            </p>
+          </div>
+        </div>
+        <RecapOffre
+          resultat={resultat}
+          langue={offre.langue}
+          devise={offre.devise}
+          mention={offre.tva_mention || vigueur?.mention_autoliquidation}
+        />
+      </section>
+
+      <form method="post">
+        {!figee && (
+          <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer et recalculer</button>
+        )}
+
+        <fieldset class="nu" disabled={figee}>
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Onboarding</h2>
+                <p>Ce qui se facture une seule fois, au démarrage.</p>
+              </div>
+            </div>
+
+            {catalogue.length === 0 ? (
+              <div class="bloc__pied">
+                Aucune prestation active au catalogue. Un administrateur en ajoute depuis
+                l'écran Prestations.
+              </div>
+            ) : (
+              <div class="cases">
+                {catalogue.map((p) => (
+                  <label class="case">
+                    <input type="checkbox" name="prestation" value={p.id} checked={choisies.has(p.cle)} />
+                    <span>
+                      <strong>{p.nom}</strong>
+                      <span class="fb-num case__prix">{formater(p.prix_cents)}</span>
+                      {p.description && <span class="champ__aide">{p.description}</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+
+            <div class="duo" style="margin-block-start:14px">
+              <div class="champ">
+                <label for="o-formation">Jours de formation</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-formation"
+                    type="text"
+                    name="jours_formation"
+                    value={offre.jours_formation || 0}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">j</span>
+                </span>
+                <span class="champ__aide">
+                  {formater(offre.prix_jour_formation_cents)} la journée, soit
+                  {' '}{formater((offre.jours_formation || 0) * offre.prix_jour_formation_cents)}.
+                </span>
+              </div>
+            </div>
+          </section>
+
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>L'application</h2>
+                <p>
+                  Les vues servent aux deux formules : louée, chacune se paie au mois ;
+                  achetée, leur total donne le coût qu'on multiplie.
+                </p>
+              </div>
+            </div>
+
+            <div class="formules">
+              <label class="formule">
+                <input type="radio" name="option_app" value="aucune" checked={offre.option_app === 'aucune'} />
+                <span>
+                  <strong>Pas d'application</strong>
+                  <span class="champ__aide">Seulement l'onboarding et la formation.</span>
+                </span>
+              </label>
+              <label class="formule">
+                <input type="radio" name="option_app" value="par_vue" checked={offre.option_app === 'par_vue'} />
+                <span>
+                  <strong>Location à la vue</strong>
+                  <span class="champ__aide">
+                    {formater(offre.prix_par_vue_cents)} par vue et par mois. Rien à payer à la signature.
+                  </span>
+                </span>
+              </label>
+              <label class="formule">
+                <input type="radio" name="option_app" value="achat" checked={offre.option_app === 'achat'} />
+                <span>
+                  <strong>Achat ferme</strong>
+                  <span class="champ__aide">
+                    {offre.multiplicateur_achat} mois de location payés d'un coup,
+                    puis {offre.taux_annuel / 100} % par an de maintenance.
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div class="vues">
+              <div class="vues__tete">
+                <span class="oeil">Les vues</span>
+                <span class="champ__aide">
+                  Une ligne par écran de l'application. La description part telle quelle sur l'offre.
+                </span>
+              </div>
+              {vues.map((v, i) => (
+                <div class="vue">
+                  <span class="tarif__saisie">
+                    <input
+                      type="text"
+                      name="vue_nombre"
+                      value={v.nombre}
+                      inputmode="numeric"
+                      aria-label={`Nombre, ligne ${i + 1}`}
+                    />
+                    <span class="tarif__unite">×</span>
+                  </span>
+                  <input
+                    type="text"
+                    name="vue_note"
+                    value={v.note || ''}
+                    placeholder="Ce que fait cette vue"
+                    aria-label={`Description, ligne ${i + 1}`}
+                  />
+                  <span class="fb-num vue__montant">
+                    {formater((Number(v.nombre) || 0) * offre.prix_par_vue_cents)}
+                    <span class="champ__aide">/mois</span>
+                  </span>
+                </div>
+              ))}
+              {!figee && (
+                <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="ajouter_vue">
+                  <Icone nom="plus" taille={14} /> Ajouter une vue
+                </button>
+              )}
+              <p class="champ__aide">
+                Vider entièrement une ligne la supprime au prochain enregistrement.
+              </p>
+            </div>
+          </section>
+
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Commercial</h2>
+                <p>Remise, TVA, validité. La remise en montant fixe ne porte que sur le paiement unique.</p>
+              </div>
+            </div>
+
+            <div class="duo">
+              <div class="champ">
+                <label for="o-remise-type">Type de remise</label>
+                <select id="o-remise-type" name="remise_type">
+                  <option value="pourcent" selected={offre.remise_type === 'pourcent'}>Pourcentage — sur les trois rythmes</option>
+                  <option value="fixe" selected={offre.remise_type === 'fixe'}>Montant fixe — sur le paiement unique</option>
+                </select>
+              </div>
+              <div class="champ">
+                <label for="o-remise">Remise</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-remise"
+                    type="text"
+                    name="remise_valeur"
+                    value={offre.remise_type === 'fixe' ? depuisCents(offre.remise_valeur) : depuisPoints(offre.remise_valeur)}
+                    inputmode="decimal"
+                  />
+                  <span class="tarif__unite">{offre.remise_type === 'fixe' ? '€' : '%'}</span>
+                </span>
+              </div>
+              <div class="champ">
+                <label for="o-tva">Taux de TVA</label>
+                <span class="tarif__saisie">
+                  <input id="o-tva" type="text" name="tva_taux" value={depuisPoints(offre.tva_taux)} inputmode="decimal" />
+                  <span class="tarif__unite">%</span>
+                </span>
+              </div>
+              <div class="champ">
+                <label class="case case--seule">
+                  <input type="checkbox" name="tva_exoneree" value="1" checked={offre.tva_exoneree} />
+                  <span>
+                    <strong>Exonéré — autoliquidation</strong>
+                    <span class="champ__aide">La TVA tombe à zéro sur les trois rythmes.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="champ" style="grid-column:1/-1">
+                <label for="o-mention">Mention d'exonération</label>
+                <textarea id="o-mention" name="tva_mention" rows="2" placeholder={vigueur?.mention_autoliquidation}>{offre.tva_mention || ''}</textarea>
+                <span class="champ__aide">Vide : celle des tarifs est utilisée.</span>
+              </div>
+              <div class="champ">
+                <label for="o-valide">Valable jusqu'au</label>
+                <input id="o-valide" type="date" name="valide_jusqu_au" value={pourChamp(offre.valide_jusqu_au)} />
+              </div>
+              <div class="champ">
+                <label for="o-langue">Langue</label>
+                <select id="o-langue" name="langue">
+                  <option value="fr" selected={offre.langue === 'fr'}>Français</option>
+                  <option value="nl" selected={offre.langue === 'nl'}>Nederlands</option>
+                  <option value="en" selected={offre.langue === 'en'}>English</option>
+                </select>
+              </div>
+              <div class="champ" style="grid-column:1/-1">
+                <label for="o-portee">Périmètre et notes</label>
+                <textarea id="o-portee" name="portee" rows="4" placeholder="Ce qui est compris, ce qui ne l'est pas.">{offre.portee || ''}</textarea>
+              </div>
+              <div class="champ" style="grid-column:1/-1">
+                <label for="o-delai">Délai annoncé</label>
+                <input id="o-delai" type="text" name="delai" value={offre.delai || ''} placeholder="Mise en service sous six semaines" />
+              </div>
+            </div>
+          </section>
+        </fieldset>
+
+        {!figee && (
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer et recalculer</button>
+          </div>
+        )}
+      </form>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le dossier</h2>
+            <p>Où en est cette offre, et quoi en faire.</p>
+          </div>
+        </div>
+        <div class="actions">
+          {STATUTS_OFFRE.filter((s) => s !== offre.statut).map((s) => (
+            <form method="post">
+              <input type="hidden" name="action" value="statut" />
+              <input type="hidden" name="statut" value={s} />
+              <button class="bouton bouton--sobre bouton--sm" type="submit">Marquer {s}</button>
+            </form>
+          ))}
+          <form method="post">
+            <input type="hidden" name="action" value="version" />
+            <button class="bouton bouton--sobre bouton--sm" type="submit">
+              <Icone nom="plus" taille={14} /> Nouvelle version
+            </button>
+          </form>
+          {!figee && (
+            <form method="post" onsubmit="return confirm('Supprimer ce brouillon ?')">
+              <input type="hidden" name="action" value="suppression" />
+              <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer le brouillon</button>
+            </form>
+          )}
+        </div>
+        <div class="bloc__pied">
+          Une nouvelle version repart des <strong>tarifs d'aujourd'hui</strong> : rouvrir une
+          offre de l'an dernier pour la renégocier au prix de l'an dernier n'aurait pas de sens.
+        </div>
+      </section>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  /* Un `fieldset` sert uniquement à désactiver tout le formulaire d'un coup
+     quand l'offre est figée ; il ne doit rien dessiner. */
+  .nu { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
+  .nu:disabled { opacity: 0.75; }
+
+  .cases { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); }
+  .case, .formule {
+    display: flex; align-items: start; gap: 10px;
+    padding: 10px 12px; min-block-size: 44px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+    cursor: pointer; transition: var(--transition-control);
+  }
+  .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
+  .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
+  .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+  .case__prix { font-size: var(--text-sm); color: var(--slate-600); }
+  .case--seule { inline-size: 100%; }
+
+  .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
+
+  .vues { margin-block-start: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .vues__tete { display: flex; flex-direction: column; gap: 2px; }
+  .vue { display: flex; align-items: center; gap: 8px; }
+  .vue .tarif__saisie { flex: none; inline-size: 6rem; }
+  .vue input[name='vue_note'] { flex: 1; min-inline-size: 0; }
+  .vue__montant {
+    flex: none; inline-size: 9rem; text-align: end;
+    font-size: var(--text-sm); color: var(--slate-600);
+  }
+
+  @media (max-width: 640px) {
+    /* Au téléphone, les trois colonnes d'une vue ne tiennent pas : le montant
+       passe sous la description plutôt que d'écraser les deux champs. */
+    .vue { flex-wrap: wrap; }
+    .vue__montant { inline-size: auto; margin-inline-start: auto; }
+  }
+</style>

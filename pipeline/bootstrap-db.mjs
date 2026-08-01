@@ -269,6 +269,16 @@ function modele(pg) {
         // La formation se vend au jour, à part des prestations d'onboarding :
         // c'est le seul poste dont la quantité se négocie en fin d'entretien.
         ['jours_formation', 'INT DEFAULT 0'],
+        // La configuration choisie, dont les lignes de devis sont calculées.
+        //
+        // Les prestations y sont recopiées **avec leur prix du jour** — même
+        // règle que les tarifs : une remise de catalogue le mois prochain ne
+        // doit pas changer le montant d'une offre déjà faite. Les vues y
+        // restent même quand l'option est l'achat ferme, où elles ne
+        // produisent pas de ligne : basculer d'une formule à l'autre ne doit
+        // pas faire perdre au commercial ce qu'il vient de saisir.
+        ['prestations', t.objet],
+        ['vues', t.objet],
         // Les tarifs sont RECOPIÉS ici à la création. Une offre envoyée à
         // 1 000 € la vue ne doit pas changer de montant parce qu'un admin a
         // modifié le paramètre le lendemain.

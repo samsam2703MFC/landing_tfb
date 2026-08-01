@@ -76,7 +76,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/pages/index.astro
 │   ├── src/pages/onboarding.astro
 │   ├── src/pages/modules/[slug].astro
-│   ├── src/pages/admin/          # la console : modules, captures, textes, traductions, tarifs
+│   ├── src/pages/admin/          # la console : modules, textes, traductions, tarifs, offres
 │   ├── tests/                    # node:test — aucune dépendance (npm test)
 │   └── Dockerfile
 ├── deploy/
@@ -329,11 +329,48 @@ droite, entité par entité).
 Deux écrans de plus servent l'onboarding commercial : **Tarifs** (prix par
 vue, multiplicateur d'achat, maintenance annuelle, journée de formation, TVA
 par défaut, mentions et gabarit de courriel) et **Prestations** (le catalogue
-des modules d'onboarding vendables). Un dernier, **Comptes**, gère qui entre
-et avec quel rôle.
+des modules d'onboarding vendables), **Offres** (la liste, les filtres, la
+fiche où l'on configure et lit le chiffrage) et **Comptes** (qui entre, avec
+quel rôle).
 
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.
+
+#### L'onboarding commercial
+
+Un commercial crée un client, configure ce qu'il achète, et sort une offre
+chiffrée. Trois principes tiennent tout le reste :
+
+**Trois rythmes, pas deux.** Le prix par vue est **mensuel** : l'option
+« location » est donc entièrement récurrente. La mettre dans la même colonne
+que les 120 000 € payés une fois de l'achat ferme serait la façon exacte de
+vendre à perte. Le récapitulatif tient `une fois`, `par mois` et `par an`
+côte à côte, chacun avec son sous-total, sa remise, sa TVA et son TTC.
+
+**Une offre garde une copie des tarifs de sa date.** Prix par vue,
+multiplicateur, maintenance, journée de formation et prix des prestations
+sont recopiés sur la ligne à la création. Modifier la grille ne change donc
+aucune offre existante. Une **nouvelle version**, elle, repart des tarifs
+d'aujourd'hui : rouvrir une offre de l'an dernier pour la renégocier au prix
+de l'an dernier n'aurait pas de sens.
+
+**Une offre envoyée ne se modifie plus.** Le formulaire passe en lecture
+seule ; le seul geste possible est d'en faire une nouvelle version. Sans
+cette règle, le document dans la boîte du client et celui en base finiraient
+par dire deux prix différents — et c'est nous qui aurions tort. Les
+coordonnées du client, en revanche, restent corrigeables : un numéro de TVA
+faux reste faux quel que soit le statut de l'offre.
+
+Tous les montants sont des **entiers en centimes**, tous les taux des
+**centièmes de point** (21 % = 2100). La conversion depuis ce qu'un humain
+tape — « 1 000,50 », l'espace insécable collé depuis un tableur, le symbole —
+vit dans `lib/offres/montants.mjs`, seule et testée. Un taux au-delà de 100
+est refusé : c'est toujours une saisie en points là où on attendait des
+pourcents, et le laisser passer facturerait 2 100 % de TVA.
+
+Le récapitulatif se recalcule par **aller-retour serveur** (POST → 303 → GET)
+et non dans le navigateur. Recopier la formule en JavaScript pour gagner cent
+millisecondes reviendrait à pouvoir afficher un prix et en facturer un autre.
 
 #### Les comptes et les rôles
 

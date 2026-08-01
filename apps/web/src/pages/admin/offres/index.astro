@@ -1,0 +1,175 @@
+---
+/**
+ * La liste des offres.
+ *
+ * Une ligne par référence, à sa dernière version : les précédentes se lisent
+ * depuis la fiche. Afficher toutes les versions ferait apparaître trois fois
+ * le même client pour une seule négociation.
+ *
+ * Les filtres passent par l'URL, sans JavaScript — un filtre se copie, se
+ * met en favori et survit à un rechargement.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import {
+  STATUTS_OFFRE,
+  calculerTotauxOffre,
+  compteurs,
+  listerOffres,
+  listerUtilisateurs,
+} from '../../../lib/admin/donnees.mjs';
+import { formater } from '../../../lib/offres/calcul.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+const filtres = {
+  prospect: Astro.url.searchParams.get('client') || '',
+  statut: Astro.url.searchParams.get('statut') || '',
+  auteur: Astro.url.searchParams.get('auteur') || '',
+};
+
+let offres = [];
+let commerciaux = [];
+let chiffres = {};
+try {
+  offres = await listerOffres(filtres);
+  commerciaux = await listerUtilisateurs();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const actifs = Object.values(filtres).filter(Boolean).length;
+
+const ETAT_STATUT = {
+  brouillon: 'etat',
+  envoyee: 'etat etat--on',
+  acceptee: 'etat etat--on',
+  refusee: 'etat etat--manque',
+  expiree: 'etat etat--manque',
+};
+
+/** Le lien de la liste avec un filtre changé. */
+function vers(modif) {
+  const p = new URLSearchParams();
+  const suivant = { ...filtres, ...modif };
+  if (suivant.prospect) p.set('client', suivant.prospect);
+  if (suivant.statut) p.set('statut', suivant.statut);
+  if (suivant.auteur) p.set('auteur', suivant.auteur);
+  const q = p.toString();
+  return `${BASE}/admin/offres${q ? `?${q}` : ''}`;
+}
+
+const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') : '—');
+---
+
+<Console
+  titre="Offres"
+  fil="TFB Admin · Commercial · Offres"
+  actif="offres"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <a slot="actions" class="bouton bouton--marque" href={`${BASE}/admin/offres/nouvelle`}>
+    <Icone nom="plus" taille={16} /> Nouvelle offre
+  </a>
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Filtrer</h2>
+        <p>{offres.length} offre(s){actifs > 0 && <> — {actifs} filtre(s) actif(s)</>}.</p>
+      </div>
+      {actifs > 0 && <a class="bouton bouton--sobre bouton--sm" href={vers({ prospect: '', statut: '', auteur: '' })}>Tout afficher</a>}
+    </div>
+
+    <form method="get" class="filtres">
+      <div class="champ">
+        <label for="f-client">Client</label>
+        <input id="f-client" type="search" name="client" value={filtres.prospect} placeholder="Raison sociale" />
+      </div>
+      <div class="champ">
+        <label for="f-statut">Statut</label>
+        <select id="f-statut" name="statut">
+          <option value="">Tous</option>
+          {STATUTS_OFFRE.map((s) => <option value={s} selected={filtres.statut === s}>{s}</option>)}
+        </select>
+      </div>
+      <div class="champ">
+        <label for="f-auteur">Commercial</label>
+        <select id="f-auteur" name="auteur">
+          <option value="">Tous</option>
+          {commerciaux.map((c) => (
+            <option value={c.id} selected={String(filtres.auteur) === String(c.id)}>{c.nom || c.identifiant}</option>
+          ))}
+        </select>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--sobre" type="submit">Filtrer</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="bloc">
+    {offres.length === 0 ? (
+      <div class="bloc__pied">
+        {actifs > 0
+          ? 'Aucune offre ne correspond à ces filtres.'
+          : "Aucune offre. La première se crée depuis le bouton en haut, ou depuis une demande de démonstration reçue par le site."}
+      </div>
+    ) : (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th style="inline-size:10rem">Référence</th>
+              <th>Client</th>
+              <th style="inline-size:7rem">Statut</th>
+              <th style="inline-size:9rem">Commercial</th>
+              <th style="inline-size:7rem">Valable au</th>
+              <th class="nombre" style="inline-size:8rem">Une fois</th>
+              <th class="nombre" style="inline-size:7rem">Par mois</th>
+              <th class="nombre" style="inline-size:7rem">Par an</th>
+            </tr>
+          </thead>
+          <tbody>
+            {offres.map((o) => {
+              const t = calculerTotauxOffre(o);
+              return (
+                <tr>
+                  <td>
+                    <a href={`${BASE}/admin/offres/${o.reference}`}><strong>{o.reference}</strong></a>
+                    {o.version > 1 && <code class="slug">version {o.version}</code>}
+                  </td>
+                  <td>
+                    {o.raison_sociale || '—'}
+                    {o.contact_nom && <code class="slug">{o.contact_nom}</code>}
+                  </td>
+                  <td><span class={ETAT_STATUT[o.statut]}>{o.statut}</span></td>
+                  <td class="champ__aide">{o.auteur_nom || '—'}</td>
+                  <td class="fb-num champ__aide">{jour(o.valide_jusqu_au)}</td>
+                  <td class="nombre fb-num">{t.seaux.unique.ttc > 0 ? formater(t.seaux.unique.ttc, o.langue, o.devise) : '—'}</td>
+                  <td class="nombre fb-num">{t.seaux.mensuel.ttc > 0 ? formater(t.seaux.mensuel.ttc, o.langue, o.devise) : '—'}</td>
+                  <td class="nombre fb-num">{t.seaux.annuel.ttc > 0 ? formater(t.seaux.annuel.ttc, o.langue, o.devise) : '—'}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="bloc__pied">
+      Montants TTC. Une seule ligne par référence, à sa dernière version — les précédentes
+      se lisent depuis la fiche.
+    </div>
+  </section>
+</Console>
+
+<style is:global>
+  .filtres { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); align-items: end; }
+  .filtres .actions { margin: 0; }
+</style>

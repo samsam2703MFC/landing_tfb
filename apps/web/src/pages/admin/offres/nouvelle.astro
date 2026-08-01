@@ -1,0 +1,199 @@
+---
+/**
+ * Première étape : à qui on vend.
+ *
+ * Le reste de l'assistant se passe sur la fiche de l'offre, où le
+ * récapitulatif se recalcule à chaque enregistrement. Séparer cette étape
+ * évite de fabriquer une offre orpheline si le commercial abandonne au
+ * premier écran.
+ *
+ * Une demande de démonstration reçue par le site peut servir de point de
+ * départ : le nom, le réseau et le courriel sont déjà là, autant ne pas les
+ * retaper.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import {
+  CHAMPS_PROSPECT,
+  ajouterProspect,
+  compteurs,
+  creerOffre,
+  listerLeads,
+  listerProspects,
+} from '../../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const session = Astro.locals.session || {};
+    let prospectId = Number(f.get('prospect_id')) || 0;
+
+    if (!prospectId) {
+      const valeurs = Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)]));
+      valeurs.lead_id = f.get('lead_id');
+      prospectId = await ajouterProspect(valeurs, session.id);
+    }
+
+    const { reference } = await creerOffre({
+      prospectId,
+      auteurId: session.id,
+      langue: String(f.get('langue') || 'fr'),
+    });
+    return Astro.redirect(`${BASE}/admin/offres/${reference}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospects = [];
+let leads = [];
+let chiffres = {};
+try {
+  prospects = await listerProspects();
+  leads = (await listerLeads()).filter((l) => !l.traite);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+// Une demande de démo peut préremplir le formulaire.
+const depuisLead = leads.find((l) => String(l.id) === Astro.url.searchParams.get('lead')) || null;
+const prerempli = depuisLead
+  ? {
+      raison_sociale: depuisLead.reseau || '',
+      contact_nom: depuisLead.nom || '',
+      contact_email: depuisLead.email || '',
+    }
+  : {};
+---
+
+<Console
+  titre="Nouvelle offre"
+  fil="TFB Admin · Commercial · Nouvelle offre"
+  actif="offres"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospects.length > 0 && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Un client déjà connu</h2>
+          <p>Une nouvelle offre pour un prospect existant, sans ressaisir ses coordonnées.</p>
+        </div>
+      </div>
+      <form method="post" class="duo">
+        <div class="champ">
+          <label for="p-existant">Prospect</label>
+          <select id="p-existant" name="prospect_id" required>
+            <option value="">Choisir…</option>
+            {prospects.map((p) => (
+              <option value={p.id}>{p.raison_sociale} — {p.contact_nom}</option>
+            ))}
+          </select>
+        </div>
+        <div class="champ">
+          <label for="p-langue-1">Langue de l'offre</label>
+          <select id="p-langue-1" name="langue">
+            <option value="fr">Français</option>
+            <option value="nl">Nederlands</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div class="actions" style="grid-column:1/-1">
+          <button class="bouton bouton--marque" type="submit">
+            Créer l'offre <Icone nom="arrow-right" taille={16} />
+          </button>
+        </div>
+      </form>
+    </section>
+  )}
+
+  {leads.length > 0 && !depuisLead && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Depuis une demande reçue</h2>
+          <p>{leads.length} demande(s) de démonstration en attente. Le formulaire se remplit tout seul.</p>
+        </div>
+      </div>
+      <div class="roule">
+        <table>
+          <tbody>
+            {leads.slice(0, 8).map((l) => (
+              <tr>
+                <td><strong>{l.nom}</strong><code class="slug">{l.email}</code></td>
+                <td>{l.reseau}</td>
+                <td style="inline-size:10rem">
+                  <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/offres/nouvelle?lead=${l.id}`}>
+                    Partir de là
+                  </a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Un nouveau client</h2>
+        <p>
+          {depuisLead
+            ? `Repris de la demande de ${depuisLead.nom}. Complétez ce qui manque.`
+            : 'Les coordonnées qui figureront sur l’offre.'}
+        </p>
+      </div>
+    </div>
+
+    <form method="post">
+      {depuisLead && <input type="hidden" name="lead_id" value={depuisLead.id} />}
+      <div class="duo">
+        {CHAMPS_PROSPECT.map((c) => (
+          <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
+            <label for={`c-${c.nom}`}>
+              {c.libelle}{c.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
+            </label>
+            {c.zone ? (
+              <textarea id={`c-${c.nom}`} name={c.nom} rows="2">{prerempli[c.nom] || ''}</textarea>
+            ) : (
+              <input
+                id={`c-${c.nom}`}
+                type={c.type || 'text'}
+                name={c.nom}
+                value={prerempli[c.nom] || ''}
+                required={c.requis}
+                maxlength={c.taille}
+                placeholder={c.exemple}
+              />
+            )}
+          </div>
+        ))}
+        <div class="champ">
+          <label for="p-langue-2">Langue de l'offre</label>
+          <select id="p-langue-2" name="langue">
+            <option value="fr">Français</option>
+            <option value="nl">Nederlands</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          Créer le client et l'offre <Icone nom="arrow-right" taille={16} />
+        </button>
+      </div>
+    </form>
+  </section>
+</Console>
+
+<style is:global>
+  .champ__requis { color: var(--plum-600); }
+</style>

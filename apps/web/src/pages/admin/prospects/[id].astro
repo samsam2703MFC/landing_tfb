@@ -1,0 +1,134 @@
+---
+/**
+ * Les coordonnées d'un client démarché.
+ *
+ * Elles sont partagées par toutes ses offres — corriger une faute de frappe
+ * sur le numéro de TVA les corrige toutes, y compris celles déjà envoyées.
+ * C'est voulu : un numéro de TVA faux reste faux, quel que soit le statut de
+ * l'offre, et le client s'en apercevra à la facturation.
+ *
+ * Les montants, eux, ne bougent jamais après l'envoi — ce sont deux choses
+ * différentes, et la page le dit.
+ */
+import Console from '../../../components/Console.astro';
+import {
+  CHAMPS_PROSPECT,
+  chargerProspect,
+  compteurs,
+  enregistrerProspect,
+  listerOffres,
+} from '../../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { id } = Astro.params;
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
+    return Astro.redirect(
+      `${BASE}/admin/prospects/${id}?ok=${encodeURIComponent('Coordonnées enregistrées.')}`,
+      303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let offres = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) offres = (await listerOffres()).filter((o) => o.prospect_id === prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Commercial · ${prospect?.raison_sociale || 'Client'}`}
+  actif="offres"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Coordonnées</h2>
+            <p>
+              Partagées par les {offres.length} offre(s) de ce client, envoyées comprises.
+              Les montants d'une offre envoyée, eux, ne changent pas.
+            </p>
+          </div>
+        </div>
+
+        <form method="post">
+          <div class="duo">
+            {CHAMPS_PROSPECT.map((c) => (
+              <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
+                <label for={`p-${c.nom}`}>
+                  {c.libelle}{c.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
+                </label>
+                {c.zone ? (
+                  <textarea id={`p-${c.nom}`} name={c.nom} rows="2">{prospect[c.nom] || ''}</textarea>
+                ) : (
+                  <input
+                    id={`p-${c.nom}`}
+                    type={c.type || 'text'}
+                    name={c.nom}
+                    value={prospect[c.nom] || ''}
+                    required={c.requis}
+                    maxlength={c.taille}
+                    placeholder={c.exemple}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Ses offres</h2>
+            <p>Dernière version de chaque référence.</p>
+          </div>
+          <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/offres/nouvelle`}>Nouvelle offre</a>
+        </div>
+
+        {offres.length === 0 ? (
+          <div class="bloc__pied">Aucune offre pour ce client.</div>
+        ) : (
+          <div class="roule">
+            <table>
+              <tbody>
+                {offres.map((o) => (
+                  <tr>
+                    <td><a href={`${BASE}/admin/offres/${o.reference}`}><strong>{o.reference}</strong></a></td>
+                    <td>version {o.version}</td>
+                    <td><span class="etat">{o.statut}</span></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  )}
+</Console>
