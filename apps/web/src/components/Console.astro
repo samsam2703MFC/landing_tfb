@@ -169,6 +169,9 @@ const RUBRIQUES = [
       .tuile--encre .tuile__oeil { color: rgba(255, 255, 255, 0.68); }
       .tuile__chiffre { font: 600 var(--text-3xl) / 1.05 var(--font-display); letter-spacing: var(--tracking-display); }
       .tuile__note { font: 400 var(--text-sm) / 1.5 var(--font-sans); color: var(--slate-600); }
+      /* Le tableau de bord liste les modules à relire : ces liens sont le
+         chemin vers le travail à faire, pas de la prose. 15 px se rate. */
+      .tuile__note a { display: inline-flex; align-items: center; min-block-size: 24px; }
       .tuile--encre .tuile__note { color: rgba(255, 255, 255, 0.68); }
 
       /* ── Blocs ─────────────────────────────────────────────────────────── */
@@ -195,6 +198,13 @@ const RUBRIQUES = [
       /* ── Tables ────────────────────────────────────────────────────────── */
       .roule { overflow-x: auto; }
       table { inline-size: 100%; border-collapse: collapse; }
+      /* Sur téléphone, une table à sept colonnes en `table-layout: fixed`
+         écrase la colonne Module à 15 px et empile ses lettres à la verticale.
+         On lui donne une largeur plancher : `.roule` la fait défiler, ce pour
+         quoi il existe. */
+      @media (max-width: 820px) {
+        .roule table { min-inline-size: 720px; }
+      }
       th {
         text-align: start;
         font: 600 var(--text-xs) / 1 var(--font-sans);

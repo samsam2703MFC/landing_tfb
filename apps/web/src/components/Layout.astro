@@ -223,6 +223,11 @@ const NAV = [
       .pied__nom { font: 700 var(--text-base) / 1.05 var(--font-display); }
       .pied__nav { margin-inline-start: auto; display: flex; gap: 20px; flex-wrap: wrap; }
       .pied a { color: rgba(255, 255, 255, 0.68); text-decoration: none; font: 400 var(--text-sm) / 1.4 var(--font-sans); }
+      /* Ce sont des liens de navigation empilés, pas des liens dans une
+         phrase : 18 px de haut se rate au pouce, et c'est le seul chemin vers
+         les fiches depuis le bas de page. */
+      .pied__nav a { display: inline-flex; align-items: center; min-block-size: 24px; }
+      .entete-modules__lien { min-block-size: 24px; display: inline-flex; align-items: center; }
       .pied a:hover { color: #fff; text-decoration: none; }
       .pied__bas {
         display: flex; align-items: center; gap: 16px; flex-wrap: wrap;

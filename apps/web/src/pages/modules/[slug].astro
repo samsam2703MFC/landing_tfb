@@ -11,6 +11,7 @@ import { marked } from 'marked';
 import Layout from '../../components/Layout.astro';
 import CarrouselModules from '../../components/CarrouselModules.astro';
 import Icone from '../../components/Icone.astro';
+import Maquette from '../../components/Maquette.astro';
 import Pastille from '../../components/Pastille.astro';
 import { chargerModule, chargerModules } from '../../lib/db.mjs';
 import { leviersDe } from '../../lib/leviers.mjs';
@@ -115,6 +116,18 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
       </div>
     </div>
   </section>
+
+  <!-- ── L'écran, dessiné ────────────────────────────────────────────── -->
+  {fonctions.length > 0 && (
+    <section class="bande bande--serree">
+      <div class="dedans centre">
+        <span class="oeil">{t('module.maquette')}</span>
+        <div class="maquette-cadre">
+          <Maquette module={module} entrees={fonctions} t={t} />
+        </div>
+      </div>
+    </section>
+  )}
 
   <!-- ── Les écrans ──────────────────────────────────────────────────── -->
   {captures.length > 0 && (
@@ -240,7 +253,12 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
     font: 400 var(--text-sm) / 1.3 var(--font-sans); color: rgba(255, 255, 255, 0.68);
     margin-block-end: 16px;
   }
-  .miette a { color: rgba(255, 255, 255, 0.68); text-decoration: none; }
+  /* Le fil d'Ariane est le retour au catalogue : il lui faut une cible qu'on
+     atteigne au pouce, pas 17 px de haut. */
+  .miette a {
+    display: inline-flex; align-items: center; min-block-size: 24px;
+    color: rgba(255, 255, 255, 0.68); text-decoration: none;
+  }
   .miette a:hover { color: #fff; }
   .miette > span:last-child { color: #fff; }
   .fiche-tete__ligne { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
@@ -275,6 +293,11 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
   .icone-flux--entre { color: var(--teal-700); }
   .colonne__vide { color: var(--slate-400); font-weight: 400; cursor: default; }
   .colonne__note { margin: 4px 0 0; font: 400 12.5px/1.5 var(--font-sans); color: var(--slate-400); }
+
+  /* ── L'écran dessiné ───────────────────────────────────────────────── */
+  /* Même largeur que le défilé de captures : la maquette et la photo se
+     lisent comme deux vues du même produit, pas comme deux blocs différents. */
+  .maquette-cadre { inline-size: min(660px, 100%); }
 
   /* ── Défilé de captures ────────────────────────────────────────────── */
   .centre { display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -329,6 +352,9 @@ const icone = module.icone || fonctions[0]?.icone || 'layers';
     margin: 0 0 3px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
     font: 600 14.5px/1.35 var(--font-sans);
   }
+  /* Les liens vers un autre module, ici et dans la colonne « Échange avec » :
+     ce sont des cibles de navigation, pas des mots dans une phrase. */
+  .entrees__nom a, .puces a { display: inline-flex; align-items: center; min-block-size: 24px; }
   .entrees__gain {
     margin: 4px 0 0;
     font: 500 12.5px/1.5 var(--font-sans); color: var(--teal-700);

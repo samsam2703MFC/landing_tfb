@@ -53,7 +53,7 @@ export const TRADUCTIONS = {
     'accueil.ecrans.oeil': 'On screen',
     'accueil.ecrans.titre': 'The product as it actually runs',
     'accueil.ecrans.chapo':
-      'Screenshots of the applications in service, taken straight from the repositories. No mock-ups.',
+      'Screenshots of the applications in service, taken straight from the repositories. Customer data in them is anonymised.',
     'accueil.clients.oeil': 'Networks working with TFB',
     'accueil.contact.chapo':
       'One hour, on your real cases: your stores, your catalogue, your rounds. We get back to you within one working day.',
@@ -91,6 +91,7 @@ export const TRADUCTIONS = {
     'module.liens': 'Exchanges with',
     'module.vide': 'Not documented.',
     'module.sans_lien': 'No exchange declared.',
+    'module.maquette': 'The screen',
     'module.ecrans': 'The screens',
     'module.ecrans.note': 'scroll sideways',
     'module.menu': 'The menu',
@@ -143,7 +144,7 @@ export const TRADUCTIONS = {
     'accueil.ecrans.oeil': 'A schermo',
     'accueil.ecrans.titre': 'Il prodotto così com’è in funzione',
     'accueil.ecrans.chapo':
-      'Schermate delle applicazioni in servizio, riprese direttamente dai repository. Nessun mock-up.',
+      'Schermate delle applicazioni in servizio, riprese direttamente dai repository. I dati dei clienti sono anonimizzati.',
     'accueil.clients.oeil': 'Reti che lavorano con TFB',
     'accueil.contact.chapo':
       'Un’ora, sui vostri casi reali: i vostri punti vendita, il vostro catalogo, i vostri giri. Vi rispondiamo entro un giorno lavorativo.',
@@ -181,6 +182,7 @@ export const TRADUCTIONS = {
     'module.liens': 'Scambia con',
     'module.vide': 'Non documentato.',
     'module.sans_lien': 'Nessuno scambio dichiarato.',
+    'module.maquette': 'La schermata',
     'module.ecrans': 'Le schermate',
     'module.ecrans.note': 'scorrete lateralmente',
     'module.menu': 'Il menu',

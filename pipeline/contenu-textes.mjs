@@ -54,7 +54,7 @@ export const TEXTES = [
 
   { cle: 'accueil.ecrans.oeil', section: 'Accueil', valeur: 'À l’écran' },
   { cle: 'accueil.ecrans.titre', section: 'Accueil', valeur: 'Le produit tel qu’il tourne' },
-  { cle: 'accueil.ecrans.chapo', section: 'Accueil', valeur: 'Des copies d’écran des applications en service, reprises directement dans les dépôts. Pas de maquette.' },
+  { cle: 'accueil.ecrans.chapo', section: 'Accueil', valeur: 'Des copies d’écran des applications en service, reprises directement dans les dépôts. Les données des clients y sont anonymisées.' },
 
   { cle: 'accueil.clients.oeil', section: 'Accueil', valeur: 'Des réseaux qui travaillent avec TFB', aide: 'Ne s’affiche que si des réseaux sont saisis dans l’écran Clients.' },
 
@@ -93,6 +93,7 @@ export const TEXTES = [
   { cle: 'module.liens', section: 'Fiche module', valeur: 'Échange avec' },
   { cle: 'module.vide', section: 'Fiche module', valeur: 'Non renseigné.' },
   { cle: 'module.sans_lien', section: 'Fiche module', valeur: 'Aucun échange déclaré.' },
+  { cle: 'module.maquette', section: 'Fiche module', valeur: "L'écran", aide: 'Titre de la maquette dessinée, au-dessus des captures.' },
   { cle: 'module.ecrans', section: 'Fiche module', valeur: 'Les écrans' },
   { cle: 'module.ecrans.note', section: 'Fiche module', valeur: 'faites défiler horizontalement' },
   { cle: 'module.menu', section: 'Fiche module', valeur: 'Le menu' },
