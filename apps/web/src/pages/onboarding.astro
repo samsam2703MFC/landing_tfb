@@ -195,7 +195,8 @@ function capturesDe(module) {
   .etroit { max-width: 880px; }
 
   /* ── Questionnaire ─────────────────────────────────────────────────── */
-  .questions { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 10px; }
+  /* Voir index.astro : un minimum en dur déborde sous 380 px. */
+  .questions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr)); gap: 10px; }
   .question__case { position: absolute; opacity: 0; inline-size: 1px; block-size: 1px; }
   .question__cadre {
     display: flex; gap: 12px; align-items: flex-start;
