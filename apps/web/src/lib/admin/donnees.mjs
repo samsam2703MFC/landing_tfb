@@ -13,6 +13,7 @@ import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
 import { enCents, lireTarif, saisirTarif } from '../offres/montants.mjs';
 import { calculerOffre, lignesDe } from '../offres/calcul.mjs';
 import { ROLES, empreinteValide, hacher } from './session.mjs';
+import { lireImage } from './images.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
 function vrai(valeur) {
@@ -447,22 +448,83 @@ export async function supprimerLead(id) {
 }
 
 /** Les réseaux du bandeau, publiés ou non. */
+/**
+ * Les réseaux du bandeau.
+ *
+ * Le logo lui-même n'est pas chargé : une liste de dix clients tirerait dix
+ * fois quelques dizaines de kilo-octets de base64 pour n'afficher qu'une
+ * vignette servie par ailleurs. On ne rapporte que son type, qui suffit à
+ * savoir s'il y en a un.
+ */
 export async function listerClients() {
   const db = await connexion();
-  const lignes = await db.requete(`SELECT * FROM ${table('clients')} ORDER BY ordre, nom`);
+  const lignes = await db.requete(
+    `SELECT id, nom, note, actif, ordre, logo_type FROM ${table('clients')} ORDER BY ordre, nom`,
+  );
   return lignes.map((c) => ({ ...c, actif: Boolean(c.actif) }));
+}
+
+/** Le logo d'un réseau, décodé — pour le seul point qui le sert. */
+export async function chargerLogoClient(id) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT logo, logo_type FROM ${table('clients')} WHERE id = ? LIMIT 1`,
+    [Number(id)],
+  );
+  const ligne = lignes[0];
+  if (!ligne?.logo || !ligne.logo_type) return null;
+  return { octets: Buffer.from(ligne.logo, 'base64'), type: ligne.logo_type };
+}
+
+/**
+ * Remplace le logo d'un réseau. Un fichier absent ne change rien — c'est ce
+ * qui permet d'enregistrer le nom d'une ligne sans avoir à redéposer l'image.
+ */
+export async function enregistrerLogoClient(id, fichier) {
+  const image = await lireImage(fichier);
+  if (!image) return false;
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('clients')} SET logo = ?, logo_type = ? WHERE id = ?`,
+    [image.base64, image.type, Number(id)],
+  );
+  viderCache();
+  return true;
+}
+
+export async function supprimerLogoClient(id) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('clients')} SET logo = NULL, logo_type = NULL WHERE id = ?`,
+    [Number(id)],
+  );
+  viderCache();
 }
 
 /** Ajoute un réseau au bandeau. */
 export async function ajouterClient(valeurs) {
   const nom = String(valeurs.nom || '').trim();
   if (!nom) throw new Error('Le nom du réseau est obligatoire.');
+  // Le logo est relu **avant** la moindre écriture : un fichier refusé ne doit
+  // pas laisser derrière lui un réseau à demi créé, que personne ne pense à
+  // aller supprimer.
+  const image = await lireImage(valeurs.logo);
+
   const db = await connexion();
-  await db.executer(
-    `INSERT INTO ${table('clients')} (nom, note, actif, ordre) VALUES (?, ?, ?, ?)`,
-    [nom.slice(0, 160), String(valeurs.note || '').trim().slice(0, 255) || null, vrai(true), Number(valeurs.ordre) || 100],
+  const id = await insererEtRendreId(
+    db,
+    `INSERT INTO ${table('clients')} (nom, note, logo, logo_type, actif, ordre) VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      nom.slice(0, 160),
+      String(valeurs.note || '').trim().slice(0, 255) || null,
+      image?.base64 || null,
+      image?.type || null,
+      vrai(true),
+      Number(valeurs.ordre) || 100,
+    ],
   );
   viderCache();
+  return { id, avecLogo: Boolean(image) };
 }
 
 /** Enregistre un réseau existant. */

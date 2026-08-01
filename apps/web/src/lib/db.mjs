@@ -337,8 +337,15 @@ export async function chargerTextes(langue = null) {
 
 /** Les réseaux affichés sur la landing. Vide, le bandeau ne s'affiche pas. */
 export async function chargerClients() {
+  // Sans la colonne `logo` : le bandeau affiche une image servie par
+  // `/logos/<id>`, il n'a pas besoin de quelques dizaines de kilo-octets de
+  // base64 par réseau à chaque rendu de la page d'accueil.
   return (
-    (await lire('clients', `SELECT * FROM ${table('clients')} WHERE actif = ? ORDER BY ordre, nom`, [VRAI()])) || []
+    (await lire(
+      'clients',
+      `SELECT id, nom, note, actif, ordre, logo_type FROM ${table('clients')} WHERE actif = ? ORDER BY ordre, nom`,
+      [VRAI()],
+    )) || []
   );
 }
 

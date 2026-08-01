@@ -175,6 +175,16 @@ function modele(pg) {
         ['id', t.id],
         ['nom', `${t.chaine(160)} NOT NULL`],
         ['note', t.chaine(255)],
+        // Le logo vit en base, en base64, et non dans `public/`.
+        //
+        // Le dossier `public/` est figé au build : un fichier déposé depuis la
+        // console n'y survivrait pas au déploiement suivant. Les captures s'en
+        // accommodent parce qu'elles arrivent par le pipeline, avant le build ;
+        // un logo téléversé à la main, non. Une poignée de logos de quelques
+        // dizaines de kilo-octets ne pèse rien face à la garantie qu'ils sont
+        // sauvegardés avec le reste du contenu.
+        ['logo', t.texte],
+        ['logo_type', t.chaine(40)],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['ordre', 'INT DEFAULT 100'],
       ],

@@ -116,7 +116,7 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_textes` | le discours éditorial des pages : chapeaux de section, libellés de bouton, phrases d'accompagnement — **rien n'est écrit en dur dans les gabarits** |
 | `landing_questions` | les questions de l'onboarding et les modules qu'elles déclenchent |
 | `landing_leads` | les demandes de démonstration reçues par le formulaire |
-| `landing_clients` | les réseaux affichés sur la landing — vide, le bandeau ne s'affiche pas |
+| `landing_clients` | les réseaux affichés sur la landing, logo compris (`logo` en base64, `logo_type`) — vide, le bandeau ne s'affiche pas |
 | `landing_langues` | les neuf langues prévues et leur état de publication |
 | `landing_traductions` | les surcharges de traduction : `langue`, `entite`, `ligne_id`, `champ`, `valeur`, `source` |
 | `landing_utilisateurs` | les comptes de la console : `identifiant`, `nom`, `empreinte`, `role` |

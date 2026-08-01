@@ -217,7 +217,21 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
       <div class="dedans bandeau">
         <span class="bandeau__oeil">{t('accueil.clients.oeil')}</span>
         {clients.map((c) => (
-          <span class="bandeau__nom" title={c.note || undefined}>{c.nom}</span>
+          /* Le logo quand il existe, le nom sinon. Le `alt` porte le nom :
+             un bandeau de logos sans texte alternatif ne dit rien à qui ne
+             voit pas les images, et rien non plus aux moteurs. */
+          c.logo_type ? (
+            <img
+              class="bandeau__logo"
+              src={lien(`/logos/${c.id}`)}
+              alt={c.nom}
+              height="28"
+              loading="lazy"
+              decoding="async"
+            />
+          ) : (
+            <span class="bandeau__nom" title={c.note || undefined}>{c.nom}</span>
+          )
         ))}
       </div>
     </section>
@@ -358,6 +372,18 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     border: 1px dashed var(--slate-200); border-radius: var(--radius-sm);
     font: 600 14px/1 var(--font-display); color: var(--slate-400);
   }
+  /* Les logos arrivent dans toutes les proportions. On fixe la hauteur et on
+     laisse la largeur suivre : aligner sur la largeur écraserait un logo
+     carré à côté d'un logo long. La désaturation les fait cohabiter sans que
+     l'un tire l'œil par sa couleur ; la couleur revient au survol. */
+  .bandeau__logo {
+    block-size: 28px; inline-size: auto; max-inline-size: 9rem;
+    object-fit: contain;
+    filter: grayscale(1); opacity: 0.66;
+    transition: var(--transition-control);
+  }
+  .bandeau__logo:hover { filter: none; opacity: 1; }
+  @media (prefers-reduced-motion: reduce) { .bandeau__logo { transition: none; } }
 
   /* ── Contact ───────────────────────────────────────────────────────── */
   .contact {
