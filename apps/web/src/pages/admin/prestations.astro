@@ -131,7 +131,7 @@ const intitule =
                     <input type="text" name="nom" value={p.nom} aria-label="Nom" />
                     <code class="slug">{p.cle}</code>
                   </td>
-                  <td><textarea name="description" rows="2" aria-label="Description">{p.description || ''}</textarea></td>
+                  <td><textarea name="description" rows="3" aria-label="Description">{p.description || ''}</textarea></td>
                   <td>
                     <span class="tarif__saisie">
                       <input type="text" name="prix" value={depuisCents(p.prix_cents)} inputmode="decimal" aria-label="Prix" />

@@ -263,6 +263,10 @@ const RUBRIQUES = TOUTES
       tbody tr:hover { background: var(--slate-50); }
       .num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
       .slug { display: block; font: 400 11.5px/1.5 var(--font-mono); color: var(--slate-400); }
+      /* Dans une phrase, un `.slug` en bloc coupait le texte en trois : le
+         nom sur une ligne, la clé sur une autre, et le point tout seul sur la
+         troisième. Sous un titre de cellule, le bloc reste ce qu'il faut. */
+      p .slug, .bloc__tete p .slug { display: inline; }
 
       .etat {
         display: inline-flex; align-items: center; gap: 7px;
@@ -328,6 +332,22 @@ const RUBRIQUES = TOUTES
          Dans une grille en colonnes égales, il s'étirait jusqu'à éloigner
          son unité du chiffre de toute la largeur de la colonne. */
       .champ--nombre .tarif__saisie { max-inline-size: 11rem; }
+
+      /* Un bloc pose son padding sur son en-tête, son pied et son corps, mais
+         pas sur ce qu'on dépose directement entre les deux : un champ, une
+         grille, une barre de filtres s'y collaient contre la bordure. On les
+         rentre tous d'un coup, plutôt que de citer un à un les écrans où le
+         cas se présente — le prochain formulaire ajouté sera bon d'office. */
+      .bloc > :not(.bloc__tete):not(.bloc__pied):not(.bloc__corps):not(.roule) {
+        padding-inline: 16px;
+      }
+      /* …sauf une table, qui doit aller d'une bordure à l'autre. Quand elle
+         vit dans un formulaire déjà rentré, elle en ressort. */
+      .bloc > form > .roule, .bloc > fieldset > .roule { margin-inline: -16px; }
+      /* Le dernier élément ne doit pas non plus toucher le fond du bloc. */
+      .bloc > :last-child:not(.bloc__pied):not(.roule) { padding-block-end: 16px; }
+      /* Un fieldset nu ne redouble pas le padding de ses enfants. */
+      .bloc > fieldset.nu > :not(.roule) { padding-inline: 0; }
       /* Dans une table, les actions d'une ligne tiennent sur une ligne. */
       td .actions { flex-wrap: nowrap; }
       td .actions form { margin: 0; }
@@ -336,6 +356,10 @@ const RUBRIQUES = TOUTES
       .champ { display: grid; gap: 5px; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
+      /* Quand l'aide vit dans l'étiquette, elle doit passer à la ligne :
+         « Mention en cas d'exonérationImprimée sur l'offre… » se lisait comme
+         un seul mot. */
+      label > .champ__aide { display: block; margin-block-start: 2px; }
       /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
          mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
       .champ__requis { color: var(--plum-600); }
