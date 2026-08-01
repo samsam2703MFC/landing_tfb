@@ -17,8 +17,15 @@
  *
  * Usage :
  *   node capturer-ecrans.mjs --module=consultant --base=https://serveur/pwa_consultant
- *   node capturer-ecrans.mjs --module=consultant --base=... --cookie="PHPSESSID=..."
- *   node capturer-ecrans.mjs --module=consultant --base=... --sortie=/tmp/captures
+ *
+ * Ces écrans demandent une session ouverte. Deux façons de la donner :
+ *   · laisser le script se connecter — c'est le plus simple :
+ *       CAPTURE_USER='0600000000' CAPTURE_PASS='…' node capturer-ecrans.mjs …
+ *   · ou coller une session déjà ouverte :
+ *       node capturer-ecrans.mjs … --cookie="PHPSESSID=…"
+ *
+ * Le mot de passe n'est ni écrit ni affiché : il passe par l'environnement et
+ * ne sert qu'à remplir le formulaire de connexion de l'application.
  *
  * Le résultat est un dossier à copier tel quel dans `docs/landing/` du dépôt
  * du module, puis à committer. La landing les reprend au déploiement suivant.
@@ -48,6 +55,7 @@ const FORMATS = {
 const PLANS = {
   consultant: {
     format: 'tablette',
+    connexion: { chemin: '/auth', identifiant: 'phone', motdepasse: 'password' },
     ecrans: {
       dashboard: '/dashboard',
       shops: '/shops',
@@ -65,6 +73,7 @@ const PLANS = {
   },
   cuisine: {
     format: 'tablette',
+    connexion: { chemin: '/auth', identifiant: 'phone', motdepasse: 'password' },
     ecrans: {
       dashboard: '/dashboard',
       checklists: '/checklists',
@@ -86,6 +95,8 @@ const slug = argument('module');
 const base = (argument('base') || process.env.CAPTURE_BASE || '').replace(/\/+$/, '');
 const cookie = argument('cookie') || process.env.CAPTURE_COOKIE || '';
 const attente = Number(argument('attente', '1200'));
+const identifiant = argument('identifiant') || process.env.CAPTURE_USER || '';
+const motDePasse = process.env.CAPTURE_PASS || '';
 
 /**
  * Un plan improvisé, pour un module qui n'en a pas encore :
@@ -120,9 +131,15 @@ const sortie = resolve(argument('sortie') || resolve(ICI, '..', 'captures-a-publ
 // cette tâche, lancée à la main. Le message le dit plutôt que d'échouer sec.
 let chromium;
 try {
-  ({ chromium } = await import('playwright'));
+  // playwright-core suffit quand un navigateur est déjà installé sur la machine.
+  ({ chromium } = await import('playwright').catch(() => import('playwright-core')));
 } catch {
-  console.error('Playwright est nécessaire pour ce script : npm i -D playwright');
+  console.error('Playwright manque. Une fois, sur la machine qui capture :');
+  console.error('  npm --prefix pipeline i playwright');
+  console.error('  npx --prefix pipeline playwright install --with-deps chromium');
+  console.error('Un Chromium déjà installé fait aussi l\'affaire :');
+  console.error('  npm --prefix pipeline i playwright-core');
+  console.error('  PLAYWRIGHT_CHROMIUM=/usr/bin/chromium node pipeline/capturer-ecrans.mjs …');
   process.exit(1);
 }
 
@@ -148,6 +165,32 @@ if (cookie) {
 }
 
 const page = await contexte.newPage();
+
+// Se connecter une fois, puis toutes les pages suivent dans la même session.
+if (identifiant && plan.connexion) {
+  if (!motDePasse) {
+    console.error('Mot de passe attendu dans CAPTURE_PASS (jamais en argument).');
+    process.exit(1);
+  }
+  const ou = `${base}${plan.connexion.chemin}`;
+  await page.goto(ou, { waitUntil: 'domcontentloaded', timeout: 30000 });
+  await page.fill(`[name="${plan.connexion.identifiant}"]`, identifiant);
+  await page.fill(`[name="${plan.connexion.motdepasse}"]`, motDePasse);
+  await Promise.all([
+    page.waitForLoadState('networkidle'),
+    page.click('button[type=submit], input[type=submit]'),
+  ]);
+  if (/login|auth|connexion/i.test(page.url())) {
+    console.error(`✗ connexion refusée sur ${ou} — identifiant ou mot de passe.`);
+    await navigateur.close();
+    process.exit(1);
+  }
+  console.log(`· session ouverte pour ${identifiant}`);
+} else if (!identifiant && !cookie && plan.connexion) {
+  console.log('· sans session : les écrans protégés vont renvoyer vers la connexion.');
+  console.log('  CAPTURE_USER=… CAPTURE_PASS=… pour laisser le script se connecter.');
+}
+
 let faites = 0;
 let ratees = 0;
 let refusees = 0;
@@ -190,8 +233,9 @@ if (faites > 0) {
 }
 if (refusees > 0) {
   console.log('');
-  console.log('Des écrans renvoient vers la connexion : passer une session ouverte avec');
-  console.log('  --cookie="PHPSESSID=…"   (ou la variable CAPTURE_COOKIE)');
+  console.log('Des écrans renvoient vers la connexion. Ouvrir une session :');
+  console.log('  CAPTURE_USER=… CAPTURE_PASS=… node capturer-ecrans.mjs …');
+  console.log('  ou --cookie="PHPSESSID=…" si la session est déjà ouverte ailleurs.');
 }
 
 process.exit(ratees > 0 && faites === 0 ? 1 : 0);
