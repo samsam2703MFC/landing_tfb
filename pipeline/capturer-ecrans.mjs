@@ -34,6 +34,7 @@
  * argument ou par les variables CAPTURE_BASE / CAPTURE_COOKIE.
  */
 
+import { existsSync } from 'node:fs';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -145,9 +146,62 @@ try {
 
 await mkdir(sortie, { recursive: true });
 
-const navigateur = await chromium.launch({
-  executablePath: process.env.PLAYWRIGHT_CHROMIUM || undefined,
-});
+/** Les chemins où un navigateur traîne d'habitude sur une machine Linux. */
+const NAVIGATEURS = [
+  '/usr/bin/chromium',
+  '/usr/bin/chromium-browser',
+  '/usr/lib/chromium/chromium',
+  '/usr/bin/google-chrome',
+  '/usr/bin/google-chrome-stable',
+  '/opt/google/chrome/chrome',
+  '/snap/bin/chromium',
+];
+
+function aider() {
+  console.error('');
+  console.error('Aucun navigateur utilisable. Au choix, une seule fois :');
+  console.error('  npx --prefix pipeline playwright install chromium');
+  console.error('    (sans --with-deps : pas de dpkg, donc pas de conflit avec');
+  console.error('     unattended-upgrades ; à relancer avec --with-deps si le');
+  console.error('     lancement se plaint ensuite d\'une bibliothèque manquante)');
+  console.error('  apt-get install -y chromium        puis relancer ce script');
+  console.error('');
+  console.error('Un navigateur déjà installé ailleurs se désigne par son chemin :');
+  console.error('  PLAYWRIGHT_CHROMIUM=/chemin/vers/chrome node pipeline/capturer-ecrans.mjs …');
+}
+
+/**
+ * Ouvre le navigateur : celui qu'on impose, sinon celui de Playwright, sinon
+ * celui du système. Un chemin donné mais inexistant est une faute de frappe,
+ * pas une invitation à chercher ailleurs — on le dit.
+ */
+async function ouvrirNavigateur() {
+  const impose = process.env.PLAYWRIGHT_CHROMIUM;
+  if (impose) {
+    if (!existsSync(impose)) {
+      console.error(`PLAYWRIGHT_CHROMIUM pointe sur ${impose}, qui n'existe pas.`);
+      const trouves = NAVIGATEURS.filter((c) => existsSync(c));
+      if (trouves.length > 0) console.error(`Sur cette machine : ${trouves.join(', ')}`);
+      else aider();
+      process.exit(1);
+    }
+    return chromium.launch({ executablePath: impose });
+  }
+  try {
+    return await chromium.launch();
+  } catch (err) {
+    const trouve = NAVIGATEURS.find((c) => existsSync(c));
+    if (!trouve) {
+      console.error(err.message.split('\n')[0]);
+      aider();
+      process.exit(1);
+    }
+    console.log(`· navigateur du système : ${trouve}`);
+    return chromium.launch({ executablePath: trouve });
+  }
+}
+
+const navigateur = await ouvrirNavigateur();
 const contexte = await navigateur.newContext({
   viewport: { width: format.width, height: format.height },
   deviceScaleFactor: format.deviceScaleFactor,
