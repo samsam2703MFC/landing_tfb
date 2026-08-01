@@ -15,7 +15,8 @@
  * Usage : node sync-captures.mjs [--force]
  */
 
-import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -110,7 +111,21 @@ async function principal() {
       if (force) await rm(dossier, { recursive: true, force: true });
       await mkdir(dossier, { recursive: true });
 
-      const dejaLa = new Set(await readdir(dossier).catch(() => []));
+      /**
+       * L'empreinte git d'un fichier local, au format que renvoie l'API
+       * GitHub. C'est ce qui permet de savoir si l'image du dépôt a changé.
+       *
+       * Comparer les seules présences ne suffisait pas : une capture reprise
+       * avec une anonymisation plus stricte gardait le même nom, donc
+       * l'ancienne version restait sur le serveur indéfiniment.
+       */
+      const empreinteLocale = async (chemin) => {
+        const octets = await readFile(chemin).catch(() => null);
+        if (!octets) return null;
+        return createHash('sha1')
+          .update(Buffer.concat([Buffer.from(`blob ${octets.length}\0`), octets]))
+          .digest('hex');
+      };
 
       // On repart d'une table propre pour ce module : les captures retirées
       // du dépôt doivent disparaître du site.
@@ -118,7 +133,8 @@ async function principal() {
 
       let ordre = 1;
       for (const image of images.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (!dejaLa.has(image.name) || force) {
+        const surDisque = await empreinteLocale(resolve(dossier, image.name));
+        if (surDisque !== image.sha || force) {
           const octets = await github(
             `/repos/${entree.repo}/contents/docs/landing/${encodeURIComponent(image.name)}?ref=${encodeURIComponent(entree.ref)}`,
             token,
