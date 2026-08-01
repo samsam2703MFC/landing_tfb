@@ -34,7 +34,8 @@
  * argument ou par les variables CAPTURE_BASE / CAPTURE_COOKIE.
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, readdirSync } from 'node:fs';
+import { homedir } from 'node:os';
 import { mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -171,6 +172,32 @@ const NAVIGATEURS = [
   '/snap/bin/chromium',
 ];
 
+/**
+ * Les navigateurs que `playwright install` a déposés dans le cache. Ils
+ * survivent aux `npm ci` du déploiement, contrairement à node_modules — c'est
+ * donc là qu'il faut regarder en premier quand le module vient d'être
+ * réinstallé.
+ */
+function navigateursDuCache() {
+  const cache = process.env.PLAYWRIGHT_BROWSERS_PATH || resolve(homedir(), '.cache', 'ms-playwright');
+  if (!existsSync(cache)) return [];
+  const trouves = [];
+  for (const dossier of readdirSync(cache)) {
+    if (!dossier.startsWith('chromium')) continue;
+    for (const suite of [
+      ['chrome-linux', 'chrome'],
+      ['chrome-linux64', 'chrome'],
+      ['chrome-headless-shell-linux64', 'chrome-headless-shell'],
+    ]) {
+      const chemin = resolve(cache, dossier, ...suite);
+      if (existsSync(chemin)) trouves.push(chemin);
+    }
+  }
+  // Un vrai Chrome avant la coquille sans interface : les captures d'une
+  // application qui dessine des graphiques y gagnent.
+  return trouves.sort((a, b) => (a.includes('headless-shell') ? 1 : 0) - (b.includes('headless-shell') ? 1 : 0));
+}
+
 function aider() {
   console.error('');
   console.error('Aucun navigateur utilisable. Au choix, une seule fois :');
@@ -194,7 +221,7 @@ async function ouvrirNavigateur() {
   if (impose) {
     if (!existsSync(impose)) {
       console.error(`PLAYWRIGHT_CHROMIUM pointe sur ${impose}, qui n'existe pas.`);
-      const trouves = NAVIGATEURS.filter((c) => existsSync(c));
+      const trouves = [...NAVIGATEURS.filter((c) => existsSync(c)), ...navigateursDuCache()];
       if (trouves.length > 0) console.error(`Sur cette machine : ${trouves.join(', ')}`);
       else aider();
       process.exit(1);
@@ -204,7 +231,7 @@ async function ouvrirNavigateur() {
   try {
     return await chromium.launch();
   } catch (err) {
-    const trouve = NAVIGATEURS.find((c) => existsSync(c));
+    const trouve = navigateursDuCache()[0] || NAVIGATEURS.find((c) => existsSync(c));
     if (!trouve) {
       console.error(err.message.split('\n')[0]);
       aider();
