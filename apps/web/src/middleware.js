@@ -20,7 +20,8 @@
  */
 
 import { chargerLangues } from './lib/db.mjs';
-import { NOM_COOKIE, consoleActive, jetonValide } from './lib/admin/session.mjs';
+import { NOM_COOKIE, cheminAutorise, consoleActive, lireJeton } from './lib/admin/session.mjs';
+import { utilisateurParId } from './lib/admin/donnees.mjs';
 
 /** Préfixe de montage, sans barre oblique finale. */
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
@@ -130,9 +131,40 @@ export async function onRequest(contexte, suivant) {
 
   if (chemin === '/admin/connexion') return suivant();
 
-  if (jetonValide(contexte.cookies.get(NOM_COOKIE)?.value)) return suivant();
+  const session = lireJeton(contexte.cookies.get(NOM_COOKIE)?.value);
+  if (!session) {
+    // On mémorise la page demandée pour y revenir après la connexion.
+    const retour = encodeURIComponent(chemin);
+    return contexte.redirect(`${BASE}/admin/connexion?retour=${retour}`, 302);
+  }
 
-  // On mémorise la page demandée pour y revenir après la connexion.
-  const retour = encodeURIComponent(chemin);
-  return contexte.redirect(`${BASE}/admin/connexion?retour=${retour}`, 302);
+  // Le rôle vient du cookie signé — aucune requête ne dépend d'un aller-retour
+  // en base pour savoir ce qu'elle a le droit de faire. Le nom, lui, est relu :
+  // il change sans qu'on veuille invalider la session, et une console qui
+  // affiche un nom périmé induit en erreur sur qui signe l'offre.
+  contexte.locals.session = session;
+  if (!session.secours) {
+    try {
+      const compte = await utilisateurParId(session.id);
+      if (!compte || !compte.actif) {
+        // Compte supprimé ou désactivé pendant la session : on ferme tout de
+        // suite plutôt que d'attendre l'expiration du cookie.
+        contexte.cookies.delete(NOM_COOKIE, { path: BASE || '/' });
+        return contexte.redirect(`${BASE}/admin/connexion`, 302);
+      }
+      contexte.locals.session = { ...session, nom: compte.nom, identifiant: compte.identifiant };
+    } catch {
+      // Base injoignable : la session reste valable, l'écran dira lui-même que
+      // la base ne répond pas.
+    }
+  }
+
+  if (!cheminAutorise(chemin, session.role)) {
+    return new Response(
+      "Cet écran est réservé à l'administration. Votre compte est un compte commercial.",
+      { status: 403, headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+    );
+  }
+
+  return suivant();
 }

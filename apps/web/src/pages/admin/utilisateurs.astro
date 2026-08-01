@@ -1,0 +1,274 @@
+---
+/**
+ * Les comptes de la console.
+ *
+ * Deux rôles, et la différence tient en une phrase : un **commercial** voit
+ * ses prospects et ses offres, un **administrateur** voit tout — dont la
+ * grille tarifaire. Un commercial qui pourrait changer le prix par vue
+ * n'aurait pas de rôle du tout.
+ *
+ * Le dernier administrateur actif ne peut être ni supprimé, ni désactivé, ni
+ * rétrogradé. La clé de secours du serveur rouvrirait la console, mais
+ * compter dessus voudrait dire aller lire un fichier en SSH pour rentrer :
+ * autant refuser le geste.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import {
+  ajouterUtilisateur,
+  basculerUtilisateur,
+  changerMotDePasse,
+  changerRole,
+  compteurs,
+  listerUtilisateurs,
+  supprimerUtilisateur,
+} from '../../lib/admin/donnees.mjs';
+import { LONGUEUR_MOT_DE_PASSE } from '../../lib/admin/session.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    let dit = 'Enregistré.';
+
+    if (action === 'ajout') {
+      const cle = await ajouterUtilisateur({
+        identifiant: f.get('identifiant'),
+        nom: f.get('nom'),
+        motDePasse: f.get('mot_de_passe'),
+        role: String(f.get('role') || 'commercial'),
+      });
+      dit = `Compte « ${cle} » créé.`;
+    } else if (action === 'motdepasse') {
+      await changerMotDePasse(f.get('id'), f.get('mot_de_passe'));
+      dit = 'Mot de passe changé. Les sessions ouvertes de ce compte restent valides jusqu’à leur expiration.';
+    } else if (action === 'role') {
+      await changerRole(f.get('id'), String(f.get('role')));
+      dit = 'Rôle changé. Il ne prendra effet qu’à la prochaine connexion de la personne.';
+    } else if (action === 'bascule') {
+      await basculerUtilisateur(f.get('id'), f.get('actif') === '1');
+      dit = 'Compte mis à jour.';
+    } else if (action === 'suppression') {
+      await supprimerUtilisateur(f.get('id'));
+      dit = 'Compte supprimé. Les offres qu’il a créées gardent son nom.';
+    }
+    return Astro.redirect(`${BASE}/admin/utilisateurs?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let comptes = [];
+let chiffres = {};
+try {
+  comptes = await listerUtilisateurs();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const session = Astro.locals.session || {};
+const admins = comptes.filter((c) => c.role === 'admin' && c.actif).length;
+
+const ROLES_LISIBLES = {
+  admin: 'Administrateur',
+  commercial: 'Commercial',
+};
+
+/** Une date, sans l'heure : le détail n'apporte rien ici. */
+const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') : '—');
+---
+
+<Console
+  titre="Comptes"
+  fil="TFB Admin · Système · Comptes"
+  actif="utilisateurs"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {session.secours && (
+    <section class="bloc bloc--alerte" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Vous êtes entré par la clé de secours</h2>
+          <p>
+            Aucun compte n'est derrière cette session : ce que vous ferez ne portera
+            aucun nom. {comptes.length === 0
+              ? 'Créez un premier administrateur ci-dessous, puis reconnectez-vous avec.'
+              : 'Reconnectez-vous avec votre compte pour que vos offres portent votre nom.'}
+          </p>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les comptes</h2>
+        <p>
+          <span class="jeton">landing_utilisateurs</span> — {comptes.length} compte(s),
+          dont {admins} administrateur(s) actif(s).
+        </p>
+      </div>
+    </div>
+
+    {comptes.length === 0 ? (
+      <div class="bloc__pied">
+        Aucun compte. Tant qu'il n'y en a pas, seule la clé de secours du serveur ouvre
+        la console — et rien de ce qui est fait ne porte de nom.
+      </div>
+    ) : (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Personne</th>
+              <th style="inline-size:9rem">Rôle</th>
+              <th style="inline-size:6rem">État</th>
+              <th style="inline-size:7rem">Vu le</th>
+              <th style="inline-size:22rem"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {comptes.map((c) => (
+              <tr>
+                <td>
+                  <strong>{c.nom || c.identifiant}</strong>
+                  <code class="slug">{c.identifiant}</code>
+                  {c.id === session.id && <span class="etat etat--on">c'est vous</span>}
+                </td>
+                <td>
+                  <form method="post" class="ligne-serree">
+                    <input type="hidden" name="action" value="role" />
+                    <input type="hidden" name="id" value={c.id} />
+                    <select name="role" aria-label={`Rôle de ${c.identifiant}`}>
+                      <option value="commercial" selected={c.role === 'commercial'}>Commercial</option>
+                      <option value="admin" selected={c.role === 'admin'}>Administrateur</option>
+                    </select>
+                    <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
+                  </form>
+                </td>
+                <td><span class={c.actif ? 'etat etat--on' : 'etat'}>{c.actif ? 'actif' : 'désactivé'}</span></td>
+                <td class="fb-num champ__aide">{jour(c.vu_le)}</td>
+                <td>
+                  <div class="actions">
+                    <form method="post" class="ligne-serree">
+                      <input type="hidden" name="action" value="motdepasse" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input
+                        type="password"
+                        name="mot_de_passe"
+                        required
+                        minlength={LONGUEUR_MOT_DE_PASSE}
+                        placeholder="Nouveau mot de passe"
+                        autocomplete="new-password"
+                        aria-label={`Nouveau mot de passe de ${c.identifiant}`}
+                      />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Changer</button>
+                    </form>
+                    <form method="post">
+                      <input type="hidden" name="action" value="bascule" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="actif" value={c.actif ? '0' : '1'} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">
+                        {c.actif ? 'Désactiver' : 'Réactiver'}
+                      </button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Supprimer ce compte ? Les offres qu’il a créées gardent son nom.')">
+                      <input type="hidden" name="action" value="suppression" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="bloc__pied">
+      Un <strong>commercial</strong> voit le tableau de bord, ses prospects, ses offres et
+      les demandes reçues. Un <strong>administrateur</strong> voit en plus le contenu de la
+      landing, les traductions, la grille tarifaire et les comptes.
+      Un changement de rôle ne prend effet qu'à la prochaine connexion : le rôle voyage
+      dans le cookie de session, signé.
+    </div>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Créer un compte</h2>
+        <p>
+          L'identifiant sert à se connecter — une adresse de courriel fait l'affaire.
+          Le mot de passe fait au moins {LONGUEUR_MOT_DE_PASSE} caractères et n'est
+          jamais stocké en clair.
+        </p>
+      </div>
+    </div>
+
+    <form method="post">
+      <input type="hidden" name="action" value="ajout" />
+      <div class="duo">
+        <div class="champ">
+          <label for="u-identifiant">Identifiant</label>
+          <input
+            id="u-identifiant"
+            type="text"
+            name="identifiant"
+            required
+            autocapitalize="none"
+            autocorrect="off"
+            spellcheck="false"
+            placeholder="prenom@thefranchisebuddy.eu"
+          />
+        </div>
+        <div class="champ">
+          <label for="u-nom">Nom affiché</label>
+          <input id="u-nom" type="text" name="nom" placeholder="Prénom Nom" />
+          <span class="champ__aide">C'est ce nom qui figurera sur les offres.</span>
+        </div>
+      </div>
+      <div class="duo" style="margin-block-start:12px">
+        <div class="champ">
+          <label for="u-mdp">Mot de passe</label>
+          <input
+            id="u-mdp"
+            type="password"
+            name="mot_de_passe"
+            required
+            minlength={LONGUEUR_MOT_DE_PASSE}
+            autocomplete="new-password"
+          />
+        </div>
+        <div class="champ">
+          <label for="u-role">Rôle</label>
+          <select id="u-role" name="role">
+            <option value="commercial">Commercial</option>
+            <option value="admin">Administrateur</option>
+          </select>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="plus" taille={16} /> Créer le compte
+        </button>
+      </div>
+    </form>
+  </section>
+</Console>
+
+<style is:global>
+  /* Un champ et son bouton sur la même ligne, dans une cellule de table. */
+  .ligne-serree { display: flex; align-items: center; gap: 6px; }
+  .ligne-serree input, .ligne-serree select { min-inline-size: 0; }
+  .bloc--alerte { border-color: var(--amber-300); background: var(--amber-50); }
+</style>

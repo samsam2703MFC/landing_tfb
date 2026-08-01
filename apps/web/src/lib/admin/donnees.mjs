@@ -11,6 +11,7 @@
 
 import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
 import { enCents, lireTarif, saisirTarif } from '../offres/montants.mjs';
+import { ROLES, empreinteValide, hacher } from './session.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
 function vrai(valeur) {
@@ -549,6 +550,144 @@ export async function basculerLangue(code, publiee) {
   }
   await db.executer(`UPDATE ${table('langues')} SET publiee = ? WHERE code = ?`, [vrai(publiee), String(code)]);
   viderCache();
+}
+
+// ---------------------------------------------------------------------------
+// Comptes
+// ---------------------------------------------------------------------------
+
+/** Les comptes de la console. L'empreinte n'en sort jamais. */
+export async function listerUtilisateurs() {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT id, identifiant, nom, role, actif, cree_le, vu_le FROM ${table('utilisateurs')}
+     ORDER BY role, identifiant`,
+  );
+  return lignes.map((l) => ({ ...l, actif: Boolean(l.actif) }));
+}
+
+/** Un compte par son identifiant, empreinte comprise — pour la connexion seule. */
+export async function utilisateurParIdentifiant(identifiant) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT * FROM ${table('utilisateurs')} WHERE identifiant = ? LIMIT 1`,
+    [String(identifiant || '').trim().toLowerCase()],
+  );
+  return lignes[0] || null;
+}
+
+/** Un compte par son identifiant numérique, sans son empreinte. */
+export async function utilisateurParId(id) {
+  if (!Number(id)) return null;
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT id, identifiant, nom, role, actif FROM ${table('utilisateurs')} WHERE id = ? LIMIT 1`,
+    [Number(id)],
+  );
+  const u = lignes[0];
+  return u ? { ...u, actif: Boolean(u.actif) } : null;
+}
+
+/**
+ * Vérifie un couple identifiant / mot de passe.
+ *
+ * Le mot de passe est vérifié **même quand le compte est inconnu ou
+ * désactivé** : sans ce calcul à vide, la réponse reviendrait instantanément
+ * pour un identifiant qui n'existe pas et lentement pour un qui existe, ce
+ * qui suffit à énumérer les comptes.
+ */
+export async function verifierIdentifiants(identifiant, motDePasse) {
+  const compte = await utilisateurParIdentifiant(identifiant);
+  const bon = empreinteValide(motDePasse, compte?.empreinte || EMPREINTE_LEURRE);
+  if (!compte || !compte.actif || !bon) return null;
+
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('utilisateurs')} SET vu_le = ? WHERE id = ?`, [new Date(), compte.id]);
+  return { id: compte.id, identifiant: compte.identifiant, nom: compte.nom, role: compte.role };
+}
+
+/**
+ * Une empreinte valide mais qui ne correspond à rien, pour que la
+ * vérification coûte le même temps quand le compte n'existe pas.
+ * Calculée une fois au démarrage.
+ */
+const EMPREINTE_LEURRE = hacher(`leurre-${Date.now()}-${Math.random()}`);
+
+export async function ajouterUtilisateur({ identifiant, nom, motDePasse, role }) {
+  const db = await connexion();
+  const cle = String(identifiant || '').trim().toLowerCase();
+  if (!cle) throw new Error('Un compte a besoin d’un identifiant.');
+  if (!ROLES.includes(role)) throw new Error(`Rôle inconnu : ${role}.`);
+
+  const dejaLa = await db.requete(
+    `SELECT id FROM ${table('utilisateurs')} WHERE identifiant = ? LIMIT 1`,
+    [cle],
+  );
+  if (dejaLa.length > 0) throw new Error(`Le compte « ${cle} » existe déjà.`);
+
+  await db.executer(
+    `INSERT INTO ${table('utilisateurs')} (identifiant, nom, empreinte, role, actif, cree_le)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [cle, String(nom || cle).slice(0, 160), hacher(motDePasse), role, vrai(true), new Date()],
+  );
+  viderCache();
+  return cle;
+}
+
+export async function changerMotDePasse(id, motDePasse) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('utilisateurs')} SET empreinte = ? WHERE id = ?`,
+    [hacher(motDePasse), Number(id)],
+  );
+  viderCache();
+}
+
+export async function changerRole(id, role) {
+  if (!ROLES.includes(role)) throw new Error(`Rôle inconnu : ${role}.`);
+  const db = await connexion();
+  await refuserSiDernierAdmin(db, id, { role });
+  await db.executer(`UPDATE ${table('utilisateurs')} SET role = ? WHERE id = ?`, [role, Number(id)]);
+  viderCache();
+}
+
+export async function basculerUtilisateur(id, actif) {
+  const db = await connexion();
+  if (!actif) await refuserSiDernierAdmin(db, id, { actif: false });
+  await db.executer(`UPDATE ${table('utilisateurs')} SET actif = ? WHERE id = ?`, [vrai(actif), Number(id)]);
+  viderCache();
+}
+
+export async function supprimerUtilisateur(id) {
+  const db = await connexion();
+  await refuserSiDernierAdmin(db, id, { supprime: true });
+  await db.executer(`DELETE FROM ${table('utilisateurs')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/**
+ * Empêche de retirer le dernier administrateur actif.
+ *
+ * La clé de secours rouvrirait la console, mais compter dessus signifierait
+ * qu'on s'est enfermé dehors et qu'on doit aller lire un fichier en SSH pour
+ * rentrer. Autant refuser le geste.
+ */
+async function refuserSiDernierAdmin(db, id, quoi) {
+  const cible = await utilisateurParId(id);
+  if (!cible || cible.role !== 'admin' || !cible.actif) return;
+  const [{ total }] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('utilisateurs')} WHERE role = 'admin' AND actif = ?`,
+    [vrai(true)],
+  );
+  if (Number(total) > 1) return;
+  const geste = quoi.supprime
+    ? 'supprimer le'
+    : quoi.actif === false
+      ? 'désactiver le'
+      : 'changer le rôle du';
+  throw new Error(
+    `Impossible de ${geste} dernier administrateur actif : la console n'aurait plus personne pour l'ouvrir. Créez d'abord un autre administrateur.`,
+  );
 }
 
 // ---------------------------------------------------------------------------

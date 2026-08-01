@@ -1,15 +1,27 @@
 /**
  * Authentification de la console — CÔTÉ SERVEUR UNIQUEMENT.
  *
- * Un seul secret partagé, `ADMIN_PASSWORD`, comparé en temps constant. La
- * session tient dans un cookie signé HMAC-SHA256 : rien à stocker en base, et
- * le cookie ne contient qu'une date d'expiration — jamais le mot de passe.
+ * Deux portes, et il en faut deux.
+ *
+ *   · **Les comptes** (`landing_utilisateurs`) : un identifiant par personne,
+ *     un mot de passe haché en scrypt, un rôle. C'est ce qui permet à une
+ *     offre de porter le nom de qui l'a faite — un mot de passe partagé ne
+ *     saurait pas le dire.
+ *   · **La clé de secours** (`ADMIN_PASSWORD`) : le secret d'environnement,
+ *     qui ouvre toujours la console en administrateur. Sans elle, une base
+ *     vide ou un compte supprimé par mégarde fermeraient la console à tout le
+ *     monde, y compris à celui qui pourrait la rouvrir.
+ *
+ * La session tient dans un cookie signé HMAC-SHA256 : rien à stocker côté
+ * serveur, et le cookie ne contient jamais de mot de passe — seulement une
+ * expiration, un aléa, l'identifiant du compte et son rôle, le tout signé.
+ * Modifier le rôle dans le cookie casse la signature.
  *
  * Tant qu'`ADMIN_PASSWORD` n'est pas renseigné, la console est fermée. C'est
  * volontaire : mieux vaut une console indisponible qu'une console ouverte.
  */
 
-import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHmac, randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 
 export const NOM_COOKIE = 'tfb_console';
 
@@ -63,21 +75,123 @@ export function motDePasseValide(propose) {
   return memeChaine(propose || '', attendu());
 }
 
-/** Fabrique un jeton de session : expiration + aléa, signés ensemble. */
-export function creerJeton() {
-  const charge = `${Date.now() + DUREE}.${randomBytes(9).toString('base64url')}`;
+// ---------------------------------------------------------------------------
+// Mots de passe des comptes
+// ---------------------------------------------------------------------------
+
+/**
+ * Paramètres scrypt. N = 16384 coûte une centaine de millisecondes par essai :
+ * insensible à la connexion, prohibitif pour qui tenterait un dictionnaire.
+ */
+const SCRYPT = { N: 16384, r: 8, p: 1 };
+const LONGUEUR_CLE = 64;
+
+/** Longueur minimale d'un mot de passe de compte. */
+export const LONGUEUR_MOT_DE_PASSE = 10;
+
+/**
+ * Hache un mot de passe avec un sel tiré au hasard.
+ * Format : `scrypt$<sel>$<empreinte>`, tout en base64url.
+ */
+export function hacher(motDePasse) {
+  const clair = String(motDePasse ?? '');
+  if (clair.length < LONGUEUR_MOT_DE_PASSE) {
+    throw new Error(`Le mot de passe doit faire au moins ${LONGUEUR_MOT_DE_PASSE} caractères.`);
+  }
+  const sel = randomBytes(16);
+  const derive = scryptSync(clair, sel, LONGUEUR_CLE, SCRYPT);
+  return `scrypt$${sel.toString('base64url')}$${derive.toString('base64url')}`;
+}
+
+/** Le mot de passe correspond-il à l'empreinte stockée ? */
+export function empreinteValide(motDePasse, empreinte) {
+  const morceaux = String(empreinte || '').split('$');
+  if (morceaux.length !== 3 || morceaux[0] !== 'scrypt') return false;
+  try {
+    const sel = Buffer.from(morceaux[1], 'base64url');
+    const attendu = Buffer.from(morceaux[2], 'base64url');
+    if (attendu.length !== LONGUEUR_CLE) return false;
+    const derive = scryptSync(String(motDePasse ?? ''), sel, LONGUEUR_CLE, SCRYPT);
+    return timingSafeEqual(attendu, derive);
+  } catch {
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Jeton de session
+// ---------------------------------------------------------------------------
+
+/** Les rôles, du plus large au plus étroit. */
+export const ROLES = ['admin', 'commercial'];
+
+/**
+ * Fabrique un jeton : expiration, aléa, identifiant du compte et rôle, signés
+ * ensemble. Le rôle voyage dans le cookie parce qu'aucune requête ne doit
+ * dépendre d'un aller-retour en base pour savoir ce qu'elle a le droit de
+ * faire — et le modifier casse la signature.
+ *
+ * `0` en identifiant désigne la clé de secours : aucun compte derrière.
+ */
+export function creerJeton({ id = 0, role = 'admin' } = {}) {
+  const propre = ROLES.includes(role) ? role : 'commercial';
+  const charge = `${Date.now() + DUREE}.${randomBytes(9).toString('base64url')}.${Number(id) || 0}.${propre}`;
   return `${charge}.${signer(charge)}`;
+}
+
+/**
+ * Lit un jeton et rend la session qu'il porte, ou `null`.
+ * @returns {{id: number, role: string, secours: boolean}|null}
+ */
+export function lireJeton(jeton) {
+  if (!jeton || !consoleActive()) return null;
+  const morceaux = String(jeton).split('.');
+  if (morceaux.length !== 5) return null;
+  const [expiration, alea, id, role, signature] = morceaux;
+  if (!memeChaine(signature, signer(`${expiration}.${alea}.${id}.${role}`))) return null;
+  const limite = Number(expiration);
+  if (!Number.isFinite(limite) || limite <= Date.now()) return null;
+  if (!ROLES.includes(role)) return null;
+  return { id: Number(id) || 0, role, secours: Number(id) === 0 };
 }
 
 /** Le cookie présenté est-il une session valide et non expirée ? */
 export function jetonValide(jeton) {
-  if (!jeton || !consoleActive()) return false;
-  const morceaux = String(jeton).split('.');
-  if (morceaux.length !== 3) return false;
-  const [expiration, alea, signature] = morceaux;
-  if (!memeChaine(signature, signer(`${expiration}.${alea}`))) return false;
-  const limite = Number(expiration);
-  return Number.isFinite(limite) && limite > Date.now();
+  return lireJeton(jeton) !== null;
+}
+
+// ---------------------------------------------------------------------------
+// Droits
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce qu'un commercial a le droit d'ouvrir. Tout le reste est réservé à
+ * l'administrateur.
+ *
+ * La liste dit ce qui est **permis**, jamais ce qui est interdit : un écran
+ * ajouté demain est fermé au commercial tant que personne ne l'a ouvert
+ * explicitement. L'inverse — lister les interdits — laisserait chaque
+ * nouveauté ouverte par oubli, et c'est la grille tarifaire qui serait
+ * modifiable par tout le monde.
+ */
+const OUVERT_AU_COMMERCIAL = [
+  // `/admin` est le tableau de bord, et **lui seul** : le déclarer comme un
+  // sous-arbre ouvrirait toute la console d'un coup, tarifs compris.
+  { chemin: '/admin', arbre: false },
+  { chemin: '/admin/deconnexion', arbre: false },
+  { chemin: '/admin/motdepasse', arbre: false },
+  { chemin: '/admin/leads', arbre: true },
+  { chemin: '/admin/offres', arbre: true },
+  { chemin: '/admin/prospects', arbre: true },
+];
+
+/** Le rôle a-t-il le droit d'ouvrir ce chemin ? */
+export function cheminAutorise(chemin, role) {
+  if (role === 'admin') return true;
+  const nu = String(chemin || '').split('?')[0].replace(/\/+$/, '') || '/admin';
+  return OUVERT_AU_COMMERCIAL.some(
+    ({ chemin: permis, arbre }) => nu === permis || (arbre && nu.startsWith(`${permis}/`)),
+  );
 }
 
 /** Le chemin du cookie : celui du montage, pour ne pas déborder sur les

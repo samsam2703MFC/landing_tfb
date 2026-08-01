@@ -12,6 +12,7 @@
 import '../design-system/styles.css';
 import Icone from './Icone.astro';
 import { lien } from '../lib/lien.mjs';
+import { cheminAutorise } from '../lib/admin/session.mjs';
 
 const {
   titre,
@@ -22,11 +23,23 @@ const {
   compteurs = {},
 } = Astro.props;
 
-const RUBRIQUES = [
+// Le rôle vient du cookie signé, posé par le middleware. Sans session — cas
+// qui ne devrait pas arriver, la garde est en amont — on suppose le rôle le
+// plus étroit plutôt que le plus large.
+const session = Astro.locals.session || { role: 'commercial', secours: false };
+
+const TOUTES = [
+  {
+    // Le tableau de bord n'appartient à aucune rubrique : il est le point
+    // d'entrée des deux rôles, et le ranger sous « Contenu landing » laissait
+    // un commercial avec une rubrique de ce nom contenant ce seul lien.
+    entrees: [
+      { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
+    ],
+  },
   {
     titre: 'Contenu landing',
     entrees: [
-      { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
       { cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules,
         alerte: compteurs.aValider > 0 ? compteurs.aValider : null },
       { cle: 'composants', href: '/admin/composants', libelle: 'Composants', icone: 'panels-top-left', compte: compteurs.fonctions },
@@ -51,6 +64,7 @@ const RUBRIQUES = [
     titre: 'Système',
     entrees: [
       { cle: 'sync', href: '/admin/sync', libelle: 'Sync GitHub', icone: 'arrow-up-down', compte: compteurs.modules },
+      { cle: 'utilisateurs', href: '/admin/utilisateurs', libelle: 'Comptes', icone: 'users' },
       { cle: 'reglages', href: '/admin/reglages', libelle: 'Réglages', icone: 'settings' },
     ],
   },
@@ -62,6 +76,18 @@ const RUBRIQUES = [
     ],
   },
 ];
+
+/**
+ * Le rail ne montre que ce que le rôle peut ouvrir. Une entrée qui mènerait à
+ * un 403 est pire qu'une entrée absente : elle laisse croire à un droit qu'on
+ * n'a pas, et fait perdre du temps à comprendre pourquoi.
+ *
+ * C'est un confort d'affichage, pas une sécurité — le contrôle qui compte est
+ * dans le middleware, en amont de chaque page.
+ */
+const RUBRIQUES = TOUTES
+  .map((r) => ({ ...r, entrees: r.entrees.filter((e) => cheminAutorise(e.href, session.role)) }))
+  .filter((r) => r.entrees.length > 0);
 ---
 
 <html lang="fr" dir="ltr">
@@ -120,6 +146,14 @@ const RUBRIQUES = [
         border-radius: var(--radius-pill); padding: 3px 7px;
       }
       .rail__bas { margin-block-start: auto; display: flex; flex-direction: column; gap: 4px; }
+      .rail__qui {
+        padding: 10px; margin-block-end: 6px;
+        border-radius: var(--radius-control);
+        background: rgba(255, 255, 255, 0.06);
+        display: flex; flex-direction: column; gap: 2px;
+      }
+      .rail__qui b { font: 600 var(--text-sm) / 1.2 var(--font-sans); color: #fff; }
+      .rail__qui span { font: 400 11px/1.3 var(--font-sans); color: rgba(255, 255, 255, 0.5); }
       .rail__bas form { margin: 0; }
       .rail__bas button {
         inline-size: 100%; text-align: start;
@@ -421,7 +455,7 @@ const RUBRIQUES = [
 
         {RUBRIQUES.map((rubrique) => (
           <div class="rail__groupe">
-            <div class="rail__titre">{rubrique.titre}</div>
+            {rubrique.titre && <div class="rail__titre">{rubrique.titre}</div>}
             {rubrique.entrees.map((e) => (
               <a class="rail__lien" href={lien(e.href)} aria-current={actif === e.cle ? 'page' : undefined}>
                 <Icone nom={e.icone} taille={18} />
@@ -437,6 +471,15 @@ const RUBRIQUES = [
         ))}
 
         <div class="rail__bas">
+          {/* Qui est connecté, et à quel titre. Une console où l'on ne sait
+              pas sous quel compte on agit produit des offres orphelines. */}
+          <div class="rail__qui">
+            {session.secours ? (
+              <><b>Clé de secours</b><span>aucun compte — rien ne portera de nom</span></>
+            ) : (
+              <><b>{session.nom || session.identifiant || 'Compte'}</b><span>{session.role === 'admin' ? 'administrateur' : 'commercial'}</span></>
+            )}
+          </div>
           <a class="rail__lien" href={lien('/')} target="_blank">
             <Icone nom="external-link" taille={18} />
             Voir la landing

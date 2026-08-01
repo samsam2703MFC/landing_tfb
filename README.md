@@ -329,10 +329,46 @@ droite, entité par entité).
 Deux écrans de plus servent l'onboarding commercial : **Tarifs** (prix par
 vue, multiplicateur d'achat, maintenance annuelle, journée de formation, TVA
 par défaut, mentions et gabarit de courriel) et **Prestations** (le catalogue
-des modules d'onboarding vendables).
+des modules d'onboarding vendables). Un dernier, **Comptes**, gère qui entre
+et avec quel rôle.
 
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.
+
+#### Les comptes et les rôles
+
+La console connaît deux rôles :
+
+- **Commercial** — le tableau de bord, ses prospects, ses offres et les
+  demandes reçues par le formulaire de contact.
+- **Administrateur** — tout, dont la grille tarifaire, les traductions et les
+  comptes eux-mêmes.
+
+La liste des droits dit ce qui est **permis** au commercial, jamais ce qui
+lui est interdit : un écran ajouté demain lui est fermé tant que personne ne
+l'a ouvert explicitement. L'inverse laisserait chaque nouveauté ouverte par
+oubli — et c'est la grille tarifaire qui serait modifiable par tout le monde.
+Le contrôle est fait dans `src/middleware.js`, en amont de chaque page ; le
+rail masque en plus ce que le rôle ne peut pas ouvrir, par confort.
+
+Le rôle voyage **signé dans le cookie de session** : aucune page ne dépend
+d'un aller-retour en base pour savoir ce qu'elle a le droit de faire, et le
+réécrire à la main casse la signature. Un changement de rôle ne prend donc
+effet qu'à la prochaine connexion de la personne. Un compte désactivé ou
+supprimé, lui, voit sa session coupée à la requête suivante.
+
+Le mot de passe d'un compte est haché en **scrypt** avec un sel tiré au
+hasard ; il n'est jamais stocké en clair, et une empreinte ne permet pas de
+le retrouver. Le dernier administrateur actif ne peut être ni supprimé, ni
+désactivé, ni rétrogradé.
+
+#### La clé de secours
+
+`ADMIN_PASSWORD` reste la clé du serveur : **identifiant laissé vide** sur
+l'écran de connexion, elle ouvre toujours la console en administrateur. Sans
+elle, une base vide ou un dernier compte perdu fermeraient la porte à tout le
+monde. En contrepartie, ce qui est fait sous cette clé ne porte aucun nom —
+la console le dit en clair dans le rail et sur l'écran des comptes.
 
 Elle s'ouvre de deux façons, au choix.
 

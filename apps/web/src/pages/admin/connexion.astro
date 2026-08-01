@@ -2,8 +2,18 @@
 /**
  * Connexion à la console.
  *
- * Un seul champ : le mot de passe partagé, comparé en temps constant côté
- * serveur. En cas d'échec, le message reste volontairement laconique.
+ * Deux façons d'entrer, un seul formulaire.
+ *
+ *   · **Un compte** : identifiant et mot de passe, vérifiés contre
+ *     `landing_utilisateurs`. C'est ce qui donne un nom à ce qu'on fait.
+ *   · **La clé de secours** : identifiant laissé vide, et le mot de passe
+ *     d'environnement `ADMIN_PASSWORD`. Elle ouvre toujours la console en
+ *     administrateur — sans elle, une base vide ou un dernier compte perdu
+ *     fermeraient la porte à tout le monde.
+ *
+ * En cas d'échec, le message reste laconique et identique dans les deux cas :
+ * dire « cet identifiant n'existe pas » reviendrait à donner la liste des
+ * comptes à qui la demande.
  */
 import '../../design-system/styles.css';
 import { lien } from '../../lib/lien.mjs';
@@ -14,6 +24,7 @@ import {
   motDePasseValide,
   optionsCookie,
 } from '../../lib/admin/session.mjs';
+import { verifierIdentifiants } from '../../lib/admin/donnees.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 
@@ -33,11 +44,28 @@ if (Astro.request.method === 'GET' && jetonValide(Astro.cookies.get(NOM_COOKIE)?
 
 if (Astro.request.method === 'POST') {
   const formulaire = await Astro.request.formData();
-  if (motDePasseValide(formulaire.get('mot_de_passe'))) {
-    Astro.cookies.set(NOM_COOKIE, creerJeton(), optionsCookie(Astro.request, Astro.url));
+  const identifiant = String(formulaire.get('identifiant') || '').trim();
+  const motDePasse = formulaire.get('mot_de_passe');
+  let session = null;
+
+  if (identifiant) {
+    try {
+      const compte = await verifierIdentifiants(identifiant, motDePasse);
+      if (compte) session = { id: compte.id, role: compte.role };
+    } catch (err) {
+      // Base injoignable : la clé de secours reste la seule porte, et c'est
+      // exactement le cas pour lequel elle existe.
+      console.error(`[connexion] comptes illisibles : ${err.message}`);
+    }
+  } else if (motDePasseValide(motDePasse)) {
+    session = { id: 0, role: 'admin' };
+  }
+
+  if (session) {
+    Astro.cookies.set(NOM_COOKIE, creerJeton(session), optionsCookie(Astro.request, Astro.url));
     return Astro.redirect(`${BASE}${destination(formulaire.get('retour'))}`, 302);
   }
-  erreur = 'Mot de passe refusé.';
+  erreur = 'Identifiant ou mot de passe refusé.';
 }
 ---
 
@@ -109,6 +137,20 @@ if (Astro.request.method === 'POST') {
       {erreur && <p class="porte__erreur">{erreur}</p>}
 
       <div>
+        <label for="identifiant">Identifiant</label>
+        <input
+          id="identifiant"
+          name="identifiant"
+          type="text"
+          autocomplete="username"
+          autocapitalize="none"
+          autocorrect="off"
+          spellcheck="false"
+          autofocus
+        />
+      </div>
+
+      <div>
         <label for="mot_de_passe">Mot de passe</label>
         <input
           id="mot_de_passe"
@@ -116,14 +158,16 @@ if (Astro.request.method === 'POST') {
           type="password"
           autocomplete="current-password"
           required
-          autofocus
         />
       </div>
 
       <input type="hidden" name="retour" value={retourDemande} />
       <button type="submit">Entrer</button>
 
-      <p class="porte__note">Accès réservé. Cette page n'est pas indexée.</p>
+      <p class="porte__note">
+        Accès réservé. Cette page n'est pas indexée.<br />
+        Sans identifiant, le mot de passe de secours du serveur ouvre la console.
+      </p>
     </form>
   </body>
 </html>
