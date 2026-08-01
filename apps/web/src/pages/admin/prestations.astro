@@ -1,0 +1,230 @@
+---
+/**
+ * Le catalogue des modules d'onboarding vendables.
+ *
+ * À ne pas confondre avec l'écran Modules, qui liste les treize modules de
+ * l'ERP : ici ce sont les prestations qu'un commercial facture au démarrage
+ * — Design, et celles qui suivront.
+ *
+ * Retirer une prestation ne touche aucune offre déjà faite : chaque ligne de
+ * devis porte une copie du libellé et du prix. Une grille qui évolue ne
+ * réécrit donc jamais une proposition partie chez un client.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import {
+  ajouterPrestation,
+  basculerPrestation,
+  compteurs,
+  enregistrerPrestation,
+  listerPrestations,
+  supprimerPrestation,
+} from '../../lib/admin/donnees.mjs';
+import { depuisCents } from '../../lib/offres/montants.mjs';
+import { formater } from '../../lib/offres/calcul.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    let dit = 'Enregistré.';
+
+    if (action === 'ajout') {
+      const cle = await ajouterPrestation({
+        nom: f.get('nom'),
+        description: f.get('description'),
+        prix: f.get('prix'),
+        ordre: f.get('ordre'),
+      });
+      dit = `Prestation « ${cle} » ajoutée.`;
+    } else if (action === 'suppression') {
+      await supprimerPrestation(f.get('id'));
+      dit = 'Prestation retirée du catalogue. Les offres déjà faites ne bougent pas.';
+    } else if (action === 'bascule') {
+      await basculerPrestation(f.get('id'), f.get('actif') === '1');
+      dit = 'Prestation mise à jour.';
+    } else {
+      const ids = f.getAll('id');
+      const noms = f.getAll('nom');
+      const descriptions = f.getAll('description');
+      const prix = f.getAll('prix');
+      const ordres = f.getAll('ordre');
+      for (let i = 0; i < ids.length; i += 1) {
+        await enregistrerPrestation(ids[i], {
+          nom: noms[i],
+          description: descriptions[i],
+          prix: prix[i],
+          ordre: ordres[i],
+        });
+      }
+      dit = `${ids.length} prestation(s) enregistrée(s).`;
+    }
+    return Astro.redirect(`${BASE}/admin/prestations?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prestations = [];
+let chiffres = {};
+try {
+  prestations = await listerPrestations();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const actives = prestations.filter((p) => p.actif).length;
+---
+
+<Console
+  titre="Prestations"
+  fil="TFB Admin · Commercial · Prestations d'onboarding"
+  actif="prestations"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Le catalogue</h2>
+        <p>
+          <span class="jeton">landing_prestations</span> — {actives} active(s) sur {prestations.length}.
+          Seules les actives sont proposées au commercial.
+        </p>
+      </div>
+    </div>
+
+    {prestations.length === 0 ? (
+      <div class="bloc__pied">
+        Aucune prestation. Ajoutez-en une ci-dessous — elle apparaîtra dans l'assistant d'offre.
+      </div>
+    ) : (
+      <form method="post">
+        <div class="roule">
+          <table>
+            <thead>
+              <tr>
+                <th style="inline-size:12rem">Nom</th>
+                <th>Description</th>
+                <th style="inline-size:8rem">Prix</th>
+                <th style="inline-size:5rem">Ordre</th>
+                <th style="inline-size:6rem">État</th>
+                <th style="inline-size:11rem"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {prestations.map((p) => (
+                <tr>
+                  <td>
+                    <input type="hidden" name="id" value={p.id} />
+                    <input type="text" name="nom" value={p.nom} aria-label="Nom" />
+                    <code class="slug">{p.cle}</code>
+                  </td>
+                  <td><textarea name="description" rows="2" aria-label="Description">{p.description || ''}</textarea></td>
+                  <td>
+                    <span class="tarif__saisie">
+                      <input type="text" name="prix" value={depuisCents(p.prix_cents)} inputmode="decimal" aria-label="Prix" />
+                      <span class="tarif__unite">€</span>
+                    </span>
+                    <span class="champ__aide">{formater(p.prix_cents)}</span>
+                  </td>
+                  <td><input type="text" name="ordre" value={p.ordre} inputmode="numeric" aria-label="Ordre" /></td>
+                  <td><span class={p.actif ? 'etat etat--on' : 'etat'}>{p.actif ? 'active' : 'retirée'}</span></td>
+                  <td></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div class="actions">
+          <button class="bouton bouton--marque" type="submit">Enregistrer les {prestations.length} prestations</button>
+        </div>
+      </form>
+    )}
+  </section>
+
+  {prestations.length > 0 && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Activer, retirer</h2>
+          <p>
+            Une prestation retirée n'est plus proposée, mais reste sur les offres où elle
+            figure déjà. La supprimer ne les change pas non plus : chaque ligne de devis
+            porte sa propre copie du libellé et du prix.
+          </p>
+        </div>
+      </div>
+
+      <div class="roule">
+        <table>
+          <tbody>
+            {prestations.map((p) => (
+              <tr>
+                <td><strong>{p.nom}</strong> <span class="fb-num champ__aide">{formater(p.prix_cents)}</span></td>
+                <td style="inline-size:20rem">
+                  <div class="actions">
+                    <form method="post">
+                      <input type="hidden" name="action" value="bascule" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <input type="hidden" name="actif" value={p.actif ? '0' : '1'} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">
+                        {p.actif ? 'Retirer du catalogue' : 'Remettre'}
+                      </button>
+                    </form>
+                    <form method="post" onsubmit="return confirm('Supprimer définitivement cette prestation ? Les offres déjà faites ne changent pas.')">
+                      <input type="hidden" name="action" value="suppression" />
+                      <input type="hidden" name="id" value={p.id} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Ajouter une prestation</h2>
+        <p>Le nom donne la clé technique : « Reprise de données » devient <code class="slug">reprise-de-donnees</code>.</p>
+      </div>
+    </div>
+
+    <form method="post">
+      <input type="hidden" name="action" value="ajout" />
+      <div class="duo">
+        <div class="champ">
+          <label for="p-nom">Nom</label>
+          <input id="p-nom" type="text" name="nom" required placeholder="Reprise de données" />
+        </div>
+        <div class="champ">
+          <label for="p-prix">Prix, une seule fois</label>
+          <span class="tarif__saisie">
+            <input id="p-prix" type="text" name="prix" required inputmode="decimal" placeholder="500" />
+            <span class="tarif__unite">€</span>
+          </span>
+        </div>
+      </div>
+      <div class="champ" style="margin-block-start:12px">
+        <label for="p-desc">Description</label>
+        <textarea id="p-desc" name="description" rows="2" placeholder="Ce que le client reçoit, en une phrase."></textarea>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="plus" taille={16} /> Ajouter
+        </button>
+      </div>
+    </form>
+  </section>
+</Console>

@@ -53,6 +53,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── contenu-initial.mjs       # les 13 fiches rédigées, sans appel IA
 │   ├── contenu-textes.mjs        # le discours éditorial français des gabarits
 │   ├── contenu-traductions.mjs   # les surcharges EN/IT — le français reste la référence
+│   ├── contenu-offres.mjs        # tarifs et prestations de départ, ensuite éditables en console
 │   ├── seed-contenu.mjs          # les charge en base, ou produit contenu.sql
 │   ├── contenu.sql               # le même contenu en SQL portable
 │   ├── ingest.mjs                # ingère un module
@@ -68,13 +69,15 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/design-system/        # les jetons TFB, repris tels quels
 │   ├── src/lib/db.mjs            # lecture des tables — côté serveur uniquement
 │   ├── src/lib/admin/            # session et écritures de la console
+│   ├── src/lib/offres/           # calcul d'une offre et saisie des montants — testés
 │   ├── src/middleware.js         # garde /admin, contrôle d'origine, préfixe de langue
 │   ├── src/components/Layout.astro
 │   ├── src/components/Console.astro
 │   ├── src/pages/index.astro
 │   ├── src/pages/onboarding.astro
 │   ├── src/pages/modules/[slug].astro
-│   ├── src/pages/admin/          # la console : modules, captures, textes, traductions
+│   ├── src/pages/admin/          # la console : modules, captures, textes, traductions, tarifs
+│   ├── tests/                    # node:test — aucune dépendance (npm test)
 │   └── Dockerfile
 ├── deploy/
 │   ├── landing-tfb.service       # gabarit du service systemd
@@ -99,7 +102,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 
 ## Le modèle de données
 
-Dix tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
+Seize tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
 la base sans risque de collision — le préfixe se change avec `DB_PREFIX`. Elles
 sont créées par `bootstrap-db.mjs`, qui ajoute aussi les colonnes manquantes
 d'une table déjà en place, et sont interrogeables directement en SQL.
@@ -116,6 +119,12 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_clients` | les réseaux affichés sur la landing — vide, le bandeau ne s'affiche pas |
 | `landing_langues` | les neuf langues prévues et leur état de publication |
 | `landing_traductions` | les surcharges de traduction : `langue`, `entite`, `ligne_id`, `champ`, `valeur`, `source` |
+| `landing_utilisateurs` | les comptes de la console : `identifiant`, `nom`, `empreinte`, `role` |
+| `landing_prospects` | le client démarché — **à ne pas confondre avec `landing_clients`**, la vitrine de l'accueil |
+| `landing_offres` | une proposition chiffrée : référence, version, statut, remise, TVA, **et une copie des tarifs du jour** |
+| `landing_offre_lignes` | les lignes du devis : `type`, `quantite`, `prix_unitaire_cents`, `recurrence` |
+| `landing_prestations` | les modules d'onboarding vendables — **à ne pas confondre avec `landing_modules`**, les modules ERP |
+| `landing_tarifs` | la grille tarifaire, clé/valeur typée (`cents`, `points`, `entier`, `texte`) |
 
 Les colonnes `problemes`, `benefices`, `stack`, `mots_cles`, `leviers`,
 `liens` et `reponses` sont de type JSON.
@@ -294,6 +303,13 @@ node pipeline/exporter-contenu.mjs          # depuis les fiches de départ
 node pipeline/exporter-contenu.mjs --base   # depuis la base, retouches comprises
 ```
 
+Les tests du calcul commercial tournent sans base ni serveur, depuis
+`apps/web` :
+
+```bash
+npm test    # node:test — aucune dépendance à installer
+```
+
 ### La console d'administration
 
 Le contenu se modifie aussi depuis le navigateur, sans redéploiement, à
@@ -309,6 +325,11 @@ rattachement, ordre), **Page d'accueil** (titre, accroche, problèmes du
 franchiseur et réponses), **Langues** (publier ou retirer une langue du
 sélecteur) et **Traductions** (le français à gauche, la langue choisie à
 droite, entité par entité).
+
+Deux écrans de plus servent l'onboarding commercial : **Tarifs** (prix par
+vue, multiplicateur d'achat, maintenance annuelle, journée de formation, TVA
+par défaut, mentions et gabarit de courriel) et **Prestations** (le catalogue
+des modules d'onboarding vendables).
 
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.

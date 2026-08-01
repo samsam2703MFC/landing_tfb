@@ -10,6 +10,7 @@
  */
 
 import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
+import { enCents, lireTarif, saisirTarif } from '../offres/montants.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
 function vrai(valeur) {
@@ -78,6 +79,13 @@ export async function compteurs() {
   const [leads] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('leads')} WHERE traite = ?`, [vrai(false)]);
   const [clients] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('clients')}`);
   const [questions] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('questions')}`);
+  const [prestations] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('prestations')} WHERE actif = ?`,
+    [vrai(true)],
+  );
+  const [offres] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('offres')} WHERE statut = 'brouillon'`,
+  );
   const [aValider] = await db.requete(
     `SELECT (SELECT COUNT(*) FROM ${table('modules')} WHERE statut = 'nouveau')
           + (SELECT COUNT(*) FROM ${table('fonctions')} WHERE statut = 'nouveau') AS total`,
@@ -93,6 +101,8 @@ export async function compteurs() {
     leads: nombre(leads),
     clients: nombre(clients),
     questions: nombre(questions),
+    prestations: nombre(prestations),
+    offres: nombre(offres),
     aValider: nombre(aValider),
   };
 }
@@ -538,6 +548,137 @@ export async function basculerLangue(code, publiee) {
     throw new Error('La langue par défaut ne peut pas être retirée : le site n’aurait plus rien à servir.');
   }
   await db.executer(`UPDATE ${table('langues')} SET publiee = ? WHERE code = ?`, [vrai(publiee), String(code)]);
+  viderCache();
+}
+
+// ---------------------------------------------------------------------------
+// Tarification commerciale
+// ---------------------------------------------------------------------------
+
+/** Les tarifs, dans l'ordre de l'écran. */
+export async function listerTarifs() {
+  const db = await connexion();
+  return db.requete(`SELECT * FROM ${table('tarifs')} ORDER BY ordre, cle`);
+}
+
+/**
+ * Les tarifs en vigueur, prêts pour le calculateur.
+ *
+ * Ce sont ces valeurs qui sont **recopiées sur une offre** au moment de sa
+ * création. Ensuite l'offre ne les relit plus : un tarif modifié ne doit pas
+ * changer le montant d'une proposition déjà partie chez un client.
+ */
+export async function tarifsEnVigueur() {
+  const lignes = await listerTarifs();
+  const par = new Map(lignes.map((l) => [l.cle, l]));
+  const nombre = (cle) => lireTarif(par.get(cle)) || 0;
+  return {
+    prix_par_vue_cents: nombre('prix_par_vue'),
+    multiplicateur_achat: nombre('multiplicateur_achat'),
+    taux_annuel: nombre('taux_annuel'),
+    prix_jour_formation_cents: nombre('prix_jour_formation'),
+    tva_defaut: nombre('tva_defaut'),
+    validite_jours: nombre('validite_jours'),
+    mention_autoliquidation: lireTarif(par.get('mention_autoliquidation')) || '',
+    courriel_sujet: lireTarif(par.get('courriel_sujet')) || '',
+    courriel_corps: lireTarif(par.get('courriel_corps')) || '',
+  };
+}
+
+/**
+ * Enregistre les tarifs modifiés.
+ *
+ * Deux passages : on convertit et on valide tout avant d'écrire quoi que ce
+ * soit. Un taux mal tapé au milieu du formulaire ne doit pas laisser la
+ * moitié des tarifs enregistrés et l'autre non — sur une grille tarifaire,
+ * un état intermédiaire est pire qu'un refus.
+ */
+export async function enregistrerTarifs(formulaire) {
+  const db = await connexion();
+  const existants = new Map((await listerTarifs()).map((l) => [l.cle, l]));
+
+  const cles = formulaire.getAll('cle');
+  const valeurs = formulaire.getAll('valeur');
+  const aEcrire = [];
+  for (let i = 0; i < cles.length; i += 1) {
+    const ligne = existants.get(String(cles[i]));
+    if (!ligne) continue;
+    const valeur = saisirTarif(ligne, valeurs[i]);
+    if (valeur !== String(ligne.valeur ?? '')) aEcrire.push({ cle: ligne.cle, valeur });
+  }
+
+  for (const { cle, valeur } of aEcrire) {
+    await db.executer(`UPDATE ${table('tarifs')} SET valeur = ? WHERE cle = ?`, [valeur, cle]);
+  }
+  viderCache();
+  return aEcrire.length;
+}
+
+/** Les prestations d'onboarding vendables. */
+export async function listerPrestations({ activesSeulement = false } = {}) {
+  const db = await connexion();
+  const sql = activesSeulement
+    ? `SELECT * FROM ${table('prestations')} WHERE actif = ? ORDER BY ordre, nom`
+    : `SELECT * FROM ${table('prestations')} ORDER BY ordre, nom`;
+  const lignes = await db.requete(sql, activesSeulement ? [vrai(true)] : []);
+  return lignes.map((l) => ({ ...l, actif: Boolean(l.actif) }));
+}
+
+export async function ajouterPrestation(valeurs) {
+  const db = await connexion();
+  const cle = normaliserCle(valeurs.cle || valeurs.nom);
+  if (!cle) throw new Error('Une prestation a besoin d’un nom.');
+  const dejaLa = await db.requete(`SELECT id FROM ${table('prestations')} WHERE cle = ? LIMIT 1`, [cle]);
+  if (dejaLa.length > 0) throw new Error(`La prestation « ${cle} » existe déjà.`);
+
+  await db.executer(
+    `INSERT INTO ${table('prestations')} (cle, nom, description, prix_cents, actif, ordre)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      cle,
+      String(valeurs.nom || cle).slice(0, 160),
+      String(valeurs.description || '') || null,
+      enCents(valeurs.prix, 'Prix'),
+      vrai(true),
+      Number(valeurs.ordre) || 100,
+    ],
+  );
+  viderCache();
+  return cle;
+}
+
+export async function enregistrerPrestation(id, valeurs) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('prestations')} SET nom = ?, description = ?, prix_cents = ?, ordre = ? WHERE id = ?`,
+    [
+      String(valeurs.nom || '').slice(0, 160),
+      String(valeurs.description || '') || null,
+      enCents(valeurs.prix, 'Prix'),
+      Number(valeurs.ordre) || 100,
+      Number(id),
+    ],
+  );
+  viderCache();
+}
+
+export async function basculerPrestation(id, actif) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('prestations')} SET actif = ? WHERE id = ?`, [vrai(actif), Number(id)]);
+  viderCache();
+}
+
+/**
+ * Supprime une prestation du catalogue.
+ *
+ * Les offres déjà faites ne bougent pas : leurs lignes portent une copie du
+ * libellé et du prix, pas une référence. Une prestation retirée du catalogue
+ * ne réécrit donc jamais une proposition partie chez un client — c'est tout
+ * l'intérêt d'avoir copié plutôt que pointé.
+ */
+export async function supprimerPrestation(id) {
+  const db = await connexion();
+  await db.executer(`DELETE FROM ${table('prestations')} WHERE id = ?`, [Number(id)]);
   viderCache();
 }
 

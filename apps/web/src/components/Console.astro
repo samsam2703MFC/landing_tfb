@@ -40,6 +40,14 @@ const RUBRIQUES = [
     ],
   },
   {
+    // L'onboarding commercial : ce qu'on vend, à quel prix, et à qui.
+    titre: 'Commercial',
+    entrees: [
+      { cle: 'tarifs', href: '/admin/tarifs', libelle: 'Tarifs', icone: 'percent' },
+      { cle: 'prestations', href: '/admin/prestations', libelle: 'Prestations', icone: 'wallet', compte: compteurs.prestations },
+    ],
+  },
+  {
     titre: 'Système',
     entrees: [
       { cle: 'sync', href: '/admin/sync', libelle: 'Sync GitHub', icone: 'arrow-up-down', compte: compteurs.modules },

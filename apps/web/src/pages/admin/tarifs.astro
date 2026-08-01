@@ -1,0 +1,199 @@
+---
+/**
+ * La grille tarifaire, modifiable sans redéploiement.
+ *
+ * Rien de ce qui chiffre une offre n'est écrit dans le code : le prix par
+ * vue, le multiplicateur d'achat, la maintenance annuelle, le prix de la
+ * journée de formation et la TVA par défaut vivent tous ici.
+ *
+ * Une modification ne touche que les offres **à venir**. Chaque offre garde
+ * une copie des tarifs du jour où elle a été créée — sans quoi une
+ * proposition partie chez un client changerait de montant dans son dos.
+ */
+import Console from '../../components/Console.astro';
+import { compteurs, enregistrerTarifs, listerTarifs, tarifsEnVigueur } from '../../lib/admin/donnees.mjs';
+import { afficherTarif } from '../../lib/offres/montants.mjs';
+import { calculerOffre, formater } from '../../lib/offres/calcul.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const n = await enregistrerTarifs(await Astro.request.formData());
+    const dit = n === 0 ? 'Aucun changement.' : `${n} tarif(s) enregistré(s).`;
+    return Astro.redirect(`${BASE}/admin/tarifs?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let tarifs = [];
+let vigueur = null;
+let chiffres = {};
+try {
+  tarifs = await listerTarifs();
+  vigueur = await tarifsEnVigueur();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+/** L'unité de saisie, dite au commercial plutôt que devinée. */
+const UNITE = { cents: '€', points: '%', entier: '', texte: '' };
+
+/**
+ * Un exemple chiffré avec les tarifs du moment. Une grille tarifaire ne se
+ * relit pas : cinq vues et deux jours de formation donnent tout de suite les
+ * trois montants que le client verra, et un multiplicateur mal tapé saute
+ * aux yeux avant d'atterrir sur une offre.
+ */
+const exemple = vigueur
+  ? {
+      location: calculerOffre({
+        option_app: 'par_vue',
+        vues: [{ nombre: 5 }],
+        jours_formation: 2,
+        tarifs: vigueur,
+        tva: { taux: vigueur.tva_defaut, exoneree: false },
+      }),
+      achat: calculerOffre({
+        option_app: 'achat',
+        vues: [{ nombre: 5 }],
+        jours_formation: 2,
+        tarifs: vigueur,
+        tva: { taux: vigueur.tva_defaut, exoneree: false },
+      }),
+    }
+  : null;
+
+const message = Astro.url.searchParams.get('ok');
+const chiffres_ = tarifs.filter((t) => t.type !== 'texte');
+const textes = tarifs.filter((t) => t.type === 'texte');
+---
+
+<Console
+  titre="Tarifs"
+  fil="TFB Admin · Commercial · Tarifs"
+  actif="tarifs"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <form method="post">
+    <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer</button>
+
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>La grille</h2>
+          <p>
+            <span class="jeton">landing_tarifs</span> — une modification ne s'applique qu'aux offres
+            créées ensuite. Celles déjà faites gardent les tarifs de leur date.
+          </p>
+        </div>
+      </div>
+
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th style="inline-size:18rem">Paramètre</th><th style="inline-size:9rem">Valeur</th><th>À quoi ça sert</th></tr>
+          </thead>
+          <tbody>
+            {chiffres_.map((t) => (
+              <tr>
+                <td><strong>{t.libelle || t.cle}</strong><code class="slug">{t.cle}</code></td>
+                <td>
+                  <input type="hidden" name="cle" value={t.cle} />
+                  <span class="tarif__saisie">
+                    <input
+                      type="text"
+                      name="valeur"
+                      value={afficherTarif(t)}
+                      inputmode="decimal"
+                      aria-label={t.libelle || t.cle}
+                    />
+                    {UNITE[t.type] && <span class="tarif__unite">{UNITE[t.type]}</span>}
+                  </span>
+                </td>
+                <td class="champ__aide">{t.aide}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    {exemple && (
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Ce que ça donne</h2>
+            <p>Cinq vues et deux jours de formation, aux tarifs enregistrés. Recalculé à chaque enregistrement.</p>
+          </div>
+        </div>
+
+        <div class="roule">
+          <table>
+            <thead>
+              <tr><th>Formule</th><th class="nombre">Une fois</th><th class="nombre">Par mois</th><th class="nombre">Par an</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><strong>Location à la vue</strong><code class="slug">option A</code></td>
+                <td class="nombre fb-num">{formater(exemple.location.seaux.unique.ttc)}</td>
+                <td class="nombre fb-num"><strong>{formater(exemple.location.seaux.mensuel.ttc)}</strong></td>
+                <td class="nombre fb-num">{formater(exemple.location.seaux.annuel.ttc)}</td>
+              </tr>
+              <tr>
+                <td><strong>Achat ferme</strong><code class="slug">option B</code></td>
+                <td class="nombre fb-num"><strong>{formater(exemple.achat.seaux.unique.ttc)}</strong></td>
+                <td class="nombre fb-num">{formater(exemple.achat.seaux.mensuel.ttc)}</td>
+                <td class="nombre fb-num"><strong>{formater(exemple.achat.seaux.annuel.ttc)}</strong></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="bloc__pied">
+          Montants TTC, TVA à {(vigueur.tva_defaut / 100)} %. L'achat vaut
+          {' '}{vigueur.multiplicateur_achat} mois de location — modifier le multiplicateur
+          change le rapport entre les deux colonnes.
+        </div>
+      </section>
+    )}
+
+    <section class="bloc">
+      <div class="bloc__tete">
+        <div>
+          <h2>Mentions et courriel</h2>
+          <p>Les textes imprimés sur l'offre et envoyés au client. Les jetons entre accolades sont remplacés à l'envoi.</p>
+        </div>
+      </div>
+
+      {textes.map((t) => (
+        <div class="champ" style="margin-block-end:14px">
+          <label for={`t-${t.cle}`}>
+            <strong>{t.libelle || t.cle}</strong>
+            <span class="champ__aide">{t.aide}</span>
+          </label>
+          <input type="hidden" name="cle" value={t.cle} />
+          <textarea id={`t-${t.cle}`} name="valeur" rows={String(t.valeur || '').length > 120 ? 10 : 2}>{t.valeur || ''}</textarea>
+        </div>
+      ))}
+    </section>
+
+    <div class="actions">
+      <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+    </div>
+  </form>
+</Console>
+
+<style is:global>
+  /* Le champ et son unité se lisent d'un bloc : « 1000 » sans le « € » à côté
+     laisse le doute entre des euros et des centimes. */
+  .tarif__saisie { display: flex; align-items: center; gap: 6px; }
+  .tarif__saisie input { text-align: end; font-variant-numeric: tabular-nums; }
+  .tarif__unite { font: 500 var(--text-sm) / 1 var(--font-sans); color: var(--slate-400); inline-size: 1ch; }
+  .nombre { text-align: end; font-variant-numeric: tabular-nums; }
+</style>
