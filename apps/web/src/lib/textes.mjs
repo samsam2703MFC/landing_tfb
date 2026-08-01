@@ -22,8 +22,8 @@ const ORIGINE = Object.fromEntries(TEXTES.map((t) => [t.cle, t.valeur]));
  * On charge la table une fois, puis `t()` est synchrone : les gabarits Astro
  * restent lisibles, sans `await` à chaque phrase.
  */
-export async function textes() {
-  const lignes = await chargerTextes();
+export async function textes(langue = null) {
+  const lignes = await chargerTextes(langue);
   const base = Object.fromEntries((lignes || []).map((l) => [l.cle, l.valeur]));
 
   /**

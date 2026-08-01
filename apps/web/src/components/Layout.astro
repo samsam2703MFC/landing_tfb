@@ -25,7 +25,10 @@ const {
   actif = null,       // 'accueil' | 'modules' | 'contact'
 } = Astro.props;
 
-const t = await textes();
+// La langue est posée par le middleware, d'après le préfixe d'URL.
+const langue = Astro.locals.langue || 'fr';
+const rtl = Boolean(Astro.locals.rtl);
+const t = await textes(langue);
 
 // La marque et le titre de repli viennent de la base : rien à recompiler
 // pour changer ce que lit un onglet de navigateur.
@@ -36,7 +39,22 @@ const largeur = large ? '1200px' : '1080px';
 
 // Les langues publiées seulement : un sélecteur qui propose une langue non
 // traduite mentirait au visiteur.
-const langues = (await chargerLangues()).filter((l) => l.publiee);
+const langues = Astro.locals.langues?.length
+  ? Astro.locals.langues
+  : (await chargerLangues()).filter((l) => l.publiee);
+
+/**
+ * La même page dans une autre langue. On garde le chemin : changer de langue
+ * depuis la fiche d'un module doit mener à cette fiche, pas à l'accueil.
+ */
+const BASE_URL = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const cheminNu =
+  (Astro.url.pathname.startsWith(BASE_URL) ? Astro.url.pathname.slice(BASE_URL.length) : Astro.url.pathname)
+    .replace(/^\/[a-z]{2}(?=\/|$)/, '') || '/';
+const versLangue = (code) => {
+  const l = langues.find((x) => x.code === code);
+  return `${BASE_URL}${l?.defaut ? '' : `/${code}`}${cheminNu === '/' ? '/' : cheminNu}`;
+};
 
 const NAV = [
   { cle: 'accueil', libelle: t('nav.accueil'), href: '/' },
@@ -45,13 +63,17 @@ const NAV = [
 ];
 ---
 
-<html lang="fr" dir="ltr">
+<html lang={langue} dir={rtl ? 'rtl' : 'ltr'}>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{titreComplet}</title>
     {description && <meta name="description" content={description} />}
     {canonique && <link rel="canonical" href={canonique} />}
+    {Astro.site &&
+      langues.map((l) => (
+        <link rel="alternate" hreflang={l.code} href={new URL(versLangue(l.code), Astro.site).href} />
+      ))}
     <meta property="og:title" content={titreComplet} />
     {description && <meta property="og:description" content={description} />}
     <meta property="og:type" content="website" />
@@ -332,7 +354,12 @@ const NAV = [
           <span class="langues">
             <Icone nom="globe" taille={14} />
             {langues.map((l) => (
-              <a href={lien(l.defaut ? '/' : `/${l.code}/`)} lang={l.code}>{l.code.toUpperCase()}</a>
+              <a
+                href={versLangue(l.code)}
+                lang={l.code}
+                aria-current={l.code === langue ? 'true' : undefined}
+                class={l.code === langue ? 'est-active' : undefined}
+              >{l.code.toUpperCase()}</a>
             ))}
           </span>
         )}

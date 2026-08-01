@@ -18,14 +18,15 @@ import { lien } from '../../lib/lien.mjs';
 import { textes } from '../../lib/textes.mjs';
 
 const { slug } = Astro.params;
-const module = await chargerModule(slug);
+const langue = Astro.locals.langue || 'fr';
+const module = await chargerModule(slug, langue);
 
 if (!module) {
   return new Response('Module introuvable', { status: 404 });
 }
 
-const t = await textes();
-const modules = await chargerModules();
+const t = await textes(langue);
+const modules = await chargerModules(langue);
 const parSlug = new Map(modules.map((m) => [m.slug, m]));
 
 const problemes = module.problemes || [];

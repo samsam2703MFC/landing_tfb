@@ -132,6 +132,28 @@ function modele(pg) {
       ],
     },
     {
+      // Les traductions, toutes tables confondues.
+      //
+      // Le français reste dans les colonnes d'origine : c'est la langue de
+      // référence et le repli. Une traduction est une surcharge, désignée par
+      // la table visée, la ligne, le champ et la langue. Rien à migrer, et une
+      // langue qu'on abandonne se supprime d'une requête.
+      //
+      // `source` garde le français au moment de la traduction : quand le texte
+      // français change, la traduction devient périmée et la console peut le
+      // dire au lieu d'afficher en silence une phrase qui ne correspond plus.
+      nom: table('traductions'),
+      colonnes: [
+        ['id', t.id],
+        ['langue', `${t.chaine(5)} NOT NULL`],
+        ['entite', `${t.chaine(20)} NOT NULL`],
+        ['ligne_id', 'INT NOT NULL'],
+        ['champ', `${t.chaine(40)} NOT NULL`],
+        ['valeur', t.texte],
+        ['source', t.texte],
+      ],
+    },
+    {
       // Les demandes de démonstration reçues par le formulaire de contact.
       nom: table('leads'),
       colonnes: [
@@ -196,6 +218,9 @@ const INDEX = [
   { suffixe: 'fonctions_cle', table: 'fonctions', colonnes: 'module_id, cle' },
   { suffixe: 'modules_actif', table: 'modules', colonnes: 'actif, ordre' },
   { suffixe: 'captures_module', table: 'captures', colonnes: 'module_id, ordre' },
+  // Une page charge toutes les traductions d'une langue d'un coup.
+  { suffixe: 'traductions_langue', table: 'traductions', colonnes: 'langue' },
+  { suffixe: 'traductions_cle', table: 'traductions', colonnes: 'langue, entite, ligne_id, champ' },
 ];
 
 /** Colonnes réellement présentes, en minuscules. */

@@ -167,11 +167,61 @@ function normaliserModule(ligne) {
 
 const VRAI = () => (estPostgres() ? true : 1);
 
+// ---------------------------------------------------------------------------
+// Traductions
+// ---------------------------------------------------------------------------
+
+/**
+ * Les traductions d'une langue, en une seule requête.
+ *
+ * Le français vit dans les colonnes d'origine et sert de repli : une clé
+ * absente ou vide rend la valeur française plutôt qu'un blanc. Une page à
+ * moitié traduite reste donc lisible, ce qui compte plus qu'une cohérence de
+ * façade.
+ *
+ * @returns {Promise<Map<string, string>|null>} `entite:ligne_id:champ` → valeur
+ */
+export async function chargerTraductions(langue) {
+  if (!langue || langue === 'fr') return null;
+  const lignes = await lire(
+    `traductions:${langue}`,
+    `SELECT entite, ligne_id, champ, valeur FROM ${table('traductions')} WHERE langue = ?`,
+    [langue],
+  );
+  const par = new Map();
+  for (const l of lignes || []) {
+    if (l.valeur !== null && l.valeur !== undefined && String(l.valeur).trim() !== '') {
+      par.set(`${l.entite}:${l.ligne_id}:${l.champ}`, l.valeur);
+    }
+  }
+  return par;
+}
+
+/** Surcharge les champs traduits d'une ligne. Sans traductions, rend la ligne. */
+export function traduire(ligne, entite, trads) {
+  if (!trads || !ligne || ligne.id === undefined) return ligne;
+  let copie = null;
+  for (const champ of Object.keys(ligne)) {
+    const valeur = trads.get(`${entite}:${ligne.id}:${champ}`);
+    if (valeur !== undefined) {
+      copie = copie || { ...ligne };
+      copie[champ] = valeur;
+    }
+  }
+  return copie || ligne;
+}
+
+/** La même chose sur une liste. */
+function traduireListe(lignes, entite, trads) {
+  if (!trads || !lignes) return lignes;
+  return lignes.map((l) => traduire(l, entite, trads));
+}
+
 /** Contenu de la page d'accueil (la ligne unique de la table site). */
-export async function chargerSite() {
+export async function chargerSite(langue = null) {
   const lignes = await lire('site', `SELECT * FROM ${table('site')} ORDER BY id LIMIT 1`);
   if (!lignes || lignes.length === 0) return null;
-  const site = lignes[0];
+  const site = traduire(lignes[0], 'site', await chargerTraductions(langue));
   return {
     ...site,
     problemes: lireJson(site.problemes, []),
@@ -180,7 +230,8 @@ export async function chargerSite() {
 }
 
 /** Liste des modules actifs, avec le nom de leurs fonctions. */
-export async function chargerModules() {
+export async function chargerModules(langue = null) {
+  const trads = await chargerTraductions(langue);
   const lignes = await lire(
     'modules',
     `SELECT * FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
@@ -188,7 +239,7 @@ export async function chargerModules() {
   );
   if (!lignes || lignes.length === 0) return [];
 
-  const modules = lignes.map(normaliserModule);
+  const modules = traduireListe(lignes, 'modules', trads).map(normaliserModule);
   const fonctions = await lire(
     'fonctions-resume',
     `SELECT module_id, cle, nom, icone FROM ${table('fonctions')} WHERE en_ligne = ? ORDER BY module_id, ordre`,
@@ -202,7 +253,7 @@ export async function chargerModules() {
       parModule.get(fonction.module_id).push(fonction);
     }
     for (const module of modules) {
-      module.fonctions = parModule.get(module.id) || [];
+      module.fonctions = traduireListe(parModule.get(module.id) || [], 'fonctions', trads);
     }
   }
 
@@ -210,7 +261,8 @@ export async function chargerModules() {
 }
 
 /** Un module et toutes ses fonctions. `null` si le slug n'existe pas. */
-export async function chargerModule(slug) {
+export async function chargerModule(slug, langue = null) {
+  const trads = await chargerTraductions(langue);
   const lignes = await lire(
     `module:${slug}`,
     `SELECT * FROM ${table('modules')} WHERE slug = ? AND actif = ? LIMIT 1`,
@@ -218,21 +270,24 @@ export async function chargerModule(slug) {
   );
   if (!lignes || lignes.length === 0) return null;
 
-  const module = normaliserModule(lignes[0]);
+  const module = normaliserModule(traduire(lignes[0], 'modules', trads));
 
   const fonctions = await lire(
     `fonctions:${slug}`,
     `SELECT * FROM ${table('fonctions')} WHERE module_id = ? AND en_ligne = ? ORDER BY ordre`,
     [module.id, VRAI()],
   );
-  module.fonctions = (fonctions || []).map((f) => ({ ...f, leviers: lireJson(f.leviers, []) }));
+  module.fonctions = traduireListe(fonctions || [], 'fonctions', trads).map((f) => ({
+    ...f,
+    leviers: lireJson(f.leviers, []),
+  }));
 
   const captures = await lire(
     `captures:${slug}`,
     `SELECT * FROM ${table('captures')} WHERE module_id = ? ORDER BY ordre`,
     [module.id],
   );
-  module.captures = captures || [];
+  module.captures = traduireListe(captures || [], 'captures', trads);
 
   return module;
 }
@@ -241,8 +296,9 @@ export async function chargerModule(slug) {
  * Tout ce qu'il faut à la page d'onboarding : chaque module avec ses
  * fonctions, ses leviers et ses liens, en une seule passe.
  */
-export async function chargerParcours() {
-  const modules = await chargerModules();
+export async function chargerParcours(langue = null) {
+  const trads = await chargerTraductions(langue);
+  const modules = await chargerModules(langue);
   if (modules.length === 0) return [];
 
   const fonctions = await lire(
@@ -256,12 +312,12 @@ export async function chargerParcours() {
   );
 
   const parModule = new Map();
-  for (const f of fonctions || []) {
+  for (const f of traduireListe(fonctions || [], 'fonctions', trads)) {
     if (!parModule.has(f.module_id)) parModule.set(f.module_id, []);
     parModule.get(f.module_id).push({ ...f, leviers: lireJson(f.leviers, []) });
   }
   const capsParModule = new Map();
-  for (const c of captures || []) {
+  for (const c of traduireListe(captures || [], 'captures', trads)) {
     if (!capsParModule.has(c.module_id)) capsParModule.set(c.module_id, []);
     capsParModule.get(c.module_id).push(c);
   }
@@ -274,8 +330,9 @@ export async function chargerParcours() {
 }
 
 /** Les textes éditoriaux, tels quels. Le repli est géré par lib/textes.mjs. */
-export async function chargerTextes() {
-  return (await lire('textes', `SELECT cle, valeur FROM ${table('textes')}`)) || [];
+export async function chargerTextes(langue = null) {
+  const lignes = (await lire('textes', `SELECT id, cle, valeur FROM ${table('textes')}`)) || [];
+  return traduireListe(lignes, 'textes', await chargerTraductions(langue));
 }
 
 /** Les réseaux affichés sur la landing. Vide, le bandeau ne s'affiche pas. */
@@ -294,9 +351,12 @@ export async function chargerLangues() {
  * Les questions de l'onboarding, dans l'ordre. Chacune porte les slugs des
  * modules qu'elle déclenche.
  */
-export async function chargerQuestions() {
+export async function chargerQuestions(langue = null) {
   const lignes = await lire('questions', `SELECT * FROM ${table('questions')} ORDER BY ordre, id`);
-  return (lignes || []).map((q) => ({ ...q, slugs: lireJson(q.slugs, []) }));
+  return traduireListe(lignes || [], 'questions', await chargerTraductions(langue)).map((q) => ({
+    ...q,
+    slugs: lireJson(q.slugs, []),
+  }));
 }
 
 /**

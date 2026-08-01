@@ -99,6 +99,7 @@ export const TEXTES = [
   { cle: 'module.detail', section: 'Fiche module', valeur: 'Le module en détail' },
   { cle: 'module.entrees', section: 'Fiche module', valeur: 'À quoi sert chaque entrée' },
   { cle: 'module.flux', section: 'Fiche module', valeur: 'Le flux, en clair' },
+  { cle: 'module.maquette.note', section: 'Fiche module', valeur: '{n} entrées de menu, reprises du code du module.', aide: '{n} est remplacé par le nombre.' },
   { cle: 'module.carrousel', section: 'Fiche module', valeur: 'Le catalogue', aide: 'Libellé du carrousel, en haut de la fiche.' },
   { cle: 'module.carrousel.aide', section: 'Fiche module', valeur: 'Faites défiler pour changer de module.' },
   { cle: 'module.precedent', section: 'Fiche module', valeur: 'Module précédent' },

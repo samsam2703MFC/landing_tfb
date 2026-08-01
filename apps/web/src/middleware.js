@@ -1,13 +1,25 @@
 /**
- * Garde d'accès à la console.
+ * Deux gardes, une seule porte d'entrée.
  *
- * Tout ce qui est sous /admin exige une session valide, sauf la page de
- * connexion elle-même. Le contrôle est fait ici plutôt que dans chaque page :
- * une page ajoutée demain est protégée sans qu'on ait à y penser.
+ * 1. La console : tout ce qui est sous /admin exige une session valide, sauf
+ *    la page de connexion. Le contrôle est fait ici plutôt que dans chaque
+ *    page — une page ajoutée demain est protégée sans qu'on y pense.
  *
- * Le site public traverse ce middleware sans rien faire.
+ * 2. La langue : `/en/modules/webshop` sert la même page que
+ *    `/modules/webshop`, en anglais. Plutôt que de dupliquer chaque gabarit
+ *    sous `[langue]/`, on retire le préfixe ici et on range la langue dans
+ *    `Astro.locals` : les pages restent uniques, et une page ajoutée demain
+ *    est traduite sans qu'on y pense non plus.
+ *
+ * Une langue non publiée ne se sert pas : `/de/` répond 404 tant que
+ * l'allemand n'est pas coché dans la console. Mieux vaut une page absente
+ * qu'une page qui promet une traduction inexistante.
+ *
+ * En `.js` et non `.mjs` : Astro ne cherche le middleware que sous
+ * `src/middleware.{js,ts}`. C'est une contrainte du cadre, pas un choix.
  */
 
+import { chargerLangues } from './lib/db.mjs';
 import { NOM_COOKIE, consoleActive, jetonValide } from './lib/admin/session.mjs';
 
 /** Préfixe de montage, sans barre oblique finale. */
@@ -52,9 +64,56 @@ function origineEtrangere(requete) {
   }
 }
 
+/**
+ * Retire le préfixe de langue et le range dans `locals`.
+ *
+ * @returns {Promise<{redirection?: Response, versChemin?: string}>}
+ *   `redirection` quand il faut renvoyer ailleurs, `versChemin` quand la page
+ *   à servir n'est pas celle demandée. Rien quand la requête suit son cours.
+ */
+async function reglerLangue(contexte, chemin) {
+  contexte.locals.langue = 'fr';
+  contexte.locals.langues = [];
+
+  let langues = [];
+  try {
+    langues = (await chargerLangues()).filter((l) => l.publiee);
+  } catch {
+    // Base injoignable : on sert le français, qui est dans les gabarits.
+    return {};
+  }
+  contexte.locals.langues = langues;
+
+  const trouve = chemin.match(/^\/([a-z]{2})(\/.*|$)/);
+  if (!trouve) return {};
+
+  const langue = langues.find((l) => l.code === trouve[1]);
+  // Deux lettres qui ne sont pas une langue publiée : ce n'est pas un
+  // préfixe, c'est peut-être une vraie page. On laisse passer.
+  if (!langue) return {};
+
+  const reste = trouve[2] || '/';
+  // La langue par défaut n'a pas de préfixe : `/fr/` renvoie vers `/`, pour
+  // qu'une page n'existe pas à deux adresses.
+  if (langue.defaut) return { redirection: contexte.redirect(`${BASE}${reste}`, 301) };
+
+  contexte.locals.langue = langue.code;
+  contexte.locals.rtl = Boolean(langue.rtl);
+  return { versChemin: `${BASE}${reste}${contexte.url.search}` };
+}
+
 export async function onRequest(contexte, suivant) {
   const chemin = cheminInterne(contexte.url.pathname);
-  if (!chemin.startsWith('/admin')) return suivant();
+
+  if (!chemin.startsWith('/admin')) {
+    // La console reste en français : elle s'adresse à l'équipe, pas au marché.
+    const { redirection, versChemin } = await reglerLangue(contexte, chemin);
+    if (redirection) return redirection;
+    // `next(url)` et non `rewrite(url)` : le second rejoue la chaîne de
+    // middleware sur la nouvelle URL, qui n'a plus de préfixe — la langue
+    // qu'on vient de poser serait aussitôt remise à « fr ».
+    return versChemin ? suivant(versChemin) : suivant();
+  }
 
   if (origineEtrangere(contexte.request)) {
     return new Response('Soumission refusée : origine étrangère au site.', { status: 403 });

@@ -14,11 +14,13 @@ import { textes } from '../lib/textes.mjs';
 import { LEVIERS, leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
+// La langue vient du préfixe d'URL, posé par le middleware.
+const langue = Astro.locals.langue || 'fr';
 const [t, site, modules, clients] = await Promise.all([
-  textes(),
-  chargerSite(),
+  textes(langue),
+  chargerSite(langue),
   // Le parcours complet : on a besoin des fonctions pour l'icône et le compte.
-  chargerParcours(),
+  chargerParcours(langue),
   chargerClients(),
 ]);
 

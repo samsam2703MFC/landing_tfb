@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
+import { TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -180,6 +181,49 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       textesEcrits += 1;
     }
     console.log(`✓ ${textesEcrits} texte(s) éditoriaux sur ${TEXTES.length}`);
+
+    // Les traductions du discours éditorial.
+    //
+    // `source` garde le français au moment de la traduction : quand la phrase
+    // française change, la console peut signaler la traduction comme périmée
+    // au lieu d'afficher en silence un texte qui ne correspond plus.
+    let tradsEcrites = 0;
+    const idsTextes = new Map(
+      (await db.requete(`SELECT id, cle, valeur FROM ${table('textes')}`)).map((l) => [
+        l.cle,
+        { id: l.id, valeur: l.valeur },
+      ]),
+    );
+    for (const [langue, paires] of Object.entries(TRADUCTIONS)) {
+      for (const [cle, valeur] of Object.entries(paires)) {
+        const cible = idsTextes.get(cle);
+        if (!cible) continue;
+        const dejaLa = await db.requete(
+          `SELECT id FROM ${table('traductions')}
+           WHERE langue = ? AND entite = ? AND ligne_id = ? AND champ = ? LIMIT 1`,
+          [langue, 'textes', cible.id, 'valeur'],
+        );
+        // On n'écrase pas une traduction retouchée dans la console : seules
+        // les absentes arrivent, comme pour les textes français.
+        if (siVide && dejaLa.length > 0) continue;
+        if (dejaLa.length > 0) {
+          await db.executer(
+            `UPDATE ${table('traductions')} SET valeur = ?, source = ? WHERE id = ?`,
+            [valeur, cible.valeur, dejaLa[0].id],
+          );
+        } else {
+          await db.executer(
+            `INSERT INTO ${table('traductions')} (langue, entite, ligne_id, champ, valeur, source)
+             VALUES (?, ?, ?, ?, ?, ?)`,
+            [langue, 'textes', cible.id, 'valeur', valeur, cible.valeur],
+          );
+        }
+        tradsEcrites += 1;
+      }
+    }
+    if (tradsEcrites > 0) {
+      console.log(`✓ ${tradsEcrites} traduction(s) de texte, ${Object.keys(TRADUCTIONS).length} langue(s)`);
+    }
 
     // Les langues prévues. Leur état de publication se règle dans la console :
     // on ne le réécrit jamais par-dessus.

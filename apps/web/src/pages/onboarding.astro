@@ -19,7 +19,12 @@ import { textes } from '../lib/textes.mjs';
 import { leviersDe } from '../lib/leviers.mjs';
 import { lien } from '../lib/lien.mjs';
 
-const [t, modules, questions] = await Promise.all([textes(), chargerParcours(), chargerQuestions()]);
+const langue = Astro.locals.langue || 'fr';
+const [t, modules, questions] = await Promise.all([
+  textes(langue),
+  chargerParcours(langue),
+  chargerQuestions(langue),
+]);
 
 /** Pour chaque module, les clés de question qui le déclenchent. */
 const declencheurs = new Map(modules.map((m) => [m.slug, []]));
