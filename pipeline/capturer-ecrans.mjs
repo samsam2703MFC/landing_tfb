@@ -212,43 +212,64 @@ function aider() {
 }
 
 /**
- * Ouvre le navigateur : celui qu'on impose, sinon celui de Playwright, sinon
- * celui du système. Un chemin donné mais inexistant est une faute de frappe,
- * pas une invitation à chercher ailleurs — on le dit.
+ * Ouvre le navigateur ET son contexte, en essayant les candidats dans l'ordre.
+ *
+ * Les deux vont ensemble volontairement : un lancement qui réussit ne prouve
+ * rien — `chrome-headless-shell` démarre puis meurt sur certains serveurs, et
+ * la panne n'apparaît qu'à l'ouverture du premier onglet. On valide donc
+ * chaque candidat en ouvrant le contexte, et on passe au suivant s'il tombe.
  */
 async function ouvrirNavigateur() {
   const impose = process.env.PLAYWRIGHT_CHROMIUM;
-  if (impose) {
-    if (!existsSync(impose)) {
-      console.error(`PLAYWRIGHT_CHROMIUM pointe sur ${impose}, qui n'existe pas.`);
-      const trouves = [...NAVIGATEURS.filter((c) => existsSync(c)), ...navigateursDuCache()];
-      if (trouves.length > 0) console.error(`Sur cette machine : ${trouves.join(', ')}`);
-      else aider();
-      process.exit(1);
-    }
-    return chromium.launch({ executablePath: impose });
+  if (impose && !existsSync(impose)) {
+    console.error(`PLAYWRIGHT_CHROMIUM pointe sur ${impose}, qui n'existe pas.`);
+    const trouves = [...NAVIGATEURS.filter((c) => existsSync(c)), ...navigateursDuCache()];
+    if (trouves.length > 0) console.error(`Sur cette machine : ${trouves.join(', ')}`);
+    else aider();
+    process.exit(1);
   }
-  try {
-    return await chromium.launch();
-  } catch (err) {
-    const trouve = navigateursDuCache()[0] || NAVIGATEURS.find((c) => existsSync(c));
-    if (!trouve) {
-      console.error(err.message.split('\n')[0]);
-      aider();
-      process.exit(1);
+
+  // Un chemin imposé ne souffre pas de repli : c'est un ordre, pas une piste.
+  const candidats = impose
+    ? [impose]
+    : [...navigateursDuCache(), ...NAVIGATEURS.filter((c) => existsSync(c)), null];
+
+  const options = {
+    viewport: { width: format.width, height: format.height },
+    deviceScaleFactor: format.deviceScaleFactor,
+    // Le serveur de test présente un certificat auto-signé.
+    ignoreHTTPSErrors: true,
+  };
+
+  const echecs = [];
+  for (const chemin of candidats) {
+    let navigateur = null;
+    try {
+      navigateur = await chromium.launch({
+        executablePath: chemin || undefined,
+        // Chromium refuse son bac à sable quand on est root, ce qui est le
+        // cas ordinaire sur un serveur.
+        chromiumSandbox: false,
+      });
+      const contexte = await navigateur.newContext(options);
+      // Le premier onglet est le vrai test : c'est là que meurt une coquille
+      // sans interface mal installée.
+      const page = await contexte.newPage();
+      if (chemin) console.log(`· navigateur : ${chemin}`);
+      return { navigateur, contexte, page };
+    } catch (err) {
+      echecs.push(`  ${chemin || 'navigateur par défaut de Playwright'} : ${err.message.split('\n')[0]}`);
+      await navigateur?.close().catch(() => {});
     }
-    console.log(`· navigateur du système : ${trouve}`);
-    return chromium.launch({ executablePath: trouve });
   }
+
+  console.error('Aucun navigateur n\'a tenu debout :');
+  console.error(echecs.join('\n'));
+  aider();
+  process.exit(1);
 }
 
-const navigateur = await ouvrirNavigateur();
-const contexte = await navigateur.newContext({
-  viewport: { width: format.width, height: format.height },
-  deviceScaleFactor: format.deviceScaleFactor,
-  // Le serveur de test présente un certificat auto-signé.
-  ignoreHTTPSErrors: true,
-});
+const { navigateur, contexte, page } = await ouvrirNavigateur();
 
 if (cookie) {
   const hote = new URL(base).hostname;
@@ -258,8 +279,6 @@ if (cookie) {
     await contexte.addCookies([{ name: nom, value: reste.join('='), domain: hote, path: '/' }]);
   }
 }
-
-const page = await contexte.newPage();
 
 // Se connecter une fois, puis toutes les pages suivent dans la même session.
 if (identifiant && plan.connexion) {
