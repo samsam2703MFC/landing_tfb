@@ -306,7 +306,10 @@ const RUBRIQUES = TOUTES
       .champ { display: grid; gap: 5px; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
-      input[type='text'], input[type='number'], input[type='password'], input[type='search'],
+      /* Tous les champs de saisie, désignés par ce qu'ils ne sont pas : une
+         liste blanche de types en oublie toujours un — `email` et `date` y
+         manquaient, et se retrouvaient sans style ni taille de police. */
+      input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
       textarea, select {
         inline-size: 100%;
         padding: 8px 10px;
@@ -319,8 +322,17 @@ const RUBRIQUES = TOUTES
       select { cursor: pointer; }
       /* Voir index.astro : sous 16 px, iOS zoome au premier appui. */
       @media (max-width: 820px) {
-        input[type='text'], input[type='number'], input[type='password'], input[type='search'],
+        input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
         textarea, select { font-size: 16px; }
+      }
+
+      /* Au doigt, un lien de 15 px de haut dans une cellule ou un en-tête se
+         rate. On ne grossit la cible que sur écran tactile : au clavier et à
+         la souris, la ligne de texte reste telle qu'elle est dessinée. */
+      @media (pointer: coarse) {
+        .roule td a, .bloc__tete a, .bloc__pied a {
+          display: inline-flex; align-items: center; min-block-size: 24px;
+        }
       }
       textarea { resize: vertical; line-height: var(--leading-normal); }
       textarea.code { font-family: var(--font-mono); font-size: var(--text-sm); }
