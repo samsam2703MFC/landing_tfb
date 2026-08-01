@@ -309,12 +309,21 @@ if (identifiant && plan.connexion) {
   console.log('  CAPTURE_USER=… CAPTURE_PASS=… pour laisser le script se connecter.');
 }
 
+console.log(`· ${Object.keys(plan.ecrans).length} écrans à prendre, comptez une dizaine de secondes chacun.`);
+
 let faites = 0;
 let ratees = 0;
 let refusees = 0;
 
+const total = Object.keys(plan.ecrans).length;
+let rang = 0;
+
 for (const [cle, chemin] of Object.entries(plan.ecrans)) {
   const url = `${base}${chemin}`;
+  rang += 1;
+  // Annoncer avant d'agir : sans ça, une page lente passe pour un blocage,
+  // et la tentation d'interrompre est forte.
+  process.stdout.write(`  ${String(rang).padStart(2)}/${total} ${cle.padEnd(18)} …`);
   try {
     const reponse = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
     // Le silence réseau est un bonus, pas une condition : on lui laisse
@@ -324,7 +333,8 @@ for (const [cle, chemin] of Object.entries(plan.ecrans)) {
     // Une page de connexion renvoie 200 : on regarde aussi où l'on a atterri.
     const redirige = /login|auth|connexion/i.test(page.url()) && !/login|auth/i.test(chemin);
     if (code >= 400 || redirige) {
-      console.error(`✗ ${cle.padEnd(18)} ${code}${redirige ? ' → renvoyé vers la connexion' : ''}  ${url}`);
+      process.stdout.write('\r\u001b[2K');
+      console.error(`✗ ${String(rang).padStart(2)}/${total} ${cle.padEnd(18)} ${code}${redirige ? '→ renvoyé vers la connexion' : ''}  ${url}`);
       ratees += 1;
       if (redirige) refusees += 1;
       continue;
@@ -334,10 +344,12 @@ for (const [cle, chemin] of Object.entries(plan.ecrans)) {
     await page.waitForTimeout(attente);
     const fichier = resolve(sortie, `${slug}-${cle}.png`);
     await page.screenshot({ path: fichier, fullPage: false });
-    console.log(`✓ ${cle.padEnd(18)} ${fichier.replace(`${process.cwd()}/`, '')}`);
+    process.stdout.write('\r\u001b[2K');
+    console.log(`✓ ${String(rang).padStart(2)}/${total} ${cle.padEnd(18)} ${fichier.replace(`${process.cwd()}/`, '')}`);
     faites += 1;
   } catch (err) {
-    console.error(`✗ ${cle.padEnd(18)} ${err.message.split('\n')[0]}`);
+    process.stdout.write('\r\u001b[2K');
+    console.error(`✗ ${String(rang).padStart(2)}/${total} ${cle.padEnd(18)} ${err.message.split('\n')[0]}`);
     ratees += 1;
   }
 }
