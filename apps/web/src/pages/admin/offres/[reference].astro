@@ -31,6 +31,7 @@ import {
   tarifsEnVigueur,
 } from '../../../lib/admin/donnees.mjs';
 import { calculerOffre, formater } from '../../../lib/offres/calcul.mjs';
+import { construireCourriel, serviceCourriel } from '../../../lib/offres/courriel.mjs';
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
@@ -65,6 +66,7 @@ async function lireConfig(f, catalogue) {
   return {
     langue: String(f.get('langue') || 'fr'),
     jours_formation: enEntier(String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation'),
+    nombre_postes: enEntier(String(f.get('nombre_postes') || '0').trim() || '0', 'Nombre de postes'),
     option_app: String(f.get('option_app') || 'aucune'),
     prestations,
     vues,
@@ -107,6 +109,31 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`${BASE}/admin/offres?ok=${encodeURIComponent('Brouillon supprimé.')}`, 303);
     }
 
+    if (action === 'envoyer') {
+      const tarifs = await tarifsEnVigueur();
+      const message = construireCourriel({
+        offre: courante,
+        resultat: calculerOffre(configDe(courante)),
+        gabarits: { sujet: tarifs.courriel_sujet, corps: tarifs.courriel_corps },
+        formater: (c) => formater(c, courante.langue, courante.devise),
+      });
+      if (!message.destinataire) {
+        throw new Error(
+          "Ce client n'a pas d'adresse de courriel. Corrigez ses coordonnées avant d'envoyer.",
+        );
+      }
+      const service = serviceCourriel();
+      await service.envoyer(message);
+      await changerStatutOffre(courante.id, 'envoyee');
+      const dit = service.expedie
+        ? `Offre envoyée à ${message.destinataire}.`
+        : `Offre marquée envoyée, mais RIEN N'A ÉTÉ EXPÉDIÉ : aucun service de courriel n'est configuré. Le message est dans le journal du serveur — envoyez-le à la main à ${message.destinataire}.`;
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent(dit)}`,
+        303,
+      );
+    }
+
     const catalogue = await listerPrestations();
     const config = await lireConfig(f, catalogue);
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
@@ -147,6 +174,18 @@ if (!figee && vues.length === 0) vues.push({ nombre: 1, note: '' });
 
 /** Une date au format que `<input type="date">` attend. */
 const pourChamp = (valeur) => (valeur ? new Date(valeur).toISOString().slice(0, 10) : '');
+
+// Le message tel qu'il partirait. Construit à l'affichage pour que l'aperçu
+// suive la moindre modification de l'offre ou du gabarit.
+const service = serviceCourriel();
+const courriel = offre
+  ? construireCourriel({
+      offre,
+      resultat,
+      gabarits: { sujet: vigueur?.courriel_sujet || '', corps: vigueur?.courriel_corps || '' },
+      formater: (c) => formater(c, offre.langue, offre.devise),
+    })
+  : null;
 
 const ETAT_STATUT = {
   brouillon: 'etat',
@@ -276,7 +315,24 @@ const ETAT_STATUT = {
                 </span>
                 <span class="champ__aide">
                   {formater(offre.prix_jour_formation_cents)} la journée, soit
-                  {' '}{formater((offre.jours_formation || 0) * offre.prix_jour_formation_cents)}.
+                  {' '}{formater((offre.jours_formation || 0) * offre.prix_jour_formation_cents)} une fois.
+                </span>
+              </div>
+              <div class="champ">
+                <label for="o-postes">Postes en point de vente</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-postes"
+                    type="text"
+                    name="nombre_postes"
+                    value={offre.nombre_postes || 0}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">×</span>
+                </span>
+                <span class="champ__aide">
+                  {formater(offre.prix_poste_cents)} par poste et par mois, soit
+                  {' '}{formater((offre.nombre_postes || 0) * offre.prix_poste_cents)} par mois.
                 </span>
               </div>
             </div>
@@ -446,6 +502,58 @@ const ETAT_STATUT = {
         )}
       </form>
 
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le courriel</h2>
+            <p>
+              Tel qu'il partirait, gabarit des tarifs appliqué. Les jetons entre accolades
+              sont déjà remplacés — ce que vous lisez est ce que le client lirait.
+            </p>
+          </div>
+        </div>
+
+        {courriel.destinataire ? (
+          <>
+            <div class="apercu">
+              <div class="apercu__entete">
+                <span><b>À</b> {courriel.destinataire}</span>
+                <span><b>Sujet</b> {courriel.sujet}</span>
+              </div>
+              <pre class="apercu__corps">{courriel.corps}</pre>
+            </div>
+
+            <div class={service.expedie ? 'bloc__pied' : 'recap__alerte'} style="margin-block-start:12px">
+              {service.expedie ? (
+                <>Envoyé par : {service.nom}.</>
+              ) : (
+                <>
+                  <strong>Aucun service de courriel n'est configuré sur ce serveur.</strong>{' '}
+                  « Envoyer » écrira ce message dans le journal et marquera l'offre comme envoyée,
+                  mais <strong>rien ne partira</strong>. Copiez le texte ci-dessus et envoyez-le
+                  depuis votre messagerie — puis marquez l'offre envoyée.
+                </>
+              )}
+            </div>
+
+            <div class="actions">
+              <form method="post" onsubmit={service.expedie ? undefined : "return confirm('Aucun courriel ne partira réellement. Marquer quand même l’offre comme envoyée ?')"}>
+                <input type="hidden" name="action" value="envoyer" />
+                <button class="bouton bouton--marque" type="submit">
+                  <Icone nom="mail" taille={16} />
+                  {service.expedie ? "Envoyer l'offre" : "Journaliser et marquer envoyée"}
+                </button>
+              </form>
+            </div>
+          </>
+        ) : (
+          <div class="recap__alerte">
+            Ce client n'a pas d'adresse de courriel — l'offre ne peut pas lui être envoyée.
+            {' '}<a href={`${BASE}/admin/prospects/${offre.prospect?.id}`}>Corriger ses coordonnées</a>.
+          </div>
+        )}
+      </section>
+
       <section class="bloc">
         <div class="bloc__tete">
           <div>
@@ -512,6 +620,23 @@ const ETAT_STATUT = {
   .vue__montant {
     flex: none; inline-size: 9rem; text-align: end;
     font-size: var(--text-sm); color: var(--slate-600);
+  }
+
+  .apercu { border: 1px solid var(--slate-200); border-radius: var(--radius-card); overflow: hidden; }
+  .apercu__entete {
+    display: flex; flex-direction: column; gap: 4px;
+    padding: 12px 14px; background: var(--slate-50);
+    border-block-end: 1px solid var(--slate-200);
+    font: 400 var(--text-sm) / 1.4 var(--font-sans); color: var(--slate-600);
+  }
+  .apercu__entete b { color: var(--navy-900); margin-inline-end: 6px; }
+  /* Le corps est du texte brut : on le montre tel qu'il partira, sans
+     reformatage, sinon l'aperçu ment sur ce que le client recevra. */
+  .apercu__corps {
+    margin: 0; padding: 14px;
+    font: 400 13px/1.6 var(--font-mono, monospace);
+    white-space: pre-wrap; overflow-wrap: anywhere;
+    color: var(--navy-900); background: #fff;
   }
 
   @media (max-width: 640px) {

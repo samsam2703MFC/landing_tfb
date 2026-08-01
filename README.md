@@ -69,7 +69,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/design-system/        # les jetons TFB, repris tels quels
 │   ├── src/lib/db.mjs            # lecture des tables — côté serveur uniquement
 │   ├── src/lib/admin/            # session et écritures de la console
-│   ├── src/lib/offres/           # calcul d'une offre et saisie des montants — testés
+│   ├── src/lib/offres/           # calcul, saisie des montants, courriel — testés
 │   ├── src/middleware.js         # garde /admin, contrôle d'origine, préfixe de langue
 │   ├── src/components/Layout.astro
 │   ├── src/components/Console.astro
@@ -121,7 +121,7 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_traductions` | les surcharges de traduction : `langue`, `entite`, `ligne_id`, `champ`, `valeur`, `source` |
 | `landing_utilisateurs` | les comptes de la console : `identifiant`, `nom`, `empreinte`, `role` |
 | `landing_prospects` | le client démarché — **à ne pas confondre avec `landing_clients`**, la vitrine de l'accueil |
-| `landing_offres` | une proposition chiffrée : référence, version, statut, remise, TVA, **et une copie des tarifs du jour** |
+| `landing_offres` | une proposition chiffrée : référence, version, statut, remise, TVA, prestations et vues retenues, **et une copie des tarifs du jour** |
 | `landing_offre_lignes` | les lignes du devis : `type`, `quantite`, `prix_unitaire_cents`, `recurrence` |
 | `landing_prestations` | les modules d'onboarding vendables — **à ne pas confondre avec `landing_modules`**, les modules ERP |
 | `landing_tarifs` | la grille tarifaire, clé/valeur typée (`cents`, `points`, `entier`, `texte`) |
@@ -361,6 +361,11 @@ par dire deux prix différents — et c'est nous qui aurions tort. Les
 coordonnées du client, en revanche, restent corrigeables : un numéro de TVA
 faux reste faux quel que soit le statut de l'offre.
 
+Ce qui se vend : les **prestations d'onboarding** (une fois), les **jours de
+formation** (une fois, 500 € par défaut), les **postes en point de vente**
+(199 € par poste et par mois — la seule quantité qui suit la taille du
+réseau), et l'**application**, louée à la vue ou achetée ferme.
+
 Tous les montants sont des **entiers en centimes**, tous les taux des
 **centièmes de point** (21 % = 2100). La conversion depuis ce qu'un humain
 tape — « 1 000,50 », l'espace insécable collé depuis un tableur, le symbole —
@@ -371,6 +376,23 @@ pourcents, et le laisser passer facturerait 2 100 % de TVA.
 Le récapitulatif se recalcule par **aller-retour serveur** (POST → 303 → GET)
 et non dans le navigateur. Recopier la formule en JavaScript pour gagner cent
 millisecondes reviendrait à pouvoir afficher un prix et en facturer un autre.
+
+#### L'envoi de l'offre
+
+**Le serveur n'a aucun service d'envoi** — ni SMTP, ni passerelle. La fiche
+d'offre montre le courriel tel qu'il partirait, gabarit appliqué et jetons
+remplacés, puis « Envoyer » l'écrit dans le **journal du service** et marque
+l'offre comme envoyée. L'écran le dit en toutes lettres : rien ne part, le
+texte est à copier dans votre messagerie.
+
+C'est volontairement inconfortable. Une offre marquée « envoyée » qui n'est
+jamais partie se relit dans la liste comme un travail fait, et c'est pire
+qu'un brouillon.
+
+Pour un envoi réel, il suffit d'écrire un second service respectant
+l'interface de `lib/offres/courriel.mjs` et de le brancher dans
+`serviceCourriel()` — un seul endroit. `nodemailer` est le candidat évident,
+mais c'est une dépendance à ajouter et une configuration SMTP à fournir.
 
 #### Les comptes et les rôles
 

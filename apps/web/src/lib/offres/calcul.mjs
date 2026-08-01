@@ -38,6 +38,7 @@ function entier(valeur) {
  * @param {Array<{nom: string, prix_cents: number, quantite?: number}>} offre.prestations
  *   Les modules d'onboarding retenus.
  * @param {number} offre.jours_formation Nombre de jours vendus.
+ * @param {number} offre.nombre_postes Nombre de points de vente équipés.
  * @param {'aucune'|'par_vue'|'achat'} offre.option_app
  * @param {Array<{nombre: number, note?: string}>} offre.vues
  *   Les vues de l'application, chacune avec son compte et sa description.
@@ -46,6 +47,7 @@ function entier(valeur) {
  * @param {number} offre.tarifs.multiplicateur_achat Nombre de mois rachetés.
  * @param {number} offre.tarifs.taux_annuel Maintenance annuelle, en points.
  * @param {number} offre.tarifs.prix_jour_formation_cents
+ * @param {number} offre.tarifs.prix_poste_cents Prix **mensuel** d'un poste.
  * @returns {Array<{type, libelle, note, quantite, prix_unitaire_cents, recurrence, total_cents}>}
  */
 export function lignesDe(offre) {
@@ -73,6 +75,21 @@ export function lignesDe(offre) {
       quantite: jours,
       prix_unitaire_cents: entier(t.prix_jour_formation_cents),
       recurrence: 'unique',
+    });
+  }
+
+  // Un poste par point de vente, facturé au mois. C'est la seule quantité
+  // qui suit la taille du réseau : elle augmente quand le client ouvre une
+  // boutique, sans qu'on renégocie l'offre.
+  const postes = entier(offre.nombre_postes);
+  if (postes > 0) {
+    lignes.push({
+      type: 'poste',
+      libelle: 'Postes en point de vente',
+      note: null,
+      quantite: postes,
+      prix_unitaire_cents: entier(t.prix_poste_cents),
+      recurrence: 'mensuel',
     });
   }
 

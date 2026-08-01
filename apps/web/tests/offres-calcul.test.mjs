@@ -16,6 +16,7 @@ const TARIFS = {
   multiplicateur_achat: 24,           // 24 mois rachetés
   taux_annuel: 500,                   // 5 %
   prix_jour_formation_cents: 50_000,  // 500 € la journée
+  prix_poste_cents: 19_900,           // 199 € par poste et par mois
 };
 
 const DESIGN = { nom: 'Design', prix_cents: 50_000 };  // 500 €
@@ -25,6 +26,7 @@ function offre(surcharges = {}) {
   return {
     prestations: [],
     jours_formation: 0,
+    nombre_postes: 0,
     option_app: 'aucune',
     vues: [],
     tarifs: TARIFS,
@@ -68,6 +70,47 @@ describe('la formation', () => {
   it('ignore un nombre de jours négatif au lieu de créditer le client', () => {
     const { seaux } = calculerOffre(offre({ jours_formation: -3 }));
     assert.equal(seaux.unique.sousTotal, 0);
+  });
+});
+
+describe('les postes en point de vente', () => {
+  it('se facturent au mois, jamais à la signature', () => {
+    const { lignes, seaux } = calculerOffre(offre({ nombre_postes: 12 }));
+    const ligne = lignes.find((l) => l.type === 'poste');
+    assert.equal(ligne.quantite, 12);
+    assert.equal(ligne.prix_unitaire_cents, 19_900);
+    assert.equal(ligne.recurrence, 'mensuel');
+    assert.equal(seaux.unique.sousTotal, 0);
+    assert.equal(seaux.mensuel.sousTotal, 238_800);   // 12 × 199 €
+    assert.equal(seaux.mensuel.ttc, 288_948);         // 2 889,48 € par mois
+  });
+
+  it("n'apparaissent pas à zéro poste", () => {
+    const { lignes } = calculerOffre(offre({ nombre_postes: 0 }));
+    assert.equal(lignes.filter((l) => l.type === 'poste').length, 0);
+  });
+
+  it("s'ajoutent aux vues louées, dans le même rythme", () => {
+    const { seaux } = calculerOffre(offre({
+      nombre_postes: 12,
+      option_app: 'par_vue',
+      vues: [{ nombre: 5, note: 'Tout' }],
+    }));
+    // 12 × 199 € + 5 × 1 000 €
+    assert.equal(seaux.mensuel.sousTotal, 738_800);
+  });
+
+  it("restent mensuels même quand l'application est achetée", () => {
+    // L'achat vide la colonne mensuelle de ses vues, pas de ses postes : le
+    // réseau continue de payer ses points de vente.
+    const { seaux } = calculerOffre(offre({
+      nombre_postes: 12,
+      option_app: 'achat',
+      vues: [{ nombre: 5 }],
+    }));
+    assert.equal(seaux.unique.sousTotal, 12_000_000);
+    assert.equal(seaux.mensuel.sousTotal, 238_800);
+    assert.equal(seaux.annuel.sousTotal, 600_000);
   });
 });
 
@@ -238,11 +281,12 @@ describe("l'ordre des lignes", () => {
     const lignes = lignesDe(offre({
       prestations: [DESIGN],
       jours_formation: 2,
+      nombre_postes: 3,
       option_app: 'achat',
       vues: [{ nombre: 5 }],
     }));
-    assert.deepEqual(lignes.map((l) => l.type), ['prestation', 'formation', 'achat', 'maintenance']);
-    assert.deepEqual(lignes.map((l) => l.ordre), [10, 20, 30, 40]);
+    assert.deepEqual(lignes.map((l) => l.type), ['prestation', 'formation', 'poste', 'achat', 'maintenance']);
+    assert.deepEqual(lignes.map((l) => l.ordre), [10, 20, 30, 40, 50]);
   });
 });
 

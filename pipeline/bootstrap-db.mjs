@@ -269,6 +269,9 @@ function modele(pg) {
         // La formation se vend au jour, à part des prestations d'onboarding :
         // c'est le seul poste dont la quantité se négocie en fin d'entretien.
         ['jours_formation', 'INT DEFAULT 0'],
+        // Un poste par point de vente : c'est la seule quantité qui suit la
+        // taille du réseau, et celle qui bouge quand le client en ouvre un.
+        ['nombre_postes', 'INT DEFAULT 0'],
         // La configuration choisie, dont les lignes de devis sont calculées.
         //
         // Les prestations y sont recopiées **avec leur prix du jour** — même
@@ -286,6 +289,7 @@ function modele(pg) {
         ['multiplicateur_achat', 'INT DEFAULT 0'],
         ['taux_annuel', 'INT DEFAULT 0'],
         ['prix_jour_formation_cents', 'INT DEFAULT 0'],
+        ['prix_poste_cents', 'INT DEFAULT 0'],
         ['portee', t.texte],
         ['delai', t.chaine(255)],
       ],
@@ -298,7 +302,7 @@ function modele(pg) {
       colonnes: [
         ['id', t.id],
         ['offre_id', 'INT NOT NULL'],
-        // prestation · formation · vue · achat · maintenance
+        // prestation · formation · poste · vue · achat · maintenance
         ['type', `${t.chaine(20)} NOT NULL`],
         ['libelle', t.chaine(255)],
         ['note', t.texte],

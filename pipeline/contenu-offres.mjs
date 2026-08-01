@@ -46,12 +46,20 @@ export const TARIFS = [
     ordre: 4,
   },
   {
+    cle: 'prix_poste',
+    valeur: '19900',
+    type: 'cents',
+    libelle: 'Prix par poste et par mois',
+    aide: 'Un poste par point de vente. Facturé chaque mois, comme les vues.',
+    ordre: 5,
+  },
+  {
     cle: 'tva_defaut',
     valeur: '2100',
     type: 'points',
     libelle: 'Taux de TVA par défaut',
     aide: 'Belgique : 2100 pour 21 %. Modifiable offre par offre.',
-    ordre: 5,
+    ordre: 6,
   },
   {
     cle: 'validite_jours',
@@ -59,7 +67,7 @@ export const TARIFS = [
     type: 'entier',
     libelle: "Durée de validité d'une offre, en jours",
     aide: 'Sert à proposer la date « valable jusqu’au » à la création.',
-    ordre: 6,
+    ordre: 7,
   },
   {
     cle: 'mention_autoliquidation',
@@ -67,7 +75,7 @@ export const TARIFS = [
     type: 'texte',
     libelle: 'Mention en cas d’exonération',
     aide: "Imprimée sur l'offre quand la TVA est à zéro. Une exonération sans mention légale n'en est pas une — la formulation exacte et l'article cité dépendent de votre situation, faites-la valider.",
-    ordre: 7,
+    ordre: 8,
   },
   {
     cle: 'courriel_sujet',
@@ -75,7 +83,7 @@ export const TARIFS = [
     type: 'texte',
     libelle: 'Sujet du courriel',
     aide: 'Jetons disponibles : {reference}, {client}, {commercial}, {valide_jusqu_au}.',
-    ordre: 8,
+    ordre: 9,
   },
   {
     cle: 'courriel_corps',
@@ -92,7 +100,7 @@ The Franchise Buddy`,
     type: 'texte',
     libelle: 'Corps du courriel',
     aide: 'Jetons : {contact}, {client}, {reference}, {commercial}, {valide_jusqu_au}, {recapitulatif}.',
-    ordre: 9,
+    ordre: 10,
   },
 ];
 
