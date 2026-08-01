@@ -107,7 +107,7 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
           ))}
         </select>
       </div>
-      <div class="actions">
+      <div class="actions actions--case">
         <button class="bouton bouton--sobre" type="submit">Filtrer</button>
       </div>
     </form>
@@ -171,5 +171,4 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
 
 <style is:global>
   .filtres { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); align-items: end; }
-  .filtres .actions { margin: 0; }
 </style>

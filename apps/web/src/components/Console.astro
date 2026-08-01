@@ -352,6 +352,21 @@ const RUBRIQUES = TOUTES
       td .actions { flex-wrap: nowrap; }
       td .actions form { margin: 0; }
 
+      /* Entre le dernier champ et le bouton qui referme le formulaire, il
+         faut de l'air : collé au champ, le bouton se lit comme une case de
+         plus du formulaire au lieu du geste qui le valide. La règle est
+         globale pour que le prochain formulaire ajouté soit bon d'office. */
+      .page .actions { margin-block-start: 16px; }
+      /* …sauf quand les actions sont une case parmi d'autres sur la même
+         rangée — cellule de table, en-tête de bloc, ligne d'édition en
+         grille. La rangée a déjà son `gap` ; une marge en plus ne ferait
+         que décaler le bouton de ses voisins. */
+      .page .actions:first-child,
+      .page td .actions,
+      .page summary .actions,
+      .bloc__tete .actions,
+      .page .actions--case { margin-block-start: 0; }
+
       /* ── Formulaires ───────────────────────────────────────────────────── */
       .champ { display: grid; gap: 5px; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }

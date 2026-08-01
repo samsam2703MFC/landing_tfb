@@ -202,7 +202,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
 
                   <span class={m.actif ? 'etat etat--on' : 'etat'}>{m.actif ? 'publié' : 'masqué'}</span>
 
-                  <span class="actions">
+                  <span class="actions actions--case">
                     {m.nouveau && (
                       <button class="bouton bouton--valider bouton--sm" type="submit" name="action" value="valider-module">
                         Valider
