@@ -166,7 +166,10 @@ const hauteur = (champ) => champ.lignes || (champ.fr.length > 90 ? 3 : 1);
       <form method="post">
         <input type="hidden" name="langue" value={codeLangue} />
         <input type="hidden" name="entite" value={entite.cle} />
-        <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer</button>
+        <div class="barre-actions">
+          <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+          <span class="barre-actions__note">Vider une traduction la supprime : la page retombe sur le français.</span>
+        </div>
 
         {lignes.map((ligne) => {
           const aTraduire = ligne.champs.filter((c) => c.fr);

@@ -81,7 +81,10 @@ const textes = tarifs.filter((t) => t.type === 'texte');
   compteurs={chiffres}
 >
   <form method="post">
-    <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer</button>
+    <div class="barre-actions">
+      <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+      <span class="barre-actions__note">Ne change que les offres créées ensuite.</span>
+    </div>
 
     <section class="bloc" style="margin-block-end:20px">
       <div class="bloc__tete">

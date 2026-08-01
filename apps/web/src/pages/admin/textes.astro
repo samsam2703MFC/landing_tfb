@@ -32,6 +32,7 @@ try {
 
 const message = Astro.url.searchParams.get('ok');
 const total = sections.reduce((n, s) => n + s.textes.length, 0);
+const intitule = total === 1 ? 'Enregistrer le texte' : `Enregistrer les ${total} textes`;
 ---
 
 <Console
@@ -43,7 +44,10 @@ const total = sections.reduce((n, s) => n + s.textes.length, 0);
   compteurs={chiffres}
 >
   <form method="post">
-    <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer les {total} textes</button>
+    <div class="barre-actions">
+      <button class="bouton bouton--marque" type="submit">{intitule}</button>
+      <span class="barre-actions__note">Vider un champ le fait retomber sur la valeur du dépôt.</span>
+    </div>
 
     {sections.map((section) => (
       <section class="bloc" style="margin-block-end:24px">
@@ -82,7 +86,7 @@ const total = sections.reduce((n, s) => n + s.textes.length, 0);
     ))}
 
     <div class="actions">
-      <button class="bouton bouton--marque" type="submit">Enregistrer les {total} textes</button>
+      <button class="bouton bouton--marque" type="submit">{intitule}</button>
     </div>
   </form>
 </Console>

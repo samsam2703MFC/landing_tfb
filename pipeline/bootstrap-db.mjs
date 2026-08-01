@@ -62,6 +62,10 @@ function modele(pg) {
         ['leviers', t.objet],
         ['liens', t.objet],
         ['onboarding', t.texte],
+        // Prix du module, par mois, quand il est vendu dans une offre.
+        // Zéro veut dire « le prix par défaut de la grille » : on ne recopie
+        // pas 49 € treize fois pour devoir les changer treize fois.
+        ['prix_cents', 'INT DEFAULT 0'],
         // Flux de validation : tout contenu produit par le pipeline arrive
         // en « nouveau » et attend une relecture dans la console.
         ['statut', `${t.chaine(20)} DEFAULT 'valide'`],
@@ -301,6 +305,7 @@ function modele(pg) {
         // produisent pas de ligne : basculer d'une formule à l'autre ne doit
         // pas faire perdre au commercial ce qu'il vient de saisir.
         ['prestations', t.objet],
+        ['modules', t.objet],
         ['vues', t.objet],
         // Les tarifs sont RECOPIÉS ici à la création. Une offre envoyée à
         // 1 000 € la vue ne doit pas changer de montant parce qu'un admin a
@@ -312,6 +317,7 @@ function modele(pg) {
         ['prix_poste_cents', 'INT DEFAULT 0'],
         ['prix_poste_franchiseur_cents', 'INT DEFAULT 0'],
         ['prix_onboarding_poste_cents', 'INT DEFAULT 0'],
+        ['prix_module_cents', 'INT DEFAULT 0'],
         ['portee', t.texte],
         ['delai', t.chaine(255)],
       ],
@@ -324,7 +330,7 @@ function modele(pg) {
       colonnes: [
         ['id', t.id],
         ['offre_id', 'INT NOT NULL'],
-        // prestation · formation · poste · poste_franchiseur ·
+        // prestation · formation · module · poste · poste_franchiseur ·
         // onboarding_poste · vue · achat · maintenance
         ['type', `${t.chaine(20)} NOT NULL`],
         ['libelle', t.chaine(255)],

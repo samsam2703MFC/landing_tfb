@@ -365,6 +365,7 @@ Ce qui se vend, avec les prix par défaut :
 
 | Poste | Prix | Rythme |
 | --- | --- | --- |
+| Modules de l'ERP | 49 € par module | par mois — prix propre possible par module |
 | Prestations d'onboarding (Design…) | catalogue | une fois |
 | Lignes libres, propres à une offre | saisi | une fois |
 | Journée de formation | 500 € | une fois |

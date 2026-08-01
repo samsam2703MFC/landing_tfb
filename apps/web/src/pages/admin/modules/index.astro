@@ -18,6 +18,7 @@ import {
   enregistrerLigneModule,
   famillesConnues,
   listerModules,
+  tarifsEnVigueur,
   validerFonction,
   validerModule,
 } from '../../../lib/admin/donnees.mjs';
@@ -71,6 +72,7 @@ if (Astro.request.method === 'POST') {
       groupe: f.get('groupe'),
       icone: f.get('icone'),
       ordre: f.get('ordre'),
+      prix: f.get('prix'),
       leviers: f.getAll('leviers').map(String),
     });
     return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} enregistré.`)}`, 303);
@@ -84,8 +86,10 @@ const message = Astro.url.searchParams.get('ok');
 let modules = [];
 let chiffres = {};
 let familles = [];
+let prixParDefaut = 0;
 try {
   modules = await listerModules();
+  prixParDefaut = (await tarifsEnVigueur()).prix_module_cents;
   chiffres = await compteurs();
   familles = await famillesConnues();
   // Les composants de chaque module, pour la ligne dépliable.
@@ -130,6 +134,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                 <span>Famille</span>
                 <span>Leviers</span>
                 <span>Ordre</span>
+        <span>Prix / mois</span>
                 <span>Comp.</span>
                 <span>Capt.</span>
                 <span>Statut</span>
@@ -174,6 +179,19 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   </span>
 
                   <input class="ligne-module__ordre num" type="number" name="ordre" min="1" value={m.ordre ?? 100} title="Ordre" aria-label="Ordre" />
+
+                  <span class="tarif__saisie ligne-module__prix">
+                    <input
+                      type="text"
+                      name="prix"
+                      value={m.prix_cents ? depuisCents(m.prix_cents) : ''}
+                      inputmode="decimal"
+                      placeholder={depuisCents(prixParDefaut)}
+                      title={`Prix mensuel. Vide : le tarif général, ${formater(prixParDefaut)}.`}
+                      aria-label={`Prix mensuel de ${m.nom || m.slug}`}
+                    />
+                    <span class="tarif__unite">€</span>
+                  </span>
 
                   <span class="num ligne-module__compte">{m.nb_fonctions}</span>
                   <span class="num ligne-module__compte" style={m.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
@@ -267,7 +285,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module {
     display: grid;
     grid-template-columns:
-      minmax(10rem, 1.3fr) 11rem 10rem 9rem 4.5rem 3.5rem 3.5rem 5.5rem auto;
+      minmax(10rem, 1.3fr) 11rem 10rem 9rem 4.5rem 7rem 3.5rem 3.5rem 5.5rem auto;
     gap: 12px;
     align-items: center;
     padding: 11px 16px;
@@ -291,6 +309,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   }
   .ligne-module__icone select { font-family: var(--font-mono); font-size: var(--text-xs); }
   .ligne-module__ordre { text-align: end; }
+  .ligne-module__prix { inline-size: 7rem; }
   .ligne-module__compte { text-align: end; color: var(--slate-600); }
   @media (max-width: 1200px) {
     .ligne-module { grid-template-columns: 1fr 1fr; }

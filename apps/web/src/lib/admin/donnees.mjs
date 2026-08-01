@@ -808,6 +808,7 @@ export async function tarifsEnVigueur() {
     prix_poste_cents: nombre('prix_poste'),
     prix_poste_franchiseur_cents: nombre('prix_poste_franchiseur'),
     prix_onboarding_poste_cents: nombre('prix_onboarding_poste'),
+    prix_module_cents: nombre('prix_module'),
     tva_defaut: nombre('tva_defaut'),
     validite_jours: nombre('validite_jours'),
     mention_autoliquidation: lireTarif(par.get('mention_autoliquidation')) || '',
@@ -843,6 +844,47 @@ export async function enregistrerTarifs(formulaire) {
   }
   viderCache();
   return aEcrire.length;
+}
+
+/**
+ * Les modules de l'ERP tels qu'un commercial les vend.
+ *
+ * Le prix vient du module s'il en porte un, du tarif général sinon : on ne
+ * recopie pas 49 € treize fois pour devoir les changer treize fois. Le
+ * « pourquoi » et le « ce que ça rapporte » ne sont pas inventés ici — ce
+ * sont l'accroche et le premier bénéfice de la fiche, déjà rédigés et déjà
+ * traduits.
+ */
+export async function modulesVendables() {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT id, slug, nom, accroche, benefices, prix_cents, groupe
+     FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
+    [vrai(true)],
+  );
+  const defaut = (await tarifsEnVigueur()).prix_module_cents;
+  return lignes.map((m) => {
+    const benefices = lireJson(m.benefices, []);
+    return {
+      id: m.id,
+      slug: m.slug,
+      nom: m.nom || m.slug,
+      groupe: m.groupe,
+      pourquoi: m.accroche || null,
+      apporte: benefices[0]?.titre || null,
+      detail: benefices[0]?.texte || null,
+      prix_cents: Number(m.prix_cents) || defaut,
+      prix_propre: Number(m.prix_cents) > 0,
+    };
+  });
+}
+
+/** Fixe le prix propre d'un module. Zéro le remet au tarif général. */
+export async function enregistrerPrixModule(slug, prix) {
+  const db = await connexion();
+  const cents = String(prix || '').trim() ? enCents(prix, `Prix de ${slug}`) : 0;
+  await db.executer(`UPDATE ${table('modules')} SET prix_cents = ? WHERE slug = ?`, [cents, String(slug)]);
+  viderCache();
 }
 
 /** Les prestations d'onboarding vendables. */
@@ -937,6 +979,7 @@ function normaliserOffre(ligne) {
     ...ligne,
     tva_exoneree: Boolean(ligne.tva_exoneree),
     prestations: lireJson(ligne.prestations, []),
+    modules: lireJson(ligne.modules, []),
     vues: lireJson(ligne.vues, []),
   };
 }
@@ -1069,17 +1112,18 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
         `INSERT INTO ${table('offres')}
          (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
           remise_type, remise_valeur, tva_taux, tva_exoneree, option_app, jours_formation,
-          prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel,
+          prestations, modules, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel,
           prix_jour_formation_cents, nombre_postes, prix_poste_cents,
           postes_franchiseur, prix_poste_franchiseur_cents,
-          postes_onboardes, prix_onboarding_poste_cents, mois_offerts)
-         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0)`,
+          postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents)
+         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?)`,
         [
           Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
-          tarifs.tva_defaut, vrai(false), json([]), json([]),
+          tarifs.tva_defaut, vrai(false), json([]), json([]), json([]),
           tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
           tarifs.taux_annuel, tarifs.prix_jour_formation_cents, tarifs.prix_poste_cents,
           tarifs.prix_poste_franchiseur_cents, tarifs.prix_onboarding_poste_cents,
+          tarifs.prix_module_cents,
         ],
       );
       viderCache();
@@ -1128,6 +1172,7 @@ export function configDe(offre) {
       prix_cents: p.prix_cents,
       quantite: p.quantite || 1,
     })),
+    modules: offre.modules || [],
     jours_formation: offre.jours_formation || 0,
     nombre_postes: offre.nombre_postes || 0,
     postes_franchiseur: offre.postes_franchiseur || 0,
@@ -1196,14 +1241,14 @@ export async function enregistrerOffre(id, config) {
   await db.executer(
     `UPDATE ${table('offres')} SET
        langue = ?, jours_formation = ?, nombre_postes = ?, postes_franchiseur = ?,
-       postes_onboardes = ?, mois_offerts = ?, option_app = ?, prestations = ?, vues = ?,
+       postes_onboardes = ?, mois_offerts = ?, option_app = ?, prestations = ?, modules = ?, vues = ?,
        remise_type = ?, remise_valeur = ?, tva_taux = ?, tva_exoneree = ?, tva_mention = ?,
        portee = ?, delai = ?, valide_jusqu_au = ?
      WHERE id = ?`,
     [
       config.langue, config.jours_formation, config.nombre_postes, config.postes_franchiseur,
       config.postes_onboardes, config.mois_offerts, config.option_app,
-      json(config.prestations), json(config.vues),
+      json(config.prestations), json(config.modules), json(config.vues),
       config.remise_type, config.remise_valeur,
       config.tva_taux, vrai(config.tva_exoneree), config.tva_mention || null,
       config.portee || null, config.delai || null, config.valide_jusqu_au || null,
@@ -1213,6 +1258,7 @@ export async function enregistrerOffre(id, config) {
 
   const lignes = lignesDe({
     prestations: config.prestations,
+    modules: config.modules,
     jours_formation: config.jours_formation,
     nombre_postes: config.nombre_postes,
     postes_franchiseur: config.postes_franchiseur,
@@ -1268,22 +1314,22 @@ export async function nouvelleVersion(reference) {
     `INSERT INTO ${table('offres')}
      (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
       remise_type, remise_valeur, tva_taux, tva_exoneree, tva_mention, option_app, jours_formation,
-      prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
+      prestations, modules, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
       nombre_postes, prix_poste_cents, postes_franchiseur, prix_poste_franchiseur_cents,
-      postes_onboardes, prix_onboarding_poste_cents, mois_offerts, portee, delai)
-     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents, portee, delai)
+     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       source.prospect_id, String(reference), version, source.langue, source.devise,
       source.cree_par, new Date(), valideJusquAu,
       source.remise_type, source.remise_valeur, source.tva_taux, vrai(source.tva_exoneree),
       source.tva_mention, source.option_app, source.jours_formation,
-      json(source.prestations), json(source.vues),
+      json(source.prestations), json(source.modules), json(source.vues),
       tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
       tarifs.taux_annuel, tarifs.prix_jour_formation_cents,
       source.nombre_postes, tarifs.prix_poste_cents,
       source.postes_franchiseur, tarifs.prix_poste_franchiseur_cents,
       source.postes_onboardes, tarifs.prix_onboarding_poste_cents,
-      source.mois_offerts,
+      source.mois_offerts, tarifs.prix_module_cents,
       source.portee, source.delai,
     ],
   );
@@ -1652,6 +1698,15 @@ export async function enregistrerTraductions(codeLangue, cleEntite, formulaire) 
 /** Enregistre famille, icône, ordre et leviers d'un module, depuis la table. */
 export async function enregistrerLigneModule(slug, valeurs) {
   const db = await connexion();
+  // Un prix vide remet le module au tarif général : c'est le seul moyen de
+  // revenir en arrière sans deviner quelle était la valeur d'avant.
+  if (valeurs.prix !== undefined) {
+    const brut = String(valeurs.prix ?? '').trim();
+    await db.executer(
+      `UPDATE ${table('modules')} SET prix_cents = ? WHERE slug = ?`,
+      [brut ? enCents(brut, `Prix de ${slug}`) : 0, String(slug)],
+    );
+  }
   await db.executer(
     `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ? WHERE slug = ?`,
     [

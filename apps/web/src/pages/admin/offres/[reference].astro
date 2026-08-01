@@ -26,6 +26,7 @@ import {
   enregistrerOffre,
   languesOffre,
   listerPrestations,
+  modulesVendables,
   nouvelleVersion,
   offreFigee,
   supprimerOffre,
@@ -41,7 +42,7 @@ const versionDemandee = Astro.url.searchParams.get('version');
 let erreur = null;
 
 /** Lit la configuration soumise. Toute saisie invalide arrête l'enregistrement. */
-async function lireConfig(f, catalogue) {
+async function lireConfig(f, catalogue, modules) {
   const choisies = new Set(f.getAll('prestation').map(String));
   const prestations = catalogue
     .filter((p) => choisies.has(String(p.id)))
@@ -66,6 +67,16 @@ async function lireConfig(f, catalogue) {
       libre: true,
     });
   }
+
+  // Les modules de l'ERP retenus, avec leur prix et leur argumentaire du
+  // jour : une fiche réécrite plus tard ne doit pas changer une offre partie.
+  const cochés = new Set(f.getAll('module').map(String));
+  const modulesRetenus = modules
+    .filter((m) => cochés.has(String(m.id)))
+    .map((m) => ({
+      slug: m.slug, nom: m.nom, prix_cents: m.prix_cents,
+      pourquoi: m.pourquoi, apporte: m.apporte,
+    }));
 
   const nombres = f.getAll('vue_nombre');
   const notes = f.getAll('vue_note');
@@ -98,6 +109,7 @@ async function lireConfig(f, catalogue) {
     mois_offerts: enEntier(String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts'),
     option_app: String(f.get('option_app') || 'aucune'),
     prestations,
+    modules: modulesRetenus,
     vues,
     remise_type: remiseType,
     remise_valeur: remiseType === 'fixe' ? enCents(remiseBrute, 'Remise') : enPoints(remiseBrute, 'Remise'),
@@ -164,7 +176,7 @@ if (Astro.request.method === 'POST') {
     }
 
     const catalogue = await listerPrestations();
-    const config = await lireConfig(f, catalogue);
+    const config = await lireConfig(f, catalogue, await modulesVendables());
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
     // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
     // le meilleur moyen de faire détester l'écran.
@@ -179,6 +191,7 @@ if (Astro.request.method === 'POST') {
 
 let offre = null;
 let catalogue = [];
+let modules = [];
 let langues = [];
 let vigueur = null;
 let chiffres = {};
@@ -186,6 +199,7 @@ try {
   offre = await chargerOffre(reference, versionDemandee);
   langues = await languesOffre();
   catalogue = await listerPrestations({ activesSeulement: true });
+  modules = await modulesVendables();
   vigueur = await tarifsEnVigueur();
   chiffres = await compteurs();
 } catch (err) {
@@ -198,6 +212,7 @@ const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
 const message = Astro.url.searchParams.get('ok');
 const choisies = new Set((offre?.prestations || []).filter((p) => !p.libre).map((p) => p.cle));
+const modulesRetenus = new Set((offre?.modules || []).map((m) => m.slug));
 
 // Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
 const libres = (offre?.prestations || []).filter((p) => p.libre);
@@ -304,10 +319,45 @@ const ETAT_STATUT = {
 
       <form method="post">
         {!figee && (
-          <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer et recalculer</button>
+          <div class="barre-actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer et recalculer</button>
+            <span class="barre-actions__note">Le chiffrage ci-dessus se met à jour à chaque enregistrement.</span>
+          </div>
         )}
 
         <fieldset class="nu" disabled={figee}>
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Les modules</h2>
+                <p>
+                  Ce que le réseau met en service, facturé au mois. Le texte affiché ici est
+                  celui de la fiche du module — il part tel quel sur l'offre.
+                </p>
+              </div>
+            </div>
+
+            {modules.length === 0 ? (
+              <div class="bloc__pied">Aucun module actif au catalogue.</div>
+            ) : (
+              <div class="cases">
+                {modules.map((m) => (
+                  <label class="case case--module">
+                    <input type="checkbox" name="module" value={m.id} checked={modulesRetenus.has(m.slug)} />
+                    <span>
+                      <span class="case__tete">
+                        <strong>{m.nom}</strong>
+                        <span class="fb-num case__prix">{formater(m.prix_cents)}/mois</span>
+                      </span>
+                      {m.pourquoi && <span class="champ__aide">{m.pourquoi}</span>}
+                      {m.apporte && <span class="case__apporte">→ {m.apporte}</span>}
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
+          </section>
+
           <section class="bloc" style="margin-block-end:20px">
             <div class="bloc__tete">
               <div>
@@ -337,7 +387,7 @@ const ETAT_STATUT = {
             )}
 
             <div class="duo" style="margin-block-start:14px">
-              <div class="champ">
+              <div class="champ champ--nombre">
                 <label for="o-formation">Jours de formation</label>
                 <span class="tarif__saisie">
                   <input
@@ -354,7 +404,7 @@ const ETAT_STATUT = {
                   {' '}{formater((offre.jours_formation || 0) * offre.prix_jour_formation_cents)} une fois.
                 </span>
               </div>
-              <div class="champ">
+              <div class="champ champ--nombre">
                 <label for="o-postes">Magasins ouverts</label>
                 <span class="tarif__saisie">
                   <input
@@ -371,7 +421,7 @@ const ETAT_STATUT = {
                   {' '}{formater((offre.nombre_postes || 0) * offre.prix_poste_cents)} par mois.
                 </span>
               </div>
-              <div class="champ">
+              <div class="champ champ--nombre">
                 <label for="o-siege">Postes franchiseur</label>
                 <span class="tarif__saisie">
                   <input
@@ -388,7 +438,7 @@ const ETAT_STATUT = {
                   {' '}{formater((offre.postes_franchiseur || 0) * offre.prix_poste_franchiseur_cents)} par mois.
                 </span>
               </div>
-              <div class="champ">
+              <div class="champ champ--nombre">
                 <label for="o-onboardes">Postes à onboarder</label>
                 <span class="tarif__saisie">
                   <input
@@ -735,6 +785,12 @@ const ETAT_STATUT = {
   .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
   .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
   .case__prix { font-size: var(--text-sm); color: var(--slate-600); }
+  .case__tete { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .case__tete .case__prix { margin-inline-start: auto; white-space: nowrap; }
+  /* Ce que le module rapporte, dit en une ligne : c'est l'argument de vente,
+     il mérite d'être lisible sans survoler quoi que ce soit. */
+  .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--teal-700); }
+  .case--module { align-items: start; }
   .case--seule { inline-size: 100%; }
 
   .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }

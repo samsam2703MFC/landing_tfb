@@ -79,6 +79,11 @@ try {
 
 const message = Astro.url.searchParams.get('ok');
 const actives = prestations.filter((p) => p.actif).length;
+
+// « Enregistrer les 1 prestations » se lit comme une faute, parce que c'en
+// est une. Un compte s'accorde.
+const intitule =
+  prestations.length === 1 ? 'Enregistrer la prestation' : `Enregistrer les ${prestations.length} prestations`;
 ---
 
 <Console
@@ -143,7 +148,7 @@ const actives = prestations.filter((p) => p.actif).length;
           </table>
         </div>
         <div class="actions">
-          <button class="bouton bouton--marque" type="submit">Enregistrer les {prestations.length} prestations</button>
+          <button class="bouton bouton--marque" type="submit">{intitule}</button>
         </div>
       </form>
     )}

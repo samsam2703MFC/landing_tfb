@@ -41,6 +41,8 @@ function entier(valeur) {
  * @param {number} offre.nombre_postes Magasins ouverts, équipés au mois.
  * @param {number} offre.postes_franchiseur Postes du siège, au mois.
  * @param {number} offre.postes_onboardes Postes à onboarder, une seule fois.
+ * @param {Array<{slug, nom, prix_cents, pourquoi?, apporte?}>} offre.modules
+ *   Les modules de l'ERP retenus, facturés au mois.
  * @param {'aucune'|'par_vue'|'achat'} offre.option_app
  * @param {Array<{nombre: number, note?: string}>} offre.vues
  *   Les vues de l'application, chacune avec son compte et sa description.
@@ -79,6 +81,21 @@ export function lignesDe(offre) {
       quantite: jours,
       prix_unitaire_cents: entier(t.prix_jour_formation_cents),
       recurrence: 'unique',
+    });
+  }
+
+  // Les modules de l'ERP, au mois. Chacun porte le prix qu'il avait le jour
+  // où il a été mis dans l'offre : la grille peut bouger ensuite.
+  for (const m of offre.modules || []) {
+    const prix = entier(m.prix_cents);
+    if (prix === 0) continue;
+    lignes.push({
+      type: 'module',
+      libelle: m.nom,
+      note: m.apporte || null,
+      quantite: 1,
+      prix_unitaire_cents: prix,
+      recurrence: 'mensuel',
     });
   }
 
