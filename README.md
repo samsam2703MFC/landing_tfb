@@ -483,9 +483,25 @@ non traduit s'affiche donc en français — une langue à moitié faite reste
 lisible, ce qui compte plus qu'une cohérence de façade.
 
 ```bash
-# poser les traductions écrites dans pipeline/contenu-traductions.mjs
+# poser les traductions écrites à la main dans pipeline/contenu-traductions.mjs
 node pipeline/seed-contenu.mjs --si-vide   # n'écrase pas celles retouchées en console
+
+# traduire tout le reste — fiches de module, composants, catalogue, gabarits
+node pipeline/traduire.mjs --verifier      # ne traduit rien : dit ce qui manque
+node pipeline/traduire.mjs                 # ce qui manque, dans les langues publiées
+node pipeline/traduire.mjs --langue=it     # une seule langue
+node pipeline/traduire.mjs --perimees      # reprend celles dont le français a bougé
 ```
+
+`traduire.mjs` appelle l'API Anthropic et a donc besoin d'`ANTHROPIC_API_KEY`
+dans `infra/.env`. Il est **reprenable** : un lot qui échoue n'arrête pas les
+autres, et relancer ne retraduit que ce qui manque. Il ne touche jamais au
+français ni à une traduction retouchée dans la console — sauf `--force`.
+
+Le modèle reçoit le contexte de chaque champ (« Panel consultant — Accroche —
+une phrase, 15 mots au plus ») et la réponse est refusée si un jeton `{n}`
+disparaît ou si une clé manque : un `{n}` perdu afficherait « composants »
+sans nombre devant.
 
 Ensuite, dans la console : **Traductions** pour traduire champ par champ
 (le français à gauche, la langue à droite ; vider un champ le fait retomber

@@ -18,6 +18,7 @@ import {
   ajouterProspect,
   compteurs,
   creerOffre,
+  languesOffre,
   listerLeads,
   listerProspects,
 } from '../../../lib/admin/donnees.mjs';
@@ -50,9 +51,11 @@ if (Astro.request.method === 'POST') {
 
 let prospects = [];
 let leads = [];
+let langues = [];
 let chiffres = {};
 try {
   prospects = await listerProspects();
+  langues = await languesOffre();
   leads = (await listerLeads()).filter((l) => !l.traite);
   chiffres = await compteurs();
 } catch (err) {
@@ -98,9 +101,7 @@ const prerempli = depuisLead
         <div class="champ">
           <label for="p-langue-1">Langue de l'offre</label>
           <select id="p-langue-1" name="langue">
-            <option value="fr">Français</option>
-            <option value="nl">Nederlands</option>
-            <option value="en">English</option>
+            {langues.map((l) => <option value={l.code}>{l.nom}</option>)}
           </select>
         </div>
         <div class="actions" style="grid-column:1/-1">
@@ -178,9 +179,7 @@ const prerempli = depuisLead
         <div class="champ">
           <label for="p-langue-2">Langue de l'offre</label>
           <select id="p-langue-2" name="langue">
-            <option value="fr">Français</option>
-            <option value="nl">Nederlands</option>
-            <option value="en">English</option>
+            {langues.map((l) => <option value={l.code}>{l.nom}</option>)}
           </select>
         </div>
       </div>
@@ -194,6 +193,3 @@ const prerempli = depuisLead
   </section>
 </Console>
 
-<style is:global>
-  .champ__requis { color: var(--plum-600); }
-</style>

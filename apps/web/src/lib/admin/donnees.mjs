@@ -606,6 +606,19 @@ export async function supprimerQuestion(id) {
   viderCache();
 }
 
+/**
+ * Les langues dans lesquelles une offre peut sortir.
+ *
+ * Ce sont celles du site, publiées : proposer au commercial une langue que la
+ * landing ne sert pas produirait une offre dans une langue qu'on ne sait pas
+ * tenir par ailleurs. Le français est toujours là, même si quelqu'un le
+ * dépubliait par erreur — une offre a toujours une langue.
+ */
+export async function languesOffre() {
+  const langues = (await listerLangues()).filter((l) => l.publiee || l.defaut);
+  return langues.length > 0 ? langues : [{ code: 'fr', nom: 'Français', defaut: true }];
+}
+
 /** Les langues prévues, avec leur état de publication. */
 export async function listerLangues() {
   const db = await connexion();
@@ -1436,6 +1449,24 @@ export const ENTITES_TRADUISIBLES = [
     ],
   },
   {
+    cle: 'tarifs',
+    nom: 'Mentions et courriel',
+    table: 'tarifs',
+    libelle: (l) => l.libelle || l.cle,
+    filtre: (l) => l.type === 'texte',
+    champs: [{ nom: 'valeur', libelle: 'Texte' }],
+  },
+  {
+    cle: 'prestations',
+    nom: 'Prestations vendues',
+    table: 'prestations',
+    libelle: (l) => l.cle,
+    champs: [
+      { nom: 'nom', libelle: 'Nom' },
+      { nom: 'description', libelle: 'Description' },
+    ],
+  },
+  {
     cle: 'captures',
     nom: "Titres d'écran",
     table: 'captures',
@@ -1456,6 +1487,8 @@ function ordreDe(cle) {
   if (cle === 'fonctions') return 'module_id, ordre';
   if (cle === 'questions') return 'ordre, id';
   if (cle === 'captures') return 'module_id, ordre';
+  if (cle === 'tarifs') return 'ordre, cle';
+  if (cle === 'prestations') return 'ordre, nom';
   return 'id';
 }
 
@@ -1484,9 +1517,12 @@ async function surcharges(langue, entite) {
 export async function listerTraductions(codeLangue, cleEntite) {
   const entite = entiteTraduisible(cleEntite);
   const db = await connexion();
-  const lignes = await db.requete(
+  const toutes = await db.requete(
     `SELECT * FROM ${table(entite.table)} ORDER BY ${ordreDe(entite.cle)}`,
   );
+  // Certaines entités ne traduisent qu'une partie de leurs lignes : un tarif
+  // chiffré n'a rien à traduire, seul son intitulé de texte en a.
+  const lignes = entite.filtre ? toutes.filter(entite.filtre) : toutes;
   const posees = await surcharges(codeLangue, entite.cle);
 
   return lignes.map((ligne) => ({

@@ -422,4 +422,107 @@ export async function genererContenuSite(modules) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Traduction
+// ---------------------------------------------------------------------------
+
+const OUTIL_TRADUCTION = {
+  name: 'publier_traductions',
+  description: "Rend la traduction de chaque texte, dans l'ordre reçu.",
+  input_schema: {
+    type: 'object',
+    properties: {
+      traductions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            cle: { type: 'string', description: "La clé reçue, recopiée à l'identique." },
+            valeur: { type: 'string', description: 'Le texte traduit.' },
+          },
+          required: ['cle', 'valeur'],
+        },
+      },
+    },
+    required: ['traductions'],
+  },
+};
+
+/** Le nom d'une langue, pour le dire au modèle plutôt que lui passer un code. */
+const LANGUES_NOMMEES = {
+  en: 'anglais', nl: 'néerlandais', de: 'allemand', it: 'italien',
+  pl: 'polonais', uk: 'ukrainien', ru: 'russe', ar: 'arabe', es: 'espagnol', pt: 'portugais',
+};
+
+/**
+ * Traduit un lot de textes du français vers une langue.
+ *
+ * Ce n'est pas une traduction mot à mot : le discours est commercial, on
+ * traduit l'intention. En revanche le **format** est intouchable — un texte
+ * qui contient `{n}` doit contenir `{n}` en sortie, et du markdown reste du
+ * markdown. Une clé absente ou en trop fait rejouer le lot.
+ *
+ * @param {Array<{cle: string, valeur: string, contexte?: string}>} lot
+ * @param {string} langue Code ISO à deux lettres.
+ * @returns {Promise<Map<string, string>>}
+ */
+export async function traduireLot(lot, langue) {
+  const nomLangue = LANGUES_NOMMEES[langue] || langue;
+  const attendues = new Set(lot.map((t) => t.cle));
+
+  const systeme = [
+    `Tu traduis du français vers le ${nomLangue} le contenu d'un site qui présente un ERP destiné aux réseaux de franchise.`,
+    '',
+    'Ce que tu traduis :',
+    "- l'intention commerciale, pas la syntaxe. Une accroche doit frapper aussi fort dans la langue cible, quitte à ne pas suivre l'ordre des mots.",
+    '- le vocabulaire métier de la franchise : franchiseur, franchisé, point de vente, redevance, tête de réseau. Emploie les termes qu\'un professionnel du secteur emploie dans cette langue.',
+    '',
+    'Ce que tu ne touches pas :',
+    '- les jetons entre accolades — {n}, {f} — restent tels quels, au même nombre.',
+    "- le markdown : les sauts de ligne, les listes, les niveaux de titre sont conservés à l'identique.",
+    "- les noms propres : The Franchise Buddy, les noms de modules déjà anglais (Webshop, POS), les adresses de courriel, les URL.",
+    '- les chiffres. Aucun montant, aucun pourcentage ne change.',
+    '',
+    'Tu rends une entrée par clé reçue, avec la clé recopiée exactement. Ni plus, ni moins.',
+  ].join('\n');
+
+  const message = [
+    `Traduis ces ${lot.length} textes en ${nomLangue}.`,
+    '',
+    ...lot.map((t) => [
+      `### ${t.cle}`,
+      t.contexte ? `(${t.contexte})` : null,
+      t.valeur,
+    ].filter(Boolean).join('\n')),
+  ].join('\n\n');
+
+  const valider = (donnees) => {
+    const problemes = [];
+    const rendues = new Set((donnees.traductions || []).map((t) => t.cle));
+    for (const cle of attendues) if (!rendues.has(cle)) problemes.push(`clé manquante : ${cle}`);
+    for (const cle of rendues) if (!attendues.has(cle)) problemes.push(`clé inconnue : ${cle}`);
+    for (const t of donnees.traductions || []) {
+      if (!String(t.valeur || '').trim()) problemes.push(`traduction vide : ${t.cle}`);
+      // Les jetons doivent survivre : un « {n} » perdu affiche « composants »
+      // sans nombre devant.
+      const source = lot.find((l) => l.cle === t.cle)?.valeur || '';
+      const jetonsSource = (source.match(/\{\w+\}/g) || []).sort().join(',');
+      const jetonsCible = (String(t.valeur).match(/\{\w+\}/g) || []).sort().join(',');
+      if (jetonsSource !== jetonsCible) {
+        problemes.push(`jetons altérés sur ${t.cle} : « ${jetonsSource} » devient « ${jetonsCible} »`);
+      }
+    }
+    return problemes.slice(0, 8);
+  };
+
+  const donnees = await appelOutil({
+    outil: OUTIL_TRADUCTION,
+    systeme,
+    message,
+    valider,
+    maxTokens: 16000,
+  });
+  return new Map(donnees.traductions.map((t) => [t.cle, t.valeur]));
+}
+
 export { MODELE_DEFAUT, modele };

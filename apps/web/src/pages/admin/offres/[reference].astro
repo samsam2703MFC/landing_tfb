@@ -24,6 +24,7 @@ import {
   compteurs,
   configDe,
   enregistrerOffre,
+  languesOffre,
   listerPrestations,
   nouvelleVersion,
   offreFigee,
@@ -178,10 +179,12 @@ if (Astro.request.method === 'POST') {
 
 let offre = null;
 let catalogue = [];
+let langues = [];
 let vigueur = null;
 let chiffres = {};
 try {
   offre = await chargerOffre(reference, versionDemandee);
+  langues = await languesOffre();
   catalogue = await listerPrestations({ activesSeulement: true });
   vigueur = await tarifsEnVigueur();
   chiffres = await compteurs();
@@ -602,9 +605,9 @@ const ETAT_STATUT = {
               <div class="champ">
                 <label for="o-langue">Langue</label>
                 <select id="o-langue" name="langue">
-                  <option value="fr" selected={offre.langue === 'fr'}>Français</option>
-                  <option value="nl" selected={offre.langue === 'nl'}>Nederlands</option>
-                  <option value="en" selected={offre.langue === 'en'}>English</option>
+                  {langues.map((l) => (
+                    <option value={l.code} selected={offre.langue === l.code}>{l.nom}</option>
+                  ))}
                 </select>
               </div>
               <div class="champ" style="grid-column:1/-1">

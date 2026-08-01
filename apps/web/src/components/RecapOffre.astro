@@ -13,6 +13,7 @@
  * que ce soit à l'affichage voudrait dire écrire la formule deux fois.
  */
 import { RECURRENCES, formater, formaterTaux } from '../lib/offres/calcul.mjs';
+import { libelleLigne } from '../lib/offres/courriel.mjs';
 
 const { resultat, langue = 'fr', devise = 'EUR', mention = null } = Astro.props;
 const { seaux, offert, remiseIgnoree, tauxTva, exoneree } = resultat;
@@ -58,7 +59,7 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
               {seau.lignes.map((l) => (
                 <li>
                   <span class="recap__ligne-nom">
-                    {l.libelle}
+                    {libelleLigne(l, langue)}
                     <span class="recap__ligne-type">{LIBELLE_TYPE[l.type] || l.type}</span>
                     {l.quantite > 1 && <span class="recap__ligne-qte fb-num">× {l.quantite}</span>}
                   </span>

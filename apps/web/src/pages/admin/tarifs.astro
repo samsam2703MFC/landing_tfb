@@ -189,11 +189,3 @@ const textes = tarifs.filter((t) => t.type === 'texte');
   </form>
 </Console>
 
-<style is:global>
-  /* Le champ et son unité se lisent d'un bloc : « 1000 » sans le « € » à côté
-     laisse le doute entre des euros et des centimes. */
-  .tarif__saisie { display: flex; align-items: center; gap: 6px; }
-  .tarif__saisie input { text-align: end; font-variant-numeric: tabular-nums; }
-  .tarif__unite { font: 500 var(--text-sm) / 1 var(--font-sans); color: var(--slate-400); inline-size: 1ch; }
-  .nombre { text-align: end; font-variant-numeric: tabular-nums; }
-</style>

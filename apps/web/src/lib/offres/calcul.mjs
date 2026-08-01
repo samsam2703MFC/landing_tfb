@@ -253,9 +253,24 @@ export function calculerOffre(offre) {
  * l'offre décide du séparateur — un client néerlandophone lit « € 1.234,56 ».
  */
 export function formater(cents, langue = 'fr', devise = 'EUR') {
-  const locale = { fr: 'fr-BE', nl: 'nl-BE', en: 'en-IE' }[langue] || 'fr-BE';
-  return new Intl.NumberFormat(locale, { style: 'currency', currency: devise })
+  return new Intl.NumberFormat(locale(langue), { style: 'currency', currency: devise })
     .format((Number(cents) || 0) / 100);
+}
+
+/**
+ * La locale d'affichage d'une langue.
+ *
+ * On vise la Belgique quand elle a un sens — un client belge lit « 1.234,56 »
+ * en néerlandais et « 1 234,56 » en français, et se méfierait de l'inverse.
+ * Une langue inconnue retombe sur le français plutôt que sur l'anglais : le
+ * séparateur anglo-saxon (1,234.56) est celui qui fait le plus de dégâts sur
+ * un devis lu en Europe continentale.
+ */
+export function locale(langue) {
+  return {
+    fr: 'fr-BE', nl: 'nl-BE', en: 'en-IE', de: 'de-DE', it: 'it-IT',
+    es: 'es-ES', pl: 'pl-PL', uk: 'uk-UA', ru: 'ru-RU', ar: 'ar-EG',
+  }[langue] || 'fr-BE';
 }
 
 /** Un taux en centièmes de point, écrit en pourcentage lisible. */
