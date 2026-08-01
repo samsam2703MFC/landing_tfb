@@ -24,6 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
+import { PRESTATIONS, TARIFS } from './contenu-offres.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
@@ -275,6 +276,45 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       });
     }
     console.log(`✓ ${LANGUES.length} langues`);
+
+    // Les tarifs commerciaux et les prestations vendables. Jamais réécrits
+    // s'ils existent : un tarif renégocié dans la console doit survivre au
+    // déploiement suivant, sinon la console ne sert à rien.
+    let tarifsEcrits = 0;
+    for (const tarif of TARIFS) {
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('tarifs')} WHERE cle = ? LIMIT 1`,
+        [tarif.cle],
+      );
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('tarifs'), 'cle', tarif.cle, {
+        valeur: tarif.valeur,
+        type: tarif.type,
+        libelle: tarif.libelle,
+        aide: tarif.aide,
+        ordre: tarif.ordre,
+      });
+      tarifsEcrits += 1;
+    }
+    if (tarifsEcrits > 0) console.log(`✓ ${tarifsEcrits} tarif(s) commerciaux`);
+
+    let prestationsEcrites = 0;
+    for (const prestation of PRESTATIONS) {
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('prestations')} WHERE cle = ? LIMIT 1`,
+        [prestation.cle],
+      );
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('prestations'), 'cle', prestation.cle, {
+        nom: prestation.nom,
+        description: prestation.description,
+        prix_cents: prestation.prix_cents,
+        actif: true,
+        ordre: prestation.ordre,
+      });
+      prestationsEcrites += 1;
+    }
+    if (prestationsEcrites > 0) console.log(`✓ ${prestationsEcrites} prestation(s) d'onboarding`);
 
     // Les réseaux d'exemple de la maquette, déposés non publiés.
     for (const [rang, client] of CLIENTS.entries()) {

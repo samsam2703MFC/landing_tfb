@@ -193,6 +193,142 @@ function modele(pg) {
         ['ordre', 'INT DEFAULT 100'],
       ],
     },
+    // ── Onboarding commercial ────────────────────────────────────────────
+    //
+    // Cinq tables pour un seul métier : un commercial crée un prospect,
+    // configure ce qu'il achète, et sort une offre chiffrée.
+    //
+    // Tous les montants sont des **entiers en centimes**. Un prix en flottant
+    // finit par facturer 119,99999 € — sur un document commercial signé, ce
+    // n'est pas une coquille, c'est un litige.
+    {
+      // Les comptes de la console. Une offre porte le nom de qui l'a faite :
+      // un mot de passe partagé ne saurait pas le dire.
+      nom: table('utilisateurs'),
+      colonnes: [
+        ['id', t.id],
+        ['identifiant', `${t.chaine(160)} NOT NULL UNIQUE`],
+        ['nom', t.chaine(160)],
+        // scrypt, sel compris — voir lib/admin/session.mjs. Jamais en clair.
+        ['empreinte', t.chaine(255)],
+        ['role', `${t.chaine(20)} DEFAULT 'commercial'`],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['cree_le', t.horodatage],
+        ['vu_le', t.horodatage],
+      ],
+    },
+    {
+      // Le client démarché. Distinct de `clients`, qui est la vitrine des
+      // réseaux affichés sur la page d'accueil : confondre les deux mettrait
+      // un prospect en cours de négociation sur le site public.
+      nom: table('prospects'),
+      colonnes: [
+        ['id', t.id],
+        ['raison_sociale', `${t.chaine(200)} NOT NULL`],
+        ['tva', t.chaine(20)],
+        ['adresse', t.texte],
+        ['pays', t.chaine(2)],
+        ['site_web', t.chaine(255)],
+        ['contact_nom', t.chaine(160)],
+        ['contact_role', t.chaine(120)],
+        ['contact_email', t.chaine(200)],
+        ['contact_tel', t.chaine(40)],
+        // La demande de démonstration d'où vient le prospect, s'il en vient
+        // une : de quoi éviter la ressaisie et garder le fil.
+        ['lead_id', 'INT'],
+        ['cree_par', 'INT'],
+        ['cree_le', t.horodatage],
+      ],
+    },
+    {
+      nom: table('offres'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['reference', `${t.chaine(40)} NOT NULL`],
+        ['version', 'INT DEFAULT 1'],
+        // brouillon · envoyee · acceptee · refusee · expiree
+        ['statut', `${t.chaine(20)} DEFAULT 'brouillon'`],
+        ['langue', `${t.chaine(5)} DEFAULT 'fr'`],
+        ['devise', `${t.chaine(3)} DEFAULT 'EUR'`],
+        ['cree_par', 'INT'],
+        ['cree_le', t.horodatage],
+        ['valide_jusqu_au', t.horodatage],
+        ['envoyee_le', t.horodatage],
+        // Remise : `pourcent` en centièmes de point (7,5 % = 750),
+        // `fixe` en centimes. Deux unités dans une colonne, mais le type est
+        // juste à côté et l'alternative serait deux colonnes dont une vide.
+        ['remise_type', `${t.chaine(10)} DEFAULT 'pourcent'`],
+        ['remise_valeur', 'INT DEFAULT 0'],
+        // TVA en centièmes de point : 21 % = 2100.
+        ['tva_taux', 'INT DEFAULT 2100'],
+        ['tva_exoneree', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['tva_mention', t.chaine(255)],
+        // aucune · par_vue · achat
+        ['option_app', `${t.chaine(10)} DEFAULT 'aucune'`],
+        // La formation se vend au jour, à part des prestations d'onboarding :
+        // c'est le seul poste dont la quantité se négocie en fin d'entretien.
+        ['jours_formation', 'INT DEFAULT 0'],
+        // Les tarifs sont RECOPIÉS ici à la création. Une offre envoyée à
+        // 1 000 € la vue ne doit pas changer de montant parce qu'un admin a
+        // modifié le paramètre le lendemain.
+        ['prix_par_vue_cents', 'INT DEFAULT 0'],
+        ['multiplicateur_achat', 'INT DEFAULT 0'],
+        ['taux_annuel', 'INT DEFAULT 0'],
+        ['prix_jour_formation_cents', 'INT DEFAULT 0'],
+        ['portee', t.texte],
+        ['delai', t.chaine(255)],
+      ],
+    },
+    {
+      // Une ligne du devis. `recurrence` est ce qui sépare les 120 000 € payés
+      // une fois des 5 000 € payés tous les mois — la confusion des deux est
+      // la seule façon de vendre à perte.
+      nom: table('offre_lignes'),
+      colonnes: [
+        ['id', t.id],
+        ['offre_id', 'INT NOT NULL'],
+        // prestation · formation · vue · achat · maintenance
+        ['type', `${t.chaine(20)} NOT NULL`],
+        ['libelle', t.chaine(255)],
+        ['note', t.texte],
+        ['quantite', 'INT DEFAULT 1'],
+        ['prix_unitaire_cents', 'INT DEFAULT 0'],
+        // unique · mensuel · annuel
+        ['recurrence', `${t.chaine(10)} DEFAULT 'unique'`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Les modules d'onboarding vendables — Design, et les suivants.
+      // Nom distinct de `modules`, qui désigne les modules ERP du catalogue
+      // public : ce sont deux choses sans rapport.
+      nom: table('prestations'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['description', t.texte],
+        ['prix_cents', 'INT DEFAULT 0'],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Les paramètres de tarification, éditables dans la console. `type` dit
+      // comment lire `valeur` : rien n'est deviné à l'affichage.
+      nom: table('tarifs'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['valeur', t.texte],
+        // cents · entier · points · texte
+        ['type', `${t.chaine(10)} DEFAULT 'texte'`],
+        ['libelle', t.chaine(160)],
+        ['aide', t.chaine(255)],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
     {
       nom: table('site'),
       colonnes: [
@@ -221,6 +357,13 @@ const INDEX = [
   // Une page charge toutes les traductions d'une langue d'un coup.
   { suffixe: 'traductions_langue', table: 'traductions', colonnes: 'langue' },
   { suffixe: 'traductions_cle', table: 'traductions', colonnes: 'langue, entite, ligne_id, champ' },
+  // La liste des offres se filtre par client, par statut et par commercial.
+  { suffixe: 'offres_prospect', table: 'offres', colonnes: 'prospect_id' },
+  { suffixe: 'offres_statut', table: 'offres', colonnes: 'statut' },
+  { suffixe: 'offres_auteur', table: 'offres', colonnes: 'cree_par' },
+  // Une référence porte plusieurs versions : c'est le couple qui est unique.
+  { suffixe: 'offres_reference', table: 'offres', colonnes: 'reference, version', unique: true },
+  { suffixe: 'lignes_offre', table: 'offre_lignes', colonnes: 'offre_id, ordre' },
 ];
 
 /** Colonnes réellement présentes, en minuscules. */
@@ -238,9 +381,10 @@ async function colonnesExistantes(db, pg, nomTable) {
 async function creerIndex(db, pg, index) {
   const nom = `idx_${table(index.suffixe)}`;
   const cible = table(index.table);
+  const unique = index.unique ? 'UNIQUE ' : '';
   const sql = pg
-    ? `CREATE INDEX IF NOT EXISTS ${nom} ON ${cible} (${index.colonnes})`
-    : `CREATE INDEX ${nom} ON ${cible} (${index.colonnes})`;
+    ? `CREATE ${unique}INDEX IF NOT EXISTS ${nom} ON ${cible} (${index.colonnes})`
+    : `CREATE ${unique}INDEX ${nom} ON ${cible} (${index.colonnes})`;
   try {
     await db.executer(sql);
     console.log(`  + index ${nom}`);
