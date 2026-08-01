@@ -95,7 +95,7 @@ function argument(nom, defaut = '') {
 const slug = argument('module');
 const base = (argument('base') || process.env.CAPTURE_BASE || '').replace(/\/+$/, '');
 const cookie = argument('cookie') || process.env.CAPTURE_COOKIE || '';
-const attente = Number(argument('attente', '1200'));
+const attente = Number(argument('attente', '2500'));
 const identifiant = argument('identifiant') || process.env.CAPTURE_USER || '';
 const motDePasse = process.env.CAPTURE_PASS || '';
 
@@ -244,10 +244,14 @@ if (identifiant && plan.connexion) {
   await page.goto(ou, { waitUntil: 'domcontentloaded', timeout: 30000 });
   await page.fill(`[name="${plan.connexion.identifiant}"]`, identifiant);
   await page.fill(`[name="${plan.connexion.motdepasse}"]`, motDePasse);
-  await Promise.all([
-    page.waitForLoadState('networkidle'),
-    page.click('button[type=submit], input[type=submit]'),
-  ]);
+  await page.click('button[type=submit], input[type=submit]');
+  // Attendre d'avoir quitté la page de connexion, pas que le réseau se
+  // taise : ces applications interrogent l'API en continu et `networkidle`
+  // n'arrive jamais.
+  await page
+    .waitForURL((u) => !/login|auth|connexion/i.test(String(u)), { timeout: 12000 })
+    .catch(() => {});
+  await page.waitForTimeout(attente);
   if (/login|auth|connexion/i.test(page.url())) {
     console.error(`✗ connexion refusée sur ${ou} — identifiant ou mot de passe.`);
     await navigateur.close();
@@ -266,7 +270,10 @@ let refusees = 0;
 for (const [cle, chemin] of Object.entries(plan.ecrans)) {
   const url = `${base}${chemin}`;
   try {
-    const reponse = await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+    const reponse = await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    // Le silence réseau est un bonus, pas une condition : on lui laisse
+    // quelques secondes et on continue s'il ne vient pas.
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
     const code = reponse?.status() ?? 0;
     // Une page de connexion renvoie 200 : on regarde aussi où l'on a atterri.
     const redirige = /login|auth|connexion/i.test(page.url()) && !/login|auth/i.test(chemin);
@@ -277,6 +284,7 @@ for (const [cle, chemin] of Object.entries(plan.ecrans)) {
       continue;
     }
     // Laisser les données arriver : ces écrans se remplissent en XHR.
+    // --attente=5000 si les graphiques sont encore vides sur les captures.
     await page.waitForTimeout(attente);
     const fichier = resolve(sortie, `${slug}-${cle}.png`);
     await page.screenshot({ path: fichier, fullPage: false });
