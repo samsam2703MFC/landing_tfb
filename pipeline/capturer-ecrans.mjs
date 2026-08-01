@@ -131,17 +131,31 @@ const sortie = resolve(argument('sortie') || resolve(ICI, '..', 'captures-a-publ
 // Playwright n'est pas une dépendance du pipeline : il n'est utile que pour
 // cette tâche, lancée à la main. Le message le dit plutôt que d'échouer sec.
 let chromium;
-try {
+{
   // playwright-core suffit quand un navigateur est déjà installé sur la machine.
-  ({ chromium } = await import('playwright').catch(() => import('playwright-core')));
-} catch {
-  console.error('Playwright manque. Une fois, sur la machine qui capture :');
-  console.error('  npm --prefix pipeline i playwright');
-  console.error('  npx --prefix pipeline playwright install --with-deps chromium');
-  console.error('Un Chromium déjà installé fait aussi l\'affaire :');
-  console.error('  npm --prefix pipeline i playwright-core');
-  console.error('  PLAYWRIGHT_CHROMIUM=/usr/bin/chromium node pipeline/capturer-ecrans.mjs …');
-  process.exit(1);
+  const essais = [];
+  for (const paquet of ['playwright', 'playwright-core']) {
+    try {
+      ({ chromium } = await import(paquet));
+      break;
+    } catch (err) {
+      essais.push(`  ${paquet} : ${err.code || err.message.split('\n')[0]}`);
+    }
+  }
+  if (!chromium) {
+    console.error(`Aucun module Playwright chargeable depuis ${ICI} :`);
+    // La raison exacte compte : un paquet absent et un paquet cassé se
+    // soignent différemment, et « manquant » les confondait.
+    console.error(essais.join('\n'));
+    console.error('');
+    console.error('Installer, depuis la racine du dépôt :');
+    console.error('  npm --prefix pipeline i playwright');
+    console.error('  npx --prefix pipeline playwright install chromium');
+    console.error('');
+    console.error('À refaire après un déploiement : `npm ci` reconstruit');
+    console.error('pipeline/node_modules à partir du verrou et emporte Playwright.');
+    process.exit(1);
+  }
 }
 
 await mkdir(sortie, { recursive: true });
