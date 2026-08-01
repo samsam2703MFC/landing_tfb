@@ -195,18 +195,26 @@ const NAV = [
       @media (max-width: 560px) {
         .entete { padding-inline: 14px; gap: 10px; }
         .entete__marque span { display: none; }
+        /* Le mot-symbole devient le seul chemin vers l'accueil : il lui faut
+           une cible qu'on atteigne au pouce. */
+        .entete__marque { min-inline-size: 40px; min-block-size: 40px; justify-content: center; }
       }
 
       .langues {
-        display: inline-flex; align-items: center; gap: 6px;
-        block-size: 34px; padding-inline: 10px;
+        display: inline-flex; align-items: center; gap: 2px;
+        block-size: 34px; padding-inline: 6px;
         border: 1px solid var(--slate-200); border-radius: var(--radius-control);
         color: var(--slate-500);
       }
+      /* La cible tactile fait 32 px de haut : un lien de 13 × 11 px ne
+         s'atteint pas au pouce, et c'est par là qu'on change de langue. */
       .langues a {
+        display: inline-flex; align-items: center; justify-content: center;
+        min-inline-size: 30px; block-size: 32px; border-radius: var(--radius-xs);
         font: 600 11px/1 var(--font-mono); color: var(--slate-600); text-decoration: none;
       }
-      .langues a:hover { color: var(--text-brand); text-decoration: none; }
+      .langues a:hover { color: var(--text-brand); text-decoration: none; background: var(--slate-50); }
+      .langues a.est-active { color: var(--plum-600); background: var(--plum-50); }
 
       /* ── Pied ──────────────────────────────────────────────────────────── */
       .pied { background: var(--gradient-ink); color: #fff; padding: 56px 40px 32px; }

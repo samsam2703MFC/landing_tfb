@@ -49,8 +49,10 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 ├── modules.json                  # la liste des dépôts à ingérer — le seul fichier à éditer
 ├── .env.example                  # toutes les variables, à copier en infra/.env sur le serveur
 ├── pipeline/                     # Node 20, ESM, .mjs pur — aucun TypeScript
-│   ├── bootstrap-db.mjs          # crée les trois tables (idempotent)
-│   ├── contenu-initial.mjs       # les 9 fiches rédigées, sans appel IA
+│   ├── bootstrap-db.mjs          # crée les tables et les colonnes manquantes (idempotent)
+│   ├── contenu-initial.mjs       # les 13 fiches rédigées, sans appel IA
+│   ├── contenu-textes.mjs        # le discours éditorial français des gabarits
+│   ├── contenu-traductions.mjs   # les surcharges EN/IT — le français reste la référence
 │   ├── seed-contenu.mjs          # les charge en base, ou produit contenu.sql
 │   ├── contenu.sql               # le même contenu en SQL portable
 │   ├── ingest.mjs                # ingère un module
@@ -66,13 +68,13 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 │   ├── src/design-system/        # les jetons TFB, repris tels quels
 │   ├── src/lib/db.mjs            # lecture des tables — côté serveur uniquement
 │   ├── src/lib/admin/            # session et écritures de la console
-│   ├── src/middleware.js         # garde d'accès à /admin + contrôle d'origine
+│   ├── src/middleware.js         # garde /admin, contrôle d'origine, préfixe de langue
 │   ├── src/components/Layout.astro
 │   ├── src/components/Console.astro
 │   ├── src/pages/index.astro
 │   ├── src/pages/onboarding.astro
 │   ├── src/pages/modules/[slug].astro
-│   ├── src/pages/admin/          # la console : accueil, modules, captures
+│   ├── src/pages/admin/          # la console : modules, captures, textes, traductions
 │   └── Dockerfile
 ├── deploy/
 │   ├── landing-tfb.service       # gabarit du service systemd
@@ -97,7 +99,7 @@ donc pas à être exposée sur Internet, et la clé Anthropic reste dans
 
 ## Le modèle de données
 
-Neuf tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
+Dix tables ordinaires, préfixées `landing_` pour cohabiter avec le reste de
 la base sans risque de collision — le préfixe se change avec `DB_PREFIX`. Elles
 sont créées par `bootstrap-db.mjs`, qui ajoute aussi les colonnes manquantes
 d'une table déjà en place, et sont interrogeables directement en SQL.
@@ -113,6 +115,7 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_leads` | les demandes de démonstration reçues par le formulaire |
 | `landing_clients` | les réseaux affichés sur la landing — vide, le bandeau ne s'affiche pas |
 | `landing_langues` | les neuf langues prévues et leur état de publication |
+| `landing_traductions` | les surcharges de traduction : `langue`, `entite`, `ligne_id`, `champ`, `valeur`, `source` |
 
 Les colonnes `problemes`, `benefices`, `stack`, `mots_cles`, `leviers`,
 `liens` et `reponses` sont de type JSON.
@@ -297,13 +300,15 @@ Le contenu se modifie aussi depuis le navigateur, sans redéploiement, à
 l'adresse `<BASE_PATH>/admin` — par exemple
 `https://185.180.206.46/landing_tfb/admin`.
 
-Six écrans, sur la même densité que la maquette : **Tableau de bord**
+Huit écrans, sur la même densité que la maquette : **Tableau de bord**
 (ce qui manque au contenu publié), **Modules** (fiche, leviers, liens,
-ordre, publication, icône), **Composants** (les 79 entrées de menu à plat,
+ordre, publication, icône), **Composants** (les entrées de menu à plat,
 filtrables par module — la vue qui sert à repérer les trous), **Leviers**
 (la répartition réelle du catalogue sur les six), **Captures** (titre,
-rattachement, ordre) et **Page d'accueil** (titre, accroche, problèmes du
-franchiseur et réponses).
+rattachement, ordre), **Page d'accueil** (titre, accroche, problèmes du
+franchiseur et réponses), **Langues** (publier ou retirer une langue du
+sélecteur) et **Traductions** (le français à gauche, la langue choisie à
+droite, entité par entité).
 
 Toute écriture vide le cache de lecture : le site montre la modification
 immédiatement.
@@ -331,6 +336,37 @@ signale en avertissement plutôt que d'échouer.
 écrase les champs qu'elle régénère : ce qui est écrit à la main dans la
 console tient jusqu'à la prochaine ingestion de ce module. Les leviers, les
 liens et la phrase d'onboarding, eux, ne sont pas touchés par l'ingestion.
+
+### Les langues
+
+Une langue publiée sert le site sous son préfixe : `/en/`, `/it/`,
+`/modules/webshop` devenant `/en/modules/webshop`. Le préfixe est retiré par
+`src/middleware.js`, qui range la langue dans `Astro.locals` — les gabarits
+restent uniques, il n'y a pas de `[langue]/` à dupliquer, et une page ajoutée
+demain est traduite sans qu'on y pense. Le français n'a pas de préfixe :
+`/fr/` renvoie en 301 vers `/`, pour qu'une page n'existe pas à deux adresses.
+Une langue non publiée répond `404`, plutôt que de promettre une traduction
+qui n'existe pas.
+
+Le français reste dans les colonnes d'origine et sert de **référence autant
+que de repli** : `landing_traductions` ne porte que les surcharges. Un champ
+non traduit s'affiche donc en français — une langue à moitié faite reste
+lisible, ce qui compte plus qu'une cohérence de façade.
+
+```bash
+# poser les traductions écrites dans pipeline/contenu-traductions.mjs
+node pipeline/seed-contenu.mjs --si-vide   # n'écrase pas celles retouchées en console
+```
+
+Ensuite, dans la console : **Traductions** pour traduire champ par champ
+(le français à gauche, la langue à droite ; vider un champ le fait retomber
+sur le français), puis **Langues** pour publier. Jamais l'inverse — publier
+avant de traduire afficherait du français sous un drapeau étranger.
+
+Une traduction se signale **périmée** quand le français a changé depuis :
+chaque surcharge garde une copie du français au moment où elle a été écrite
+(colonne `source`). Sans ce repère, une phrase corrigée laisserait sa
+traduction affirmer l'ancienne version sans que rien ne le dise.
 
 ### Ajouter un module
 

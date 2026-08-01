@@ -164,5 +164,8 @@ const suivant = rang >= 0 && rang < modules.length - 1 ? modules[rang + 1] : mod
   @media (max-width: 820px) {
     .carrousel { padding: 14px 20px 12px; }
     .vignette { inline-size: 13rem; }
+    /* Au doigt, 30 px se rate : les flèches sont la seule façon de passer au
+       module suivant sans faire défiler la bande. */
+    .carrousel__fleche { inline-size: 38px; block-size: 38px; }
   }
 </style>

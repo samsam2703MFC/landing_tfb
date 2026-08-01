@@ -541,6 +541,262 @@ export async function basculerLangue(code, publiee) {
   viderCache();
 }
 
+// ---------------------------------------------------------------------------
+// Traductions
+// ---------------------------------------------------------------------------
+
+/**
+ * Ce qui se traduit, entité par entité.
+ *
+ * Le français reste dans la colonne d'origine et sert de référence autant que
+ * de repli : `landing_traductions` ne porte que les surcharges. Une entrée
+ * absente affiche donc le français, ce qui vaut mieux qu'un blanc.
+ *
+ * `json: true` marque les colonnes qui portent une liste sérialisée. On les
+ * édite telles quelles, en JSON : la surcharge remplace la valeur brute de la
+ * colonne, il n'y a pas d'adressage sous-champ dans ce modèle. Traduire un
+ * seul élément de la liste n'est donc pas possible — c'est la liste entière.
+ */
+export const ENTITES_TRADUISIBLES = [
+  {
+    cle: 'site',
+    nom: "Page d'accueil",
+    table: 'site',
+    // Une seule ligne : pas de libellé de ligne à afficher.
+    libelle: () => "Page d'accueil",
+    champs: [
+      { nom: 'titre', libelle: 'Titre principal', lignes: 2 },
+      { nom: 'sous_titre', libelle: 'Sous-titre', lignes: 2 },
+      { nom: 'accroche', libelle: 'Accroche', lignes: 6 },
+      { nom: 'cta_texte', libelle: 'Libellé du bouton' },
+      { nom: 'meta_description', libelle: 'Description pour les moteurs', lignes: 3 },
+      { nom: 'problemes', libelle: 'Les problèmes', lignes: 10, json: true },
+      { nom: 'reponses', libelle: 'Les réponses', lignes: 10, json: true },
+    ],
+  },
+  {
+    cle: 'textes',
+    nom: 'Textes éditoriaux',
+    table: 'textes',
+    libelle: (l) => l.cle,
+    champs: [{ nom: 'valeur', libelle: 'Texte affiché', lignes: 2 }],
+  },
+  {
+    cle: 'modules',
+    nom: 'Fiches de module',
+    table: 'modules',
+    libelle: (l) => l.slug,
+    champs: [
+      { nom: 'nom', libelle: 'Nom' },
+      { nom: 'accroche', libelle: 'Accroche', lignes: 2 },
+      { nom: 'resume', libelle: 'Résumé', lignes: 4 },
+      { nom: 'public_cible', libelle: 'Public visé' },
+      { nom: 'onboarding', libelle: 'Phrase d’onboarding', lignes: 3 },
+      { nom: 'description', libelle: 'Description longue', lignes: 12 },
+      { nom: 'problemes', libelle: 'Les problèmes', lignes: 8, json: true },
+      { nom: 'benefices', libelle: 'Les bénéfices', lignes: 8, json: true },
+    ],
+  },
+  {
+    cle: 'fonctions',
+    nom: 'Composants',
+    table: 'fonctions',
+    libelle: (l) => l.cle,
+    champs: [
+      { nom: 'nom', libelle: 'Nom' },
+      { nom: 'description', libelle: 'Description', lignes: 3 },
+      { nom: 'benefice', libelle: 'Bénéfice', lignes: 2 },
+    ],
+  },
+  {
+    cle: 'questions',
+    nom: 'Questionnaire',
+    table: 'questions',
+    libelle: (l) => l.cle,
+    champs: [
+      { nom: 'tag', libelle: 'Étiquette' },
+      { nom: 'texte', libelle: 'La question', lignes: 2 },
+      { nom: 'cible', libelle: 'Ce qu’elle vise' },
+    ],
+  },
+  {
+    cle: 'captures',
+    nom: "Titres d'écran",
+    table: 'captures',
+    libelle: (l) => l.fichier,
+    champs: [{ nom: 'titre', libelle: 'Titre affiché sous la capture', lignes: 2 }],
+  },
+];
+
+/** L'entité par sa clé, ou la première. */
+export function entiteTraduisible(cle) {
+  return ENTITES_TRADUISIBLES.find((e) => e.cle === cle) || ENTITES_TRADUISIBLES[0];
+}
+
+/** L'ordre d'affichage des lignes de chaque entité. */
+function ordreDe(cle) {
+  if (cle === 'textes') return 'ordre, cle';
+  if (cle === 'modules') return 'ordre, slug';
+  if (cle === 'fonctions') return 'module_id, ordre';
+  if (cle === 'questions') return 'ordre, id';
+  if (cle === 'captures') return 'module_id, ordre';
+  return 'id';
+}
+
+/** Les surcharges d'une langue, rangées par `entite:ligne_id:champ`. */
+async function surcharges(langue, entite) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT ligne_id, champ, valeur, source FROM ${table('traductions')}
+     WHERE langue = ? AND entite = ?`,
+    [String(langue), String(entite)],
+  );
+  const par = new Map();
+  for (const l of lignes) par.set(`${l.ligne_id}:${l.champ}`, l);
+  return par;
+}
+
+/**
+ * Le tableau de traduction d'une entité : une ligne par enregistrement, et
+ * pour chaque champ le français, la traduction posée, et si elle est périmée.
+ *
+ * « Périmée » veut dire que le français a changé depuis la traduction : on
+ * compare la colonne `source`, figée au moment où la traduction a été écrite,
+ * au français d'aujourd'hui. C'est le seul moyen de repérer une traduction qui
+ * ment sans la relire une par une.
+ */
+export async function listerTraductions(codeLangue, cleEntite) {
+  const entite = entiteTraduisible(cleEntite);
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT * FROM ${table(entite.table)} ORDER BY ${ordreDe(entite.cle)}`,
+  );
+  const posees = await surcharges(codeLangue, entite.cle);
+
+  return lignes.map((ligne) => ({
+    id: ligne.id,
+    libelle: entite.libelle(ligne),
+    champs: entite.champs.map((champ) => {
+      const fr = ligne[champ.nom] == null ? '' : String(ligne[champ.nom]);
+      const posee = posees.get(`${ligne.id}:${champ.nom}`);
+      const valeur = posee?.valeur ?? '';
+      return {
+        ...champ,
+        fr,
+        valeur,
+        // Une source vide (traduction saisie à la main dans la console avant
+        // que le français n'ait bougé) ne se déclare pas périmée : on ne sait
+        // pas, et crier au loup ferait ignorer l'alerte.
+        perimee: Boolean(valeur) && Boolean(posee?.source) && posee.source !== fr,
+      };
+    }),
+  }));
+}
+
+/** Combien de champs traduits, périmés et au total, par entité. */
+export async function couvertureTraductions(codeLangue) {
+  const resultat = [];
+  for (const entite of ENTITES_TRADUISIBLES) {
+    const lignes = await listerTraductions(codeLangue, entite.cle);
+    let total = 0;
+    let faits = 0;
+    let perimes = 0;
+    for (const ligne of lignes) {
+      for (const champ of ligne.champs) {
+        // Un champ français vide n'est pas à traduire : le compter ferait
+        // stagner la couverture à jamais sous 100 %.
+        if (!champ.fr) continue;
+        total += 1;
+        if (champ.valeur) faits += 1;
+        if (champ.perimee) perimes += 1;
+      }
+    }
+    resultat.push({ cle: entite.cle, nom: entite.nom, total, faits, perimes });
+  }
+  return resultat;
+}
+
+/**
+ * Enregistre les traductions d'une entité pour une langue.
+ *
+ * Vider un champ supprime la surcharge : la page retombe sur le français.
+ * C'est volontairement la même règle que pour les textes — une valeur vide
+ * n'est jamais stockée, sans quoi le site afficherait un blanc.
+ */
+export async function enregistrerTraductions(codeLangue, cleEntite, formulaire) {
+  const entite = entiteTraduisible(cleEntite);
+  const db = await connexion();
+  const langue = String(codeLangue);
+
+  const lignes = await db.requete(`SELECT * FROM ${table(entite.table)}`);
+  const parId = new Map(lignes.map((l) => [String(l.id), l]));
+  const posees = await surcharges(langue, entite.cle);
+
+  const cles = formulaire.getAll('cle');
+  const valeurs = formulaire.getAll('valeur');
+
+  // Premier passage : on ne touche à rien tant que tout n'est pas relu. Une
+  // liste mal formée refusée à mi-parcours laisserait la moitié du formulaire
+  // enregistrée et l'autre non, ce qui est pire que de tout refuser.
+  const aEcrire = [];
+  for (let i = 0; i < cles.length; i += 1) {
+    const [ligneId, nomChamp] = String(cles[i]).split(':');
+    const ligne = parId.get(ligneId);
+    const champ = entite.champs.find((c) => c.nom === nomChamp);
+    if (!ligne || !champ) continue;
+
+    const valeur = String(valeurs[i] ?? '').trim();
+    if (valeur && champ.json) {
+      try {
+        JSON.parse(valeur);
+      } catch (err) {
+        throw new Error(
+          `« ${entite.libelle(ligne)} / ${champ.libelle} » : JSON invalide (${err.message}). Rien n'a été enregistré.`,
+        );
+      }
+    }
+    aEcrire.push({ ligne, ligneId, nomChamp, valeur });
+  }
+
+  let ecrits = 0;
+  let vides = 0;
+  for (const { ligne, ligneId, nomChamp, valeur } of aEcrire) {
+    const posee = posees.get(`${ligneId}:${nomChamp}`);
+
+    if (!valeur) {
+      if (posee) {
+        await db.executer(
+          `DELETE FROM ${table('traductions')}
+           WHERE langue = ? AND entite = ? AND ligne_id = ? AND champ = ?`,
+          [langue, entite.cle, Number(ligneId), nomChamp],
+        );
+        vides += 1;
+      }
+      continue;
+    }
+
+    const source = ligne[nomChamp] == null ? null : String(ligne[nomChamp]);
+    if (posee) {
+      if (posee.valeur === valeur && posee.source === source) continue;
+      await db.executer(
+        `UPDATE ${table('traductions')} SET valeur = ?, source = ?
+         WHERE langue = ? AND entite = ? AND ligne_id = ? AND champ = ?`,
+        [valeur, source, langue, entite.cle, Number(ligneId), nomChamp],
+      );
+    } else {
+      await db.executer(
+        `INSERT INTO ${table('traductions')} (langue, entite, ligne_id, champ, valeur, source)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [langue, entite.cle, Number(ligneId), nomChamp, valeur, source],
+      );
+    }
+    ecrits += 1;
+  }
+
+  viderCache();
+  return { ecrits, vides };
+}
+
 /** Enregistre famille, icône, ordre et leviers d'un module, depuis la table. */
 export async function enregistrerLigneModule(slug, valeurs) {
   const db = await connexion();

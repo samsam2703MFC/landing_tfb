@@ -1148,11 +1148,14 @@ export const SITE = {
   sous_titre:
     "Un ERP qui met le savoir-faire dans l'outil plutôt que dans la tête de quelques personnes.",
   accroche: `Un réseau se vend sur ce qu'il peut transmettre. Tant que les procédures vivent dans la mémoire des fondateurs, dans des tableurs personnels et dans des habitudes prises en magasin, ce qui se transmet n'est qu'une enseigne et un bail. Le repreneur rachète un nom, pas une méthode.
-Nos neuf modules couvrent l'exploitation réelle d'un réseau : le recrutement des franchisés, la vente en ligne, le pilotage du siège et du point de vente, l'approvisionnement, la production, l'animation terrain, la livraison et l'affichage. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d'autre que dans une conversation.`,
+Nos treize modules couvrent l'exploitation réelle d'un réseau : le recrutement des franchisés, la vente en ligne et en caisse, le pilotage du siège et du point de vente, l'approvisionnement et les recettes, la production, l'animation terrain, la livraison, l'affichage, les redevances et la facturation. Chacun a la même exigence : ce qui est fait laisse une trace datée et attribuée, et ce qui est décidé est écrit quelque part d'autre que dans une conversation.`,
   cta_texte: 'Demander une démonstration',
   cta_url: '#contact',
+  // Le compte est celui du catalogue, pas un chiffre rond : « neuf modules »
+  // dans l'accroche et « huit en production » dans la balise meta se
+  // contredisaient, et le catalogue en affichait treize juste en dessous.
   meta_description:
-    "ERP pour réseaux de franchise : vente en ligne, pilotage, approvisionnement, production, animation terrain, livraison et affichage — huit modules en production.",
+    "ERP pour réseaux de franchise : vente en ligne et caisse, pilotage, approvisionnement, production, animation terrain, livraison, affichage, redevances et facturation — treize modules.",
   problemes: [
     {
       titre: "L'exécution en magasin est invisible",
@@ -1183,8 +1186,12 @@ Nos neuf modules couvrent l'exploitation réelle d'un réseau : le recrutement d
   reponses: [
     {
       titre: 'Le terrain saisit là où il travaille',
+      // Vérifié dépôt par dépôt : seul pwa_consultant embarque un manifeste et
+      // un service worker. La cuisine et la livraison n'en ont pas — annoncer
+      // « installable et hors ligne » pour les trois se serait découvert
+      // devant un client.
       texte:
-        "Les applications de la cuisine, de l'animateur et du chauffeur sont installables depuis un navigateur et fonctionnent hors ligne. La donnée naît au poste de travail, une seule fois, au moment où le geste est fait.",
+        "La donnée naît au poste de travail, une seule fois, au moment où le geste est fait : la tablette de la cuisine, le panel de l'animateur, l'application du chauffeur. Le panel consultant s'installe depuis le navigateur et s'ouvre en plein écran, sur la tablette de la tournée.",
     },
     {
       titre: 'Chaque contrôle porte un nom et une heure',

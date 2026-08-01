@@ -35,7 +35,8 @@ const RUBRIQUES = [
       { cle: 'textes', href: '/admin/textes', libelle: 'Textes', icone: 'file-text', compte: compteurs.textes },
       { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'panels-top-left' },
       { cle: 'questions', href: '/admin/questions', libelle: 'Questionnaire', icone: 'clipboard-check', compte: compteurs.questions },
-      { cle: 'langues', href: '/admin/langues', libelle: 'Traductions', icone: 'languages', compte: compteurs.langues },
+      { cle: 'langues', href: '/admin/langues', libelle: 'Langues', icone: 'languages', compte: compteurs.langues },
+      { cle: 'traductions', href: '/admin/traductions', libelle: 'Traductions', icone: 'globe' },
     ],
   },
   {
@@ -263,6 +264,11 @@ const RUBRIQUES = [
         transition: var(--transition-control);
       }
       select { cursor: pointer; }
+      /* Voir index.astro : sous 16 px, iOS zoome au premier appui. */
+      @media (max-width: 820px) {
+        input[type='text'], input[type='number'], input[type='password'], input[type='search'],
+        textarea, select { font-size: 16px; }
+      }
       textarea { resize: vertical; line-height: var(--leading-normal); }
       textarea.code { font-family: var(--font-mono); font-size: var(--text-sm); }
       input:focus-visible, textarea:focus-visible, select:focus-visible {

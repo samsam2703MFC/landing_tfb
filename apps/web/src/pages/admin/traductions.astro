@@ -1,0 +1,301 @@
+---
+/**
+ * L'écran de traduction : le français à gauche, la langue choisie à droite.
+ *
+ * Le modèle est une surcharge, pas une copie. Le français reste dans la
+ * colonne d'origine et sert de référence autant que de repli ; ce qui est
+ * saisi ici n'est qu'une surcharge, et vider un champ la supprime — la page
+ * retombe alors sur le français. Une langue à moitié traduite reste donc
+ * lisible, ce qui compte plus qu'une cohérence de façade.
+ *
+ * Une traduction devient « périmée » quand le français a bougé depuis. On le
+ * sait parce que la traduction garde une copie du français au moment où elle a
+ * été écrite. Sans ce repère, une phrase française corrigée laisserait sa
+ * traduction affirmer l'ancienne version, sans que rien ne le signale.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import {
+  ENTITES_TRADUISIBLES,
+  compteurs,
+  couvertureTraductions,
+  entiteTraduisible,
+  enregistrerTraductions,
+  listerLangues,
+  listerTraductions,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+/** Le lien de l'écran pour une langue et une entité données. */
+const versEcran = (langue, entite) => `${BASE}/admin/traductions?langue=${langue}&entite=${entite}`;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const langue = String(f.get('langue') || '');
+  const entite = String(f.get('entite') || '');
+  try {
+    const { ecrits, vides } = await enregistrerTraductions(langue, entite, f);
+    const dit = [
+      ecrits > 0 ? `${ecrits} traduction(s) enregistrée(s)` : null,
+      vides > 0 ? `${vides} supprimée(s), retour au français` : null,
+    ].filter(Boolean);
+    return Astro.redirect(
+      `${versEcran(langue, entite)}&ok=${encodeURIComponent(dit.length ? `${dit.join(', ')}.` : 'Rien à enregistrer.')}`,
+      303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let langues = [];
+let chiffres = {};
+let couverture = [];
+let lignes = [];
+
+// La langue par défaut n'a rien à traduire : c'est elle, la référence.
+let codeLangue = Astro.url.searchParams.get('langue') || '';
+const cleEntite = Astro.url.searchParams.get('entite') || 'site';
+const entite = entiteTraduisible(cleEntite);
+
+try {
+  langues = (await listerLangues()).filter((l) => !l.defaut);
+  chiffres = await compteurs();
+  if (!langues.some((l) => l.code === codeLangue)) codeLangue = langues[0]?.code || '';
+  if (codeLangue) {
+    couverture = await couvertureTraductions(codeLangue);
+    lignes = await listerTraductions(codeLangue, entite.cle);
+  }
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const langue = langues.find((l) => l.code === codeLangue);
+const message = Astro.url.searchParams.get('ok');
+
+/** Le total, toutes entités confondues — ce qui reste à faire dans la langue. */
+const global = couverture.reduce(
+  (acc, c) => ({
+    total: acc.total + c.total,
+    faits: acc.faits + c.faits,
+    perimes: acc.perimes + c.perimes,
+  }),
+  { total: 0, faits: 0, perimes: 0 },
+);
+const pourcent = global.total ? Math.round((global.faits / global.total) * 100) : 0;
+
+/** Le nombre de lignes d'un champ, avec un repli qui tient au contenu. */
+const hauteur = (champ) => champ.lignes || (champ.fr.length > 90 ? 3 : 1);
+---
+
+<Console
+  titre="Traductions"
+  fil="TFB Admin · Contenu landing · Traductions"
+  actif="traductions"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {langues.length === 0 ? (
+    <section class="bloc">
+      <div class="bloc__tete">
+        <div>
+          <h2>Aucune langue à traduire</h2>
+          <p>Seul le français est déclaré. Ajoutez une langue depuis l'écran <a href={`${BASE}/admin/langues`}>Langues</a>.</p>
+        </div>
+      </div>
+    </section>
+  ) : (
+    <>
+      <section class="bloc trad__choix">
+        <div class="bloc__tete">
+          <div>
+            <h2>Langue</h2>
+            <p>
+              Le français reste la référence : il s'affiche à gauche, et sert de repli
+              partout où la traduction manque.
+            </p>
+          </div>
+        </div>
+
+        <div class="trad__langues">
+          {langues.map((l) => (
+            <a
+              class={`trad__langue ${l.code === codeLangue ? 'trad__langue--ici' : ''}`}
+              href={versEcran(l.code, entite.cle)}
+              aria-current={l.code === codeLangue ? 'page' : undefined}
+            >
+              <span class="trad__code" lang={l.code}>{l.code}</span>
+              <span class="trad__nom" lang={l.code}>{l.nom}</span>
+              <span class={l.publiee ? 'etat etat--on' : 'etat'}>
+                {l.publiee ? 'publiée' : 'hors ligne'}
+              </span>
+            </a>
+          ))}
+        </div>
+
+        {langue && (
+          <div class="bloc__pied">
+            <strong lang={langue.code}>{langue.nom}</strong> — {global.faits} champs traduits sur
+            {' '}{global.total} ({pourcent} %){global.perimes > 0 && (
+              <>, dont <strong>{global.perimes} à revoir</strong> : le français a changé depuis</>
+            )}.
+            {' '}{langue.publiee
+              ? 'La langue est en ligne : ce qui manque s’affiche en français.'
+              : "La langue n'est pas publiée : elle n'apparaît pas encore sur le site."}
+          </div>
+        )}
+      </section>
+
+      <nav class="trad__onglets" aria-label="Ce qui se traduit">
+        {couverture.map((c) => (
+          <a
+            class={`trad__onglet ${c.cle === entite.cle ? 'trad__onglet--ici' : ''}`}
+            href={versEcran(codeLangue, c.cle)}
+            aria-current={c.cle === entite.cle ? 'page' : undefined}
+          >
+            <span>{c.nom}</span>
+            <span class="trad__compte fb-num">{c.faits}/{c.total}</span>
+            {c.perimes > 0 && <span class="trad__perime fb-num" title="traductions périmées">{c.perimes}</span>}
+          </a>
+        ))}
+      </nav>
+
+      <form method="post">
+        <input type="hidden" name="langue" value={codeLangue} />
+        <input type="hidden" name="entite" value={entite.cle} />
+        <button slot="actions" class="bouton bouton--marque" type="submit">Enregistrer</button>
+
+        {lignes.map((ligne) => {
+          const aTraduire = ligne.champs.filter((c) => c.fr);
+          if (aTraduire.length === 0) return null;
+          return (
+            <section class="bloc trad__ligne">
+              <div class="bloc__tete">
+                <div>
+                  <h2><code class="slug">{ligne.libelle}</code></h2>
+                  <p>{aTraduire.filter((c) => c.valeur).length} / {aTraduire.length} champs traduits</p>
+                </div>
+              </div>
+
+              {aTraduire.map((champ) => (
+                <div class="trad__champ">
+                  <div class="trad__cote">
+                    <label class="trad__etiquette">
+                      {champ.libelle}
+                      <span class="trad__drapeau">fr</span>
+                      {champ.json && <span class="jeton">liste JSON</span>}
+                    </label>
+                    <textarea class="trad__source" rows={hauteur(champ)} readonly>{champ.fr}</textarea>
+                  </div>
+
+                  <div class="trad__cote">
+                    <label class="trad__etiquette" for={`t-${ligne.id}-${champ.nom}`}>
+                      {champ.libelle}
+                      <span class="trad__drapeau" lang={codeLangue}>{codeLangue}</span>
+                      {champ.perimee && (
+                        <span class="etat etat--manque">
+                          <Icone nom="triangle-alert" taille={12} /> le français a changé
+                        </span>
+                      )}
+                    </label>
+                    <input type="hidden" name="cle" value={`${ligne.id}:${champ.nom}`} />
+                    <textarea
+                      id={`t-${ligne.id}-${champ.nom}`}
+                      name="valeur"
+                      rows={hauteur(champ)}
+                      lang={codeLangue}
+                      dir={langue?.rtl ? 'rtl' : 'ltr'}
+                      placeholder="Vide : la page affiche le français."
+                    >{champ.valeur}</textarea>
+                  </div>
+                </div>
+              ))}
+            </section>
+          );
+        })}
+
+        <div class="actions">
+          <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+        </div>
+      </form>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  .trad__langues { display: flex; flex-wrap: wrap; gap: 8px; }
+  .trad__langue {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 12px; min-block-size: 40px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+    color: inherit; text-decoration: none;
+    transition: var(--transition-control);
+  }
+  .trad__langue:hover { border-color: var(--plum-300); background: var(--slate-50); text-decoration: none; }
+  .trad__langue--ici { border-color: transparent; background: var(--gradient-ink); color: #fff; }
+  .trad__langue--ici:hover { background: var(--gradient-ink); border-color: transparent; }
+  .trad__langue--ici .etat { background: rgba(255, 255, 255, 0.14); color: #fff; }
+  .trad__langue--ici .etat::before { background: currentColor; }
+  .trad__code {
+    font: 600 var(--text-sm) / 1 var(--font-mono, monospace);
+    text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .trad__nom { font: 500 var(--text-sm) / 1.2 var(--font-sans); }
+
+  .trad__onglets {
+    display: flex; flex-wrap: wrap; gap: 6px;
+    margin-block: 20px 16px;
+  }
+  .trad__onglet {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 12px; min-block-size: 40px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+    background: #fff; color: var(--slate-600); text-decoration: none;
+    font: 500 var(--text-sm) / 1.2 var(--font-sans);
+    transition: var(--transition-control);
+  }
+  .trad__onglet:hover { border-color: var(--plum-300); color: var(--navy-900); text-decoration: none; }
+  .trad__onglet--ici { border-color: var(--navy-900); color: var(--navy-900); background: var(--slate-50); }
+  .trad__compte { font-size: var(--text-xs); color: var(--slate-400); }
+  .trad__perime {
+    font-size: 11px; padding: 1px 6px; border-radius: 999px;
+    background: var(--amber-100); color: var(--amber-700);
+  }
+
+  .trad__ligne { margin-block-end: 20px; }
+  /* Deux colonnes tant qu'elles tiennent : la comparaison se fait à l'œil,
+     phrase contre phrase. En dessous, l'une sous l'autre — un français et sa
+     traduction empilés restent lisibles, deux colonnes de 20 caractères non. */
+  .trad__champ {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    padding-block: 12px;
+    border-block-start: 1px solid var(--slate-100);
+  }
+  .trad__cote { display: flex; flex-direction: column; gap: 6px; min-inline-size: 0; }
+  .trad__etiquette {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font: 500 var(--text-xs) / 1.3 var(--font-sans); color: var(--slate-600);
+  }
+  .trad__drapeau {
+    font: 600 10px/1 var(--font-mono, monospace);
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 3px 6px; border-radius: var(--radius-sm);
+    background: var(--slate-100); color: var(--slate-600);
+  }
+  .trad__champ textarea { inline-size: 100%; }
+  /* Le français ne s'édite pas ici : il se change dans son propre écran. Le
+     laisser modifiable donnerait deux endroits pour la même phrase. */
+  .trad__source { background: var(--slate-50); color: var(--slate-600); }
+
+  @media (max-width: 900px) {
+    .trad__champ { grid-template-columns: 1fr; gap: 10px; }
+  }
+  @media (max-width: 560px) {
+    .trad__langue, .trad__onglet { flex: 1 1 auto; }
+    /* iOS agrandit tout champ sous 16 px : la page saute au premier appui. */
+    .trad__champ textarea { font-size: 16px; }
+  }
+</style>

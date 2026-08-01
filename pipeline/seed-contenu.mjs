@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
-import { TRADUCTIONS } from './contenu-traductions.mjs';
+import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
@@ -42,6 +42,38 @@ const ICI = dirname(fileURLToPath(import.meta.url));
 /** Empreinte stable d'une fiche : deux exécutions sans changement donnent la même. */
 function empreinte(module) {
   return createHash('sha256').update(JSON.stringify(module)).digest('hex');
+}
+
+/**
+ * Pose une surcharge de traduction, sans jamais écraser celle qu'un relecteur
+ * aurait retouchée dans la console quand on complète (`siVide`).
+ *
+ * `source` garde le français au moment de la traduction : quand la phrase
+ * française change, la console peut signaler la traduction comme périmée au
+ * lieu d'afficher en silence un texte qui ne correspond plus.
+ *
+ * @returns {Promise<boolean>} vrai si quelque chose a été écrit.
+ */
+async function poserTraduction(db, { langue, entite, ligneId, champ, valeur, source, siVide }) {
+  const dejaLa = await db.requete(
+    `SELECT id FROM ${table('traductions')}
+     WHERE langue = ? AND entite = ? AND ligne_id = ? AND champ = ? LIMIT 1`,
+    [langue, entite, ligneId, champ],
+  );
+  if (siVide && dejaLa.length > 0) return false;
+  if (dejaLa.length > 0) {
+    await db.executer(
+      `UPDATE ${table('traductions')} SET valeur = ?, source = ? WHERE id = ?`,
+      [valeur, source, dejaLa[0].id],
+    );
+  } else {
+    await db.executer(
+      `INSERT INTO ${table('traductions')} (langue, entite, ligne_id, champ, valeur, source)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [langue, entite, ligneId, champ, valeur, source],
+    );
+  }
+  return true;
 }
 
 async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
@@ -182,11 +214,28 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
     }
     console.log(`✓ ${textesEcrits} texte(s) éditoriaux sur ${TEXTES.length}`);
 
+    // Les clés qu'aucun gabarit n'appelle plus, comme on le fait déjà pour les
+    // composants d'un module. Sans ça elles restent en base indéfiniment :
+    // elles encombrent l'écran des textes, et surtout elles se comptent dans
+    // ce qu'il reste à traduire, ce qui fait travailler pour rien.
+    const attendues = new Set(TEXTES.map((t) => t.cle));
+    const orphelines = [...clesConnues].filter((c) => !attendues.has(c));
+    if (orphelines.length) {
+      const marqueurs = orphelines.map(() => '?').join(', ');
+      const ids = (
+        await db.requete(`SELECT id FROM ${table('textes')} WHERE cle IN (${marqueurs})`, orphelines)
+      ).map((l) => l.id);
+      if (ids.length) {
+        await db.executer(
+          `DELETE FROM ${table('traductions')} WHERE entite = ? AND ligne_id IN (${ids.map(() => '?').join(', ')})`,
+          ['textes', ...ids],
+        );
+      }
+      await db.executer(`DELETE FROM ${table('textes')} WHERE cle IN (${marqueurs})`, orphelines);
+      console.log(`✓ ${orphelines.length} texte(s) obsolète(s) retiré(s) : ${orphelines.join(', ')}`);
+    }
+
     // Les traductions du discours éditorial.
-    //
-    // `source` garde le français au moment de la traduction : quand la phrase
-    // française change, la console peut signaler la traduction comme périmée
-    // au lieu d'afficher en silence un texte qui ne correspond plus.
     let tradsEcrites = 0;
     const idsTextes = new Map(
       (await db.requete(`SELECT id, cle, valeur FROM ${table('textes')}`)).map((l) => [
@@ -198,27 +247,11 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       for (const [cle, valeur] of Object.entries(paires)) {
         const cible = idsTextes.get(cle);
         if (!cible) continue;
-        const dejaLa = await db.requete(
-          `SELECT id FROM ${table('traductions')}
-           WHERE langue = ? AND entite = ? AND ligne_id = ? AND champ = ? LIMIT 1`,
-          [langue, 'textes', cible.id, 'valeur'],
-        );
-        // On n'écrase pas une traduction retouchée dans la console : seules
-        // les absentes arrivent, comme pour les textes français.
-        if (siVide && dejaLa.length > 0) continue;
-        if (dejaLa.length > 0) {
-          await db.executer(
-            `UPDATE ${table('traductions')} SET valeur = ?, source = ? WHERE id = ?`,
-            [valeur, cible.valeur, dejaLa[0].id],
-          );
-        } else {
-          await db.executer(
-            `INSERT INTO ${table('traductions')} (langue, entite, ligne_id, champ, valeur, source)
-             VALUES (?, ?, ?, ?, ?, ?)`,
-            [langue, 'textes', cible.id, 'valeur', valeur, cible.valeur],
-          );
-        }
-        tradsEcrites += 1;
+        const ecrit = await poserTraduction(db, {
+          langue, entite: 'textes', ligneId: cible.id, champ: 'valeur',
+          valeur, source: cible.valeur, siVide,
+        });
+        if (ecrit) tradsEcrites += 1;
       }
     }
     if (tradsEcrites > 0) {
@@ -269,6 +302,29 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
     }
     console.log(`✓ ${QUESTIONS.length} questions d'onboarding`);
 
+    // Leurs traductions, rattachées par la clé de la question — pas par son
+    // rang, qui bouge dès qu'on en insère une au milieu.
+    const idsQuestions = new Map(
+      (await db.requete(`SELECT id, cle, tag, texte, cible FROM ${table('questions')}`)).map((l) => [l.cle, l]),
+    );
+    let tradsQuestions = 0;
+    for (const [langue, parCle] of Object.entries(QUESTIONS_TRADUCTIONS)) {
+      for (const [cle, champs] of Object.entries(parCle)) {
+        const cible = idsQuestions.get(cle);
+        if (!cible) continue;
+        for (const [champ, valeur] of Object.entries(champs)) {
+          const ecrit = await poserTraduction(db, {
+            langue, entite: 'questions', ligneId: cible.id, champ,
+            valeur, source: cible[champ] == null ? null : String(cible[champ]), siVide,
+          });
+          if (ecrit) tradsQuestions += 1;
+        }
+      }
+    }
+    if (tradsQuestions > 0) {
+      console.log(`✓ ${tradsQuestions} traduction(s) du questionnaire`);
+    }
+
     // Page d'accueil : une seule ligne. En mode « complète », on ne l'écrit
     // que si elle est encore vide — sinon on écraserait un texte retouché.
     const valeurs = [
@@ -293,6 +349,30 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
         valeurs,
       );
       console.log("✓ page d'accueil");
+    }
+
+    // Les traductions de la page d'accueil. Elles se posent après l'écriture
+    // française : on a besoin de l'identifiant de la ligne, et de la valeur
+    // française du moment pour la colonne `source`.
+    const [siteEnBase] = await db.requete(`SELECT * FROM ${table('site')} ORDER BY id LIMIT 1`);
+    let tradsSite = 0;
+    if (siteEnBase) {
+      for (const [langue, champs] of Object.entries(SITE_TRADUCTIONS)) {
+        for (const [champ, valeur] of Object.entries(champs)) {
+          // Les colonnes JSON sont rangées sérialisées : la surcharge remplace
+          // la valeur brute de la colonne, que `chargerSite` relit ensuite.
+          const ecrit = await poserTraduction(db, {
+            langue, entite: 'site', ligneId: siteEnBase.id, champ,
+            valeur: typeof valeur === 'string' ? valeur : json(valeur),
+            source: siteEnBase[champ] == null ? null : String(siteEnBase[champ]),
+            siVide,
+          });
+          if (ecrit) tradsSite += 1;
+        }
+      }
+    }
+    if (tradsSite > 0) {
+      console.log(`✓ ${tradsSite} traduction(s) de la page d'accueil`);
     }
 
     if (ignores > 0) {

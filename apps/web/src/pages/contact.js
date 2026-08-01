@@ -10,9 +10,29 @@
  * n'a pas à savoir laquelle l'a arrêté.
  */
 
-import { connexion, table, viderCache } from '../lib/db.mjs';
+import { chargerLangues, connexion, table, viderCache } from '../lib/db.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+
+/**
+ * La page d'accueil dans la langue d'où vient le formulaire.
+ *
+ * Le point de réception est unique — le middleware ne préfixe que les pages —
+ * donc c'est au formulaire de dire d'où il écrit. Une langue inconnue ou non
+ * publiée retombe sur le français : mieux vaut un remerciement dans la
+ * mauvaise langue qu'une redirection vers une page qui répond 404.
+ */
+async function accueil(codeLangue, suffixe) {
+  const code = String(codeLangue || '').trim();
+  if (!code || code === 'fr') return `${BASE}/${suffixe}`;
+  try {
+    const langues = await chargerLangues();
+    const langue = langues.find((l) => l.code === code && l.publiee && !l.defaut);
+    return langue ? `${BASE}/${code}/${suffixe}` : `${BASE}/${suffixe}`;
+  } catch {
+    return `${BASE}/${suffixe}`;
+  }
+}
 
 /** Coupe une valeur à la longueur de sa colonne, sans lever. */
 function borne(valeur, taille) {
@@ -37,17 +57,18 @@ export async function POST({ request, redirect }) {
   }
 
   const f = await request.formData();
+  const merci = await accueil(f.get('langue'), '?envoye=1#contact');
 
   // Le champ piège est invisible : rempli, c'est un robot. On répond comme
   // si tout s'était bien passé, pour ne rien lui apprendre.
   if (String(f.get('site_web') || '').trim() !== '') {
-    return redirect(`${BASE}/?envoye=1#contact`, 303);
+    return redirect(merci, 303);
   }
 
   const nom = borne(f.get('nom'), 160);
   const email = borne(f.get('email'), 200);
   if (!nom || !email) {
-    return redirect(`${BASE}/#contact`, 303);
+    return redirect(await accueil(f.get('langue'), '#contact'), 303);
   }
 
   try {
@@ -73,5 +94,5 @@ export async function POST({ request, redirect }) {
     console.error(`[contact] demande non enregistrée : ${err.message}`);
   }
 
-  return redirect(`${BASE}/?envoye=1#contact`, 303);
+  return redirect(merci, 303);
 }

@@ -244,6 +244,9 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
           </div>
         ) : (
         <form class="contact__form" method="post" action={lien('/contact')} data-monte>
+          {/* Le point de réception est unique, sans préfixe : sans ce champ,
+              un visiteur qui écrit depuis /en/ serait remercié en français. */}
+          <input type="hidden" name="langue" value={langue} />
           <label class="champ">
             <span>{t('accueil.contact.nom')}</span>
             <input type="text" name="nom" placeholder={t('accueil.contact.nom_exemple')} required />
@@ -378,6 +381,13 @@ const ICONES_REPONSES = ['smartphone', 'circle-check', 'book-open', 'settings', 
     border: 1px solid var(--slate-200); border-radius: var(--radius-control);
     font: var(--type-body-sm); color: var(--navy-900); background: #fff;
     transition: var(--transition-control);
+  }
+  /* Safari iOS zoome sur tout champ dont la police descend sous 16 px : la
+     page saute au premier appui, et le visiteur perd le formulaire de vue.
+     On monte la police sur mobile plutôt que de bloquer le zoom, qui reste
+     un besoin d'accessibilité. */
+  @media (max-width: 820px) {
+    .champ input, .champ textarea { font-size: 16px; }
   }
   .champ textarea { resize: vertical; }
   .champ input:focus-visible, .champ textarea:focus-visible {
