@@ -48,15 +48,40 @@ async function lireConfig(f, catalogue) {
     // pas changer le montant d'une offre déjà chiffrée.
     .map((p) => ({ cle: p.cle, nom: p.nom, description: p.description, prix_cents: p.prix_cents }));
 
+  // Les lignes libres : ce qu'un commercial ajoute pour cette offre-là, sans
+  // toucher au catalogue — qu'il n'a d'ailleurs pas le droit de modifier.
+  const libresNoms = f.getAll('libre_nom');
+  const libresPrix = f.getAll('libre_prix');
+  for (let i = 0; i < libresNoms.length; i += 1) {
+    const nom = String(libresNoms[i] || '').trim();
+    const prix = String(libresPrix[i] || '').trim();
+    if (!nom && !prix) continue;
+    if (!nom) throw new Error('Une ligne libre sans intitulé ne peut pas figurer sur une offre.');
+    prestations.push({
+      cle: `libre-${i + 1}`,
+      nom,
+      description: null,
+      prix_cents: enCents(prix || '0', `Prix de « ${nom} »`),
+      libre: true,
+    });
+  }
+
   const nombres = f.getAll('vue_nombre');
   const notes = f.getAll('vue_note');
+  const internes = f.getAll('vue_interne');
   const vues = [];
   for (let i = 0; i < nombres.length; i += 1) {
     const note = String(notes[i] || '').trim();
+    const interne = String(internes[i] || '').trim();
     const brut = String(nombres[i] || '').trim();
     // Une ligne entièrement vide est un reliquat du formulaire, pas une vue.
-    if (!note && !brut) continue;
-    vues.push({ nombre: enEntier(brut || '0', `Nombre de vues « ${note || i + 1} »`), note });
+    if (!note && !brut && !interne) continue;
+    vues.push({
+      nombre: enEntier(brut || '0', `Nombre de vues « ${note || i + 1} »`),
+      note,
+      // Ne part jamais chez le client : c'est le pense-bête du commercial.
+      interne: interne || null,
+    });
   }
 
   const remiseType = String(f.get('remise_type') || 'pourcent');
@@ -66,7 +91,10 @@ async function lireConfig(f, catalogue) {
   return {
     langue: String(f.get('langue') || 'fr'),
     jours_formation: enEntier(String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation'),
-    nombre_postes: enEntier(String(f.get('nombre_postes') || '0').trim() || '0', 'Nombre de postes'),
+    nombre_postes: enEntier(String(f.get('nombre_postes') || '0').trim() || '0', 'Magasins ouverts'),
+    postes_franchiseur: enEntier(String(f.get('postes_franchiseur') || '0').trim() || '0', 'Postes franchiseur'),
+    postes_onboardes: enEntier(String(f.get('postes_onboardes') || '0').trim() || '0', 'Postes à onboarder'),
+    mois_offerts: enEntier(String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts'),
     option_app: String(f.get('option_app') || 'aucune'),
     prestations,
     vues,
@@ -139,7 +167,8 @@ if (Astro.request.method === 'POST') {
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
     // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
     // le meilleur moyen de faire détester l'écran.
-    if (action === 'ajouter_vue') config.vues.push({ nombre: 1, note: '' });
+    if (action === 'ajouter_vue') config.vues.push({ nombre: 1, note: '', interne: null });
+    if (action === 'ajouter_libre') config.prestations.push({ cle: 'libre-neuve', nom: '', prix_cents: 0, libre: true });
     await enregistrerOffre(courante.id, config);
     return Astro.redirect(`${BASE}/admin/offres/${reference}?version=${courante.version}`, 303);
   } catch (err) {
@@ -165,7 +194,11 @@ if (!offre && !erreur) return new Response('Offre introuvable', { status: 404 })
 const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
 const message = Astro.url.searchParams.get('ok');
-const choisies = new Set((offre?.prestations || []).map((p) => p.cle));
+const choisies = new Set((offre?.prestations || []).filter((p) => !p.libre).map((p) => p.cle));
+
+// Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
+const libres = (offre?.prestations || []).filter((p) => p.libre);
+if (!figee && libres.length === 0) libres.push({ nom: '', prix_cents: 0 });
 
 // Une ligne vide en réserve : on peut décrire une vue sans avoir à demander
 // d'abord une ligne au serveur.
@@ -319,7 +352,7 @@ const ETAT_STATUT = {
                 </span>
               </div>
               <div class="champ">
-                <label for="o-postes">Postes en point de vente</label>
+                <label for="o-postes">Magasins ouverts</label>
                 <span class="tarif__saisie">
                   <input
                     id="o-postes"
@@ -331,10 +364,81 @@ const ETAT_STATUT = {
                   <span class="tarif__unite">×</span>
                 </span>
                 <span class="champ__aide">
-                  {formater(offre.prix_poste_cents)} par poste et par mois, soit
+                  Un poste par magasin, {formater(offre.prix_poste_cents)} par mois — soit
                   {' '}{formater((offre.nombre_postes || 0) * offre.prix_poste_cents)} par mois.
                 </span>
               </div>
+              <div class="champ">
+                <label for="o-siege">Postes franchiseur</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-siege"
+                    type="text"
+                    name="postes_franchiseur"
+                    value={offre.postes_franchiseur || 0}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">×</span>
+                </span>
+                <span class="champ__aide">
+                  Le siège, {formater(offre.prix_poste_franchiseur_cents)} par mois — soit
+                  {' '}{formater((offre.postes_franchiseur || 0) * offre.prix_poste_franchiseur_cents)} par mois.
+                </span>
+              </div>
+              <div class="champ">
+                <label for="o-onboardes">Postes à onboarder</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-onboardes"
+                    type="text"
+                    name="postes_onboardes"
+                    value={offre.postes_onboardes || 0}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">×</span>
+                </span>
+                <span class="champ__aide">
+                  {formater(offre.prix_onboarding_poste_cents)} par poste, une seule fois — soit
+                  {' '}{formater((offre.postes_onboardes || 0) * offre.prix_onboarding_poste_cents)}.
+                  On n'onboarde pas forcément tout le réseau d'un coup.
+                </span>
+              </div>
+            </div>
+
+            <div class="lignes-libres">
+              <div class="vues__tete">
+                <span class="oeil">Lignes libres</span>
+                <span class="champ__aide">
+                  Ce que cette offre comprend en plus du catalogue. Elles ne s'ajoutent pas
+                  aux prestations : elles ne valent que pour cette offre.
+                </span>
+              </div>
+              {libres.map((l, i) => (
+                <div class="vue">
+                  <input
+                    type="text"
+                    name="libre_nom"
+                    value={l.nom || ''}
+                    placeholder="Intitulé, tel qu'il apparaîtra sur l'offre"
+                    aria-label={`Intitulé, ligne libre ${i + 1}`}
+                  />
+                  <span class="tarif__saisie" style="flex:none;inline-size:8rem">
+                    <input
+                      type="text"
+                      name="libre_prix"
+                      value={depuisCents(l.prix_cents || 0)}
+                      inputmode="decimal"
+                      aria-label={`Prix, ligne libre ${i + 1}`}
+                    />
+                    <span class="tarif__unite">€</span>
+                  </span>
+                </div>
+              ))}
+              {!figee && (
+                <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="ajouter_libre">
+                  <Icone nom="plus" taille={14} /> Ajouter une ligne
+                </button>
+              )}
             </div>
           </section>
 
@@ -382,7 +486,8 @@ const ETAT_STATUT = {
               <div class="vues__tete">
                 <span class="oeil">Les vues</span>
                 <span class="champ__aide">
-                  Une ligne par écran de l'application. La description part telle quelle sur l'offre.
+                  Une ligne par écran de l'application. La description part telle quelle sur
+                  l'offre ; la note interne reste ici et n'est jamais envoyée au client.
                 </span>
               </div>
               {vues.map((v, i) => (
@@ -403,6 +508,14 @@ const ETAT_STATUT = {
                     value={v.note || ''}
                     placeholder="Ce que fait cette vue"
                     aria-label={`Description, ligne ${i + 1}`}
+                  />
+                  <input
+                    class="vue__interne"
+                    type="text"
+                    name="vue_interne"
+                    value={v.interne || ''}
+                    placeholder="Note interne"
+                    aria-label={`Note interne, ligne ${i + 1}`}
                   />
                   <span class="fb-num vue__montant">
                     {formater((Number(v.nombre) || 0) * offre.prix_par_vue_cents)}
@@ -470,6 +583,17 @@ const ETAT_STATUT = {
                 <label for="o-mention">Mention d'exonération</label>
                 <textarea id="o-mention" name="tva_mention" rows="2" placeholder={vigueur?.mention_autoliquidation}>{offre.tva_mention || ''}</textarea>
                 <span class="champ__aide">Vide : celle des tarifs est utilisée.</span>
+              </div>
+              <div class="champ">
+                <label for="o-offerts">Mois offerts</label>
+                <span class="tarif__saisie">
+                  <input id="o-offerts" type="text" name="mois_offerts" value={offre.mois_offerts || 0} inputmode="numeric" />
+                  <span class="tarif__unite">m</span>
+                </span>
+                <span class="champ__aide">
+                  Les N premières échéances mensuelles ne sont pas facturées. Ce n'est pas une
+                  remise : le prix mensuel ne bouge pas.
+                </span>
               </div>
               <div class="champ">
                 <label for="o-valide">Valable jusqu'au</label>
@@ -616,7 +740,10 @@ const ETAT_STATUT = {
   .vues__tete { display: flex; flex-direction: column; gap: 2px; }
   .vue { display: flex; align-items: center; gap: 8px; }
   .vue .tarif__saisie { flex: none; inline-size: 6rem; }
-  .vue input[name='vue_note'] { flex: 1; min-inline-size: 0; }
+  .vue input[name='vue_note'] { flex: 2; min-inline-size: 0; }
+  .vue__interne { flex: 1; min-inline-size: 0; background: var(--slate-50); }
+  .vue input[name='libre_nom'] { flex: 1; min-inline-size: 0; }
+  .lignes-libres { margin-block-start: 16px; display: flex; flex-direction: column; gap: 8px; }
   .vue__montant {
     flex: none; inline-size: 9rem; text-align: end;
     font-size: var(--text-sm); color: var(--slate-600);

@@ -16,7 +16,9 @@ const TARIFS = {
   multiplicateur_achat: 24,           // 24 mois rachetés
   taux_annuel: 500,                   // 5 %
   prix_jour_formation_cents: 50_000,  // 500 € la journée
-  prix_poste_cents: 19_900,           // 199 € par poste et par mois
+  prix_poste_cents: 19_900,           // 199 € par magasin et par mois
+  prix_poste_franchiseur_cents: 99_900,   // 999 € par mois pour le siège
+  prix_onboarding_poste_cents: 150_000,   // 1 500 € par poste onboardé, une fois
 };
 
 const DESIGN = { nom: 'Design', prix_cents: 50_000 };  // 500 €
@@ -27,6 +29,9 @@ function offre(surcharges = {}) {
     prestations: [],
     jours_formation: 0,
     nombre_postes: 0,
+    postes_franchiseur: 0,
+    postes_onboardes: 0,
+    mois_offerts: 0,
     option_app: 'aucune',
     vues: [],
     tarifs: TARIFS,
@@ -111,6 +116,74 @@ describe('les postes en point de vente', () => {
     assert.equal(seaux.unique.sousTotal, 12_000_000);
     assert.equal(seaux.mensuel.sousTotal, 238_800);
     assert.equal(seaux.annuel.sousTotal, 600_000);
+  });
+});
+
+describe('le poste franchiseur', () => {
+  it('se compte à part des magasins, à son propre prix', () => {
+    const { lignes, seaux } = calculerOffre(offre({ nombre_postes: 12, postes_franchiseur: 1 }));
+    const siege = lignes.find((l) => l.type === 'poste_franchiseur');
+    assert.equal(siege.prix_unitaire_cents, 99_900);
+    assert.equal(siege.recurrence, 'mensuel');
+    // 12 × 199 € + 1 × 999 €
+    assert.equal(seaux.mensuel.sousTotal, 338_700);
+  });
+
+  it("n'apparaît pas à zéro", () => {
+    const { lignes } = calculerOffre(offre({ nombre_postes: 5 }));
+    assert.equal(lignes.filter((l) => l.type === 'poste_franchiseur').length, 0);
+  });
+});
+
+describe("l'onboarding des postes", () => {
+  it('se facture une seule fois, par poste onboardé', () => {
+    const { lignes, seaux } = calculerOffre(offre({ nombre_postes: 12, postes_onboardes: 3 }));
+    const ligne = lignes.find((l) => l.type === 'onboarding_poste');
+    assert.equal(ligne.quantite, 3);
+    assert.equal(ligne.recurrence, 'unique');
+    assert.equal(seaux.unique.sousTotal, 450_000);   // 3 × 1 500 €
+    // Les douze magasins restent facturés au mois, indépendamment.
+    assert.equal(seaux.mensuel.sousTotal, 238_800);
+  });
+
+  it("peut ne porter que sur une partie du réseau", () => {
+    // On n'onboarde pas trente magasins le même jour : la quantité est libre.
+    const { seaux } = calculerOffre(offre({ nombre_postes: 30, postes_onboardes: 2 }));
+    assert.equal(seaux.unique.sousTotal, 300_000);
+  });
+});
+
+describe('les mois offerts', () => {
+  it("ne changent pas le prix mensuel, et disent ce qu'ils valent", () => {
+    const resultat = calculerOffre(offre({ nombre_postes: 12, mois_offerts: 3 }));
+    // Le prix mensuel est intact : ce n'est pas une remise.
+    assert.equal(resultat.seaux.mensuel.sousTotal, 238_800);
+    assert.equal(resultat.seaux.mensuel.ttc, 288_948);
+    // Trois échéances non facturées.
+    assert.equal(resultat.offert.mois, 3);
+    assert.equal(resultat.offert.ttc, 866_844);      // 3 × 2 889,48 €
+    assert.equal(resultat.offert.ht, 716_400);
+  });
+
+  it("ne valent rien quand il n'y a pas d'abonnement", () => {
+    const resultat = calculerOffre(offre({ prestations: [DESIGN], mois_offerts: 6 }));
+    assert.equal(resultat.offert.ttc, 0);
+  });
+
+  it("n'existent pas à zéro mois", () => {
+    assert.equal(calculerOffre(offre({ nombre_postes: 5 })).offert, null);
+  });
+
+  it('se cumulent avec une remise, sans se confondre avec elle', () => {
+    const resultat = calculerOffre(offre({
+      nombre_postes: 12,
+      mois_offerts: 2,
+      remise: { type: 'pourcent', valeur: 1000 },
+    }));
+    // La remise baisse le prix mensuel…
+    assert.equal(resultat.seaux.mensuel.ht, 214_920);
+    // …et les mois offerts portent sur le prix déjà remisé.
+    assert.equal(resultat.offert.ht, 429_840);
   });
 });
 
@@ -282,11 +355,16 @@ describe("l'ordre des lignes", () => {
       prestations: [DESIGN],
       jours_formation: 2,
       nombre_postes: 3,
+      postes_franchiseur: 1,
+      postes_onboardes: 2,
       option_app: 'achat',
       vues: [{ nombre: 5 }],
     }));
-    assert.deepEqual(lignes.map((l) => l.type), ['prestation', 'formation', 'poste', 'achat', 'maintenance']);
-    assert.deepEqual(lignes.map((l) => l.ordre), [10, 20, 30, 40, 50]);
+    assert.deepEqual(
+      lignes.map((l) => l.type),
+      ['prestation', 'formation', 'onboarding_poste', 'poste', 'poste_franchiseur', 'achat', 'maintenance'],
+    );
+    assert.deepEqual(lignes.map((l) => l.ordre), [10, 20, 30, 40, 50, 60, 70]);
   });
 });
 

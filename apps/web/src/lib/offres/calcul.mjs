@@ -38,7 +38,9 @@ function entier(valeur) {
  * @param {Array<{nom: string, prix_cents: number, quantite?: number}>} offre.prestations
  *   Les modules d'onboarding retenus.
  * @param {number} offre.jours_formation Nombre de jours vendus.
- * @param {number} offre.nombre_postes Nombre de points de vente équipés.
+ * @param {number} offre.nombre_postes Magasins ouverts, équipés au mois.
+ * @param {number} offre.postes_franchiseur Postes du siège, au mois.
+ * @param {number} offre.postes_onboardes Postes à onboarder, une seule fois.
  * @param {'aucune'|'par_vue'|'achat'} offre.option_app
  * @param {Array<{nombre: number, note?: string}>} offre.vues
  *   Les vues de l'application, chacune avec son compte et sa description.
@@ -47,7 +49,9 @@ function entier(valeur) {
  * @param {number} offre.tarifs.multiplicateur_achat Nombre de mois rachetés.
  * @param {number} offre.tarifs.taux_annuel Maintenance annuelle, en points.
  * @param {number} offre.tarifs.prix_jour_formation_cents
- * @param {number} offre.tarifs.prix_poste_cents Prix **mensuel** d'un poste.
+ * @param {number} offre.tarifs.prix_poste_cents Prix **mensuel** d'un poste magasin.
+ * @param {number} offre.tarifs.prix_poste_franchiseur_cents Prix **mensuel** du poste siège.
+ * @param {number} offre.tarifs.prix_onboarding_poste_cents Onboarding d'un poste, **une fois**.
  * @returns {Array<{type, libelle, note, quantite, prix_unitaire_cents, recurrence, total_cents}>}
  */
 export function lignesDe(offre) {
@@ -78,17 +82,47 @@ export function lignesDe(offre) {
     });
   }
 
-  // Un poste par point de vente, facturé au mois. C'est la seule quantité
-  // qui suit la taille du réseau : elle augmente quand le client ouvre une
-  // boutique, sans qu'on renégocie l'offre.
+  // L'onboarding des postes se facture une fois, avant tout ce qui est
+  // mensuel : c'est de l'installation, pas de l'abonnement. Il peut ne porter
+  // que sur une partie du réseau — on n'onboarde pas trente magasins le même
+  // jour.
+  const onboardes = entier(offre.postes_onboardes);
+  if (onboardes > 0) {
+    lignes.push({
+      type: 'onboarding_poste',
+      libelle: 'Onboarding des postes',
+      note: null,
+      quantite: onboardes,
+      prix_unitaire_cents: entier(t.prix_onboarding_poste_cents),
+      recurrence: 'unique',
+    });
+  }
+
+  // Un poste par magasin ouvert, facturé au mois. C'est la quantité qui suit
+  // la taille du réseau : elle augmente quand le client ouvre une boutique,
+  // sans qu'on renégocie l'offre.
   const postes = entier(offre.nombre_postes);
   if (postes > 0) {
     lignes.push({
       type: 'poste',
-      libelle: 'Postes en point de vente',
+      libelle: 'Postes en magasin',
       note: null,
       quantite: postes,
       prix_unitaire_cents: entier(t.prix_poste_cents),
+      recurrence: 'mensuel',
+    });
+  }
+
+  // Le siège a son propre poste, à son propre prix : il ne fait pas le même
+  // métier qu'un magasin et ne se compte pas avec eux.
+  const siege = entier(offre.postes_franchiseur);
+  if (siege > 0) {
+    lignes.push({
+      type: 'poste_franchiseur',
+      libelle: 'Poste franchiseur',
+      note: null,
+      quantite: siege,
+      prix_unitaire_cents: entier(t.prix_poste_franchiseur_cents),
       recurrence: 'mensuel',
     });
   }
@@ -195,7 +229,21 @@ export function calculerOffre(offre) {
     };
   }
 
-  return { lignes, seaux, remiseIgnoree, tauxTva, exoneree: Boolean(tva.exoneree) };
+  // Les mois offerts ne sont pas une remise : le prix mensuel ne bouge pas,
+  // on renonce seulement aux N premières échéances. Les mêler à la remise
+  // ferait apparaître un abonnement moins cher qu'il ne l'est, et le client
+  // s'en apercevrait à la première facture pleine.
+  const mois = entier(offre.mois_offerts);
+  const offert = mois > 0
+    ? {
+        mois,
+        ht: seaux.mensuel.ht * mois,
+        tva: seaux.mensuel.tva * mois,
+        ttc: seaux.mensuel.ttc * mois,
+      }
+    : null;
+
+  return { lignes, seaux, offert, remiseIgnoree, tauxTva, exoneree: Boolean(tva.exoneree) };
 }
 
 /**

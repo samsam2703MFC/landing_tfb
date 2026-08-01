@@ -793,6 +793,8 @@ export async function tarifsEnVigueur() {
     taux_annuel: nombre('taux_annuel'),
     prix_jour_formation_cents: nombre('prix_jour_formation'),
     prix_poste_cents: nombre('prix_poste'),
+    prix_poste_franchiseur_cents: nombre('prix_poste_franchiseur'),
+    prix_onboarding_poste_cents: nombre('prix_onboarding_poste'),
     tva_defaut: nombre('tva_defaut'),
     validite_jours: nombre('validite_jours'),
     mention_autoliquidation: lireTarif(par.get('mention_autoliquidation')) || '',
@@ -1055,13 +1057,16 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
          (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
           remise_type, remise_valeur, tva_taux, tva_exoneree, option_app, jours_formation,
           prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel,
-          prix_jour_formation_cents, nombre_postes, prix_poste_cents)
-         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, 0, ?)`,
+          prix_jour_formation_cents, nombre_postes, prix_poste_cents,
+          postes_franchiseur, prix_poste_franchiseur_cents,
+          postes_onboardes, prix_onboarding_poste_cents, mois_offerts)
+         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0)`,
         [
           Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
           tarifs.tva_defaut, vrai(false), json([]), json([]),
           tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
           tarifs.taux_annuel, tarifs.prix_jour_formation_cents, tarifs.prix_poste_cents,
+          tarifs.prix_poste_franchiseur_cents, tarifs.prix_onboarding_poste_cents,
         ],
       );
       viderCache();
@@ -1112,6 +1117,9 @@ export function configDe(offre) {
     })),
     jours_formation: offre.jours_formation || 0,
     nombre_postes: offre.nombre_postes || 0,
+    postes_franchiseur: offre.postes_franchiseur || 0,
+    postes_onboardes: offre.postes_onboardes || 0,
+    mois_offerts: offre.mois_offerts || 0,
     option_app: offre.option_app || 'aucune',
     vues: offre.vues || [],
     tarifs: {
@@ -1120,6 +1128,8 @@ export function configDe(offre) {
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
       prix_poste_cents: offre.prix_poste_cents,
+      prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
+      prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
     },
     remise: { type: offre.remise_type, valeur: offre.remise_valeur },
     tva: { taux: offre.tva_taux, exoneree: offre.tva_exoneree },
@@ -1150,8 +1160,16 @@ export async function enregistrerOffre(id, config) {
   // fois qu'il s'en sert — une offre envoyée, jamais : elle est figée avant
   // d'arriver ici.
   const manquants = {};
-  if (config.nombre_postes > 0 && !offre.prix_poste_cents) {
-    manquants.prix_poste_cents = (await tarifsEnVigueur()).prix_poste_cents;
+  const aRattraper = [
+    ['nombre_postes', 'prix_poste_cents'],
+    ['postes_franchiseur', 'prix_poste_franchiseur_cents'],
+    ['postes_onboardes', 'prix_onboarding_poste_cents'],
+  ];
+  if (aRattraper.some(([q, p]) => config[q] > 0 && !offre[p])) {
+    const vigueur = await tarifsEnVigueur();
+    for (const [quantite, prix] of aRattraper) {
+      if (config[quantite] > 0 && !offre[prix]) manquants[prix] = vigueur[prix];
+    }
   }
   if (Object.keys(manquants).length > 0) {
     const colonnes = Object.keys(manquants);
@@ -1164,12 +1182,14 @@ export async function enregistrerOffre(id, config) {
 
   await db.executer(
     `UPDATE ${table('offres')} SET
-       langue = ?, jours_formation = ?, nombre_postes = ?, option_app = ?, prestations = ?, vues = ?,
+       langue = ?, jours_formation = ?, nombre_postes = ?, postes_franchiseur = ?,
+       postes_onboardes = ?, mois_offerts = ?, option_app = ?, prestations = ?, vues = ?,
        remise_type = ?, remise_valeur = ?, tva_taux = ?, tva_exoneree = ?, tva_mention = ?,
        portee = ?, delai = ?, valide_jusqu_au = ?
      WHERE id = ?`,
     [
-      config.langue, config.jours_formation, config.nombre_postes, config.option_app,
+      config.langue, config.jours_formation, config.nombre_postes, config.postes_franchiseur,
+      config.postes_onboardes, config.mois_offerts, config.option_app,
       json(config.prestations), json(config.vues),
       config.remise_type, config.remise_valeur,
       config.tva_taux, vrai(config.tva_exoneree), config.tva_mention || null,
@@ -1182,6 +1202,8 @@ export async function enregistrerOffre(id, config) {
     prestations: config.prestations,
     jours_formation: config.jours_formation,
     nombre_postes: config.nombre_postes,
+    postes_franchiseur: config.postes_franchiseur,
+    postes_onboardes: config.postes_onboardes,
     option_app: config.option_app,
     vues: config.vues,
     tarifs: {
@@ -1190,6 +1212,8 @@ export async function enregistrerOffre(id, config) {
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
       prix_poste_cents: offre.prix_poste_cents,
+      prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
+      prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
     },
   });
 
@@ -1232,8 +1256,9 @@ export async function nouvelleVersion(reference) {
      (prospect_id, reference, version, statut, langue, devise, cree_par, cree_le, valide_jusqu_au,
       remise_type, remise_valeur, tva_taux, tva_exoneree, tva_mention, option_app, jours_formation,
       prestations, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
-      nombre_postes, prix_poste_cents, portee, delai)
-     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      nombre_postes, prix_poste_cents, postes_franchiseur, prix_poste_franchiseur_cents,
+      postes_onboardes, prix_onboarding_poste_cents, mois_offerts, portee, delai)
+     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       source.prospect_id, String(reference), version, source.langue, source.devise,
       source.cree_par, new Date(), valideJusquAu,
@@ -1243,6 +1268,9 @@ export async function nouvelleVersion(reference) {
       tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
       tarifs.taux_annuel, tarifs.prix_jour_formation_cents,
       source.nombre_postes, tarifs.prix_poste_cents,
+      source.postes_franchiseur, tarifs.prix_poste_franchiseur_cents,
+      source.postes_onboardes, tarifs.prix_onboarding_poste_cents,
+      source.mois_offerts,
       source.portee, source.delai,
     ],
   );

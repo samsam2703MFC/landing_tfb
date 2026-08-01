@@ -54,12 +54,28 @@ export const TARIFS = [
     ordre: 5,
   },
   {
+    cle: 'prix_poste_franchiseur',
+    valeur: '99900',
+    type: 'cents',
+    libelle: 'Prix du poste franchiseur, par mois',
+    aide: 'Le poste du siège, distinct de ceux des magasins. Facturé chaque mois.',
+    ordre: 6,
+  },
+  {
+    cle: 'prix_onboarding_poste',
+    valeur: '150000',
+    type: 'cents',
+    libelle: "Onboarding d'un poste",
+    aide: "Facturé une seule fois, pour chaque poste qu'on onboarde. Décrivez ce qu'il comprend dans le périmètre de l'offre.",
+    ordre: 7,
+  },
+  {
     cle: 'tva_defaut',
     valeur: '2100',
     type: 'points',
     libelle: 'Taux de TVA par défaut',
     aide: 'Belgique : 2100 pour 21 %. Modifiable offre par offre.',
-    ordre: 6,
+    ordre: 8,
   },
   {
     cle: 'validite_jours',
@@ -67,7 +83,7 @@ export const TARIFS = [
     type: 'entier',
     libelle: "Durée de validité d'une offre, en jours",
     aide: 'Sert à proposer la date « valable jusqu’au » à la création.',
-    ordre: 7,
+    ordre: 9,
   },
   {
     cle: 'mention_autoliquidation',
@@ -75,7 +91,7 @@ export const TARIFS = [
     type: 'texte',
     libelle: 'Mention en cas d’exonération',
     aide: "Imprimée sur l'offre quand la TVA est à zéro. Une exonération sans mention légale n'en est pas une — la formulation exacte et l'article cité dépendent de votre situation, faites-la valider.",
-    ordre: 8,
+    ordre: 10,
   },
   {
     cle: 'courriel_sujet',
@@ -83,7 +99,7 @@ export const TARIFS = [
     type: 'texte',
     libelle: 'Sujet du courriel',
     aide: 'Jetons disponibles : {reference}, {client}, {commercial}, {valide_jusqu_au}.',
-    ordre: 9,
+    ordre: 11,
   },
   {
     cle: 'courriel_corps',
@@ -100,7 +116,7 @@ The Franchise Buddy`,
     type: 'texte',
     libelle: 'Corps du courriel',
     aide: 'Jetons : {contact}, {client}, {reference}, {commercial}, {valide_jusqu_au}, {recapitulatif}.',
-    ordre: 10,
+    ordre: 12,
   },
 ];
 

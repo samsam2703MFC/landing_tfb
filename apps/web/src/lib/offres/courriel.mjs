@@ -110,6 +110,14 @@ export function recapTexte(offre, resultat, formater) {
     lignes.push('');
   }
 
+  // Le geste commercial se dit dans la lettre, pas seulement à l'écran.
+  if (resultat.offert && resultat.offert.ttc > 0) {
+    const m = resultat.offert.mois;
+    lignes.push(
+      `${m} ${m > 1 ? 'mois offerts' : 'mois offert'} sur l'abonnement, soit ${formater(resultat.offert.ttc)} non facturés.`,
+      '',
+    );
+  }
   if (resultat.exoneree && offre.tva_mention) lignes.push(offre.tva_mention, '');
   return lignes.join('\n').trimEnd();
 }

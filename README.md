@@ -361,10 +361,23 @@ par dire deux prix différents — et c'est nous qui aurions tort. Les
 coordonnées du client, en revanche, restent corrigeables : un numéro de TVA
 faux reste faux quel que soit le statut de l'offre.
 
-Ce qui se vend : les **prestations d'onboarding** (une fois), les **jours de
-formation** (une fois, 500 € par défaut), les **postes en point de vente**
-(199 € par poste et par mois — la seule quantité qui suit la taille du
-réseau), et l'**application**, louée à la vue ou achetée ferme.
+Ce qui se vend, avec les prix par défaut :
+
+| Poste | Prix | Rythme |
+| --- | --- | --- |
+| Prestations d'onboarding (Design…) | catalogue | une fois |
+| Lignes libres, propres à une offre | saisi | une fois |
+| Journée de formation | 500 € | une fois |
+| Onboarding d'un poste | 1 500 € | une fois, par poste onboardé |
+| Poste en magasin | 199 € | par mois, × magasins ouverts |
+| Poste franchiseur | 999 € | par mois |
+| Application, louée à la vue | 1 000 € | par mois et par vue |
+| Application, achetée ferme | 24 mois de location | une fois, + 5 %/an |
+
+Les **mois offerts** ne sont pas une remise : le prix mensuel ne bouge pas, on
+renonce aux N premières échéances. Les confondre ferait apparaître un
+abonnement moins cher qu'il ne l'est, et le client s'en apercevrait à la
+première facture pleine.
 
 Tous les montants sont des **entiers en centimes**, tous les taux des
 **centièmes de point** (21 % = 2100). La conversion depuis ce qu'un humain

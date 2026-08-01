@@ -15,7 +15,7 @@
 import { RECURRENCES, formater, formaterTaux } from '../lib/offres/calcul.mjs';
 
 const { resultat, langue = 'fr', devise = 'EUR', mention = null } = Astro.props;
-const { seaux, remiseIgnoree, tauxTva, exoneree } = resultat;
+const { seaux, offert, remiseIgnoree, tauxTva, exoneree } = resultat;
 
 const EN_TETE = {
   unique: { titre: 'Une fois', note: 'à la signature' },
@@ -27,6 +27,8 @@ const LIBELLE_TYPE = {
   prestation: 'Onboarding',
   formation: 'Formation',
   poste: 'Postes',
+  poste_franchiseur: 'Siège',
+  onboarding_poste: 'Onboarding',
   vue: 'Application',
   achat: 'Application',
   maintenance: 'Maintenance',
@@ -82,6 +84,15 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
       );
     })}
   </div>
+
+  {offert && offert.ttc > 0 && (
+    <p class="recap__offert">
+      <strong>{offert.mois} mois offerts</strong> sur l'abonnement, soit
+      {' '}<strong>{montant(offert.ttc)}</strong> non facturés.
+      Le prix mensuel reste de {montant(seaux.mensuel.ttc)} : la facturation démarre au
+      {' '}{offert.mois + 1}<sup>e</sup> mois.
+    </p>
+  )}
 
   {remiseIgnoree > 0 && (
     <p class="recap__alerte">
@@ -153,5 +164,13 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
     font: 400 var(--text-sm) / 1.5 var(--font-sans);
   }
   .recap__alerte { background: var(--amber-50); color: var(--amber-700); border: 1px solid var(--amber-300); }
+  /* Le geste commercial se lit en vert, pas en alerte : ce n'est pas un
+     problème, c'est ce qu'on offre — mais il doit se voir. */
+  .recap__offert {
+    margin: 0; padding: 10px 12px; border-radius: var(--radius-control);
+    font: 400 var(--text-sm) / 1.5 var(--font-sans);
+    background: var(--teal-50, #eefaf8); color: var(--teal-700);
+    border: 1px solid var(--teal-300, #9fded7);
+  }
   .recap__mention { background: var(--slate-50); color: var(--slate-600); border: 1px solid var(--slate-200); }
 </style>
