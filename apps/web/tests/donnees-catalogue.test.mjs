@@ -24,7 +24,7 @@ import {
 } from '../src/lib/donnees/catalogue.mjs';
 import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/donnees/requete.mjs';
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
-import { hoteAcceptable, sonderServeur } from '../src/lib/donnees/bases.mjs';
+import { hoteAcceptable, refusHote, sonderServeur } from '../src/lib/donnees/bases.mjs';
 import { codeProposition, controlerProposition } from '../src/lib/donnees/propositions.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
@@ -410,5 +410,43 @@ describe('découverte des bases d’un serveur', () => {
     const r = await sonderServeur({ hote: '127.0.0.1', port: 1, identifiant: 'x', motDePasse: 'y' });
     assert.equal(r.ok, false);
     assert.equal(typeof r.dit, 'string');
+  });
+});
+
+/**
+ * Chaque refus dit ce qui ne va pas, et rien d'autre.
+ *
+ * Un message unique pour tous les refus annonçait « pas sur le lien-local » à
+ * quelqu'un qui avait simplement laissé le champ vide — signalé depuis l'écran.
+ * Un message qui décrit une autre situation que la sienne fait chercher au
+ * mauvais endroit, ce qui est pire que pas de message du tout.
+ */
+describe('refus d’un hôte de base', () => {
+  it('distingue le champ vide du lien-local', () => {
+    assert.match(refusHote(''), /Renseignez l’hôte/);
+    assert.match(refusHote('   '), /Renseignez l’hôte/);
+    assert.match(refusHote('169.254.169.254'), /lien-local/);
+  });
+
+  // Les collages depuis une chaîne de connexion : on dit quoi retirer, au lieu
+  // de laisser le pilote échouer sur une résolution de nom incompréhensible.
+  it('reconnaît un collage de chaîne de connexion', () => {
+    assert.match(refusHote('mysql://db.exemple/base'), /sans schéma/);
+    assert.match(refusHote('db.exemple/base'), /sans chemin/);
+    assert.match(refusHote('127.0.0.1:3306'), /port se saisit/);
+    assert.match(refusHote('db exemple'), /espace/);
+  });
+
+  it('accepte ce qu’un hôte est vraiment', () => {
+    for (const h of ['127.0.0.1', 'localhost', '10.0.0.4', '192.168.1.10', 'db-01.interne', 'db.exemple.fr']) {
+      assert.equal(refusHote(h), null, h);
+      assert.equal(hoteAcceptable(h), true, h);
+    }
+  });
+
+  it('exige l’identifiant avant d’ouvrir une socket', async () => {
+    const r = await sonderServeur({ hote: 'db.exemple', identifiant: '', motDePasse: 'y' });
+    assert.equal(r.ok, false);
+    assert.match(r.dit, /identifiant/);
   });
 });

@@ -40,10 +40,31 @@ export class BaseIndisponible extends Error {}
  */
 const HOTES_INTERDITS = /^169\.254\./;
 
-export function hoteAcceptable(hote) {
+/**
+ * Pourquoi cet hôte est refusé, ou `null` s'il convient.
+ *
+ * Un seul message pour tous les refus disait « pas sur le lien-local » à
+ * quelqu'un qui avait simplement laissé le champ vide — un message qui décrit
+ * une autre situation que la sienne fait chercher au mauvais endroit, et c'est
+ * pire que pas de message du tout.
+ */
+export function refusHote(hote) {
   const h = String(hote || '').trim();
-  if (!h) return false;
-  return !HOTES_INTERDITS.test(h);
+  if (!h) return 'Renseignez l’hôte du serveur de base de données.';
+  // Un collage depuis une chaîne de connexion. On dit quoi retirer, plutôt que
+  // de laisser le pilote échouer sur une résolution de nom incompréhensible.
+  if (h.includes('://')) return 'Attendu un nom d’hôte ou une adresse, sans schéma — retirez la partie « …:// ».';
+  if (h.includes('/')) return 'Attendu un hôte seul, sans chemin ni nom de base.';
+  if (h.includes(':')) return 'Le port se saisit dans son propre champ — laissez ici l’hôte seul.';
+  if (/\s/.test(h)) return 'Un nom d’hôte ne contient pas d’espace.';
+  // 169.254.169.254 est le service de métadonnées des hébergeurs : il répond en
+  // HTTP, pas en MySQL, donc l'y pointer ne peut pas être une saisie honnête.
+  if (HOTES_INTERDITS.test(h)) return 'Hôte refusé — une base de données n’est pas sur le lien-local.';
+  return null;
+}
+
+export function hoteAcceptable(hote) {
+  return refusHote(hote) === null;
 }
 
 /** Les champs qu'un écran édite, et rien d'autre. */
@@ -103,9 +124,8 @@ export async function chargerBase(prospectId) {
  */
 export async function enregistrerBase(prospectId, valeurs, motDePasse = null) {
   const hote = String(valeurs.hote || '').trim();
-  if (!hoteAcceptable(hote)) {
-    return { ok: false, erreur: 'Hôte refusé — une base de données n’est pas sur le lien-local.' };
-  }
+  const refus = refusHote(hote);
+  if (refus) return { ok: false, erreur: refus };
   const base = String(valeurs.base || '').trim();
   if (!base) return { ok: false, erreur: 'Le nom de la base est obligatoire.' };
   const port = Number(valeurs.port || 3306);
@@ -215,7 +235,8 @@ export async function connexionBase(prospectId) {
 
   const reglages = await chargerBase(id);
   if (!reglages) throw new BaseIndisponible(`Aucune base déclarée pour le client ${id}.`);
-  if (!hoteAcceptable(reglages.hote)) throw new BaseIndisponible('Hôte refusé.');
+  const refus = refusHote(reglages.hote);
+  if (refus) throw new BaseIndisponible(refus);
 
   const marque = empreinte(reglages);
   const garde = pools.get(id);
@@ -326,10 +347,14 @@ const SCHEMAS_SYSTEME = new Set(['information_schema', 'mysql', 'performance_sch
  * Ne lève jamais : rend de quoi écrire l'écran, succès comme échec.
  */
 export async function sonderServeur({ hote, port, identifiant, motDePasse }) {
-  if (!hoteAcceptable(hote)) {
-    return { ok: false, dit: 'Hôte refusé — une base de données n’est pas sur le lien-local.' };
+  const refus = refusHote(hote);
+  if (refus) return { ok: false, dit: refus };
+  if (!String(identifiant || '').trim()) {
+    return { ok: false, dit: 'Renseignez l’identifiant du compte qui lit cette base.' };
   }
-  if (!motDePasse) return { ok: false, dit: 'Mot de passe nécessaire pour interroger le serveur.' };
+  if (!motDePasse) {
+    return { ok: false, dit: 'Mot de passe nécessaire pour interroger le serveur — saisissez-le, il ne sera pas réaffiché.' };
+  }
 
   let pool = null;
   try {

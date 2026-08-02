@@ -172,7 +172,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
               <>
                 <input type={c.nom === 'port' ? 'number' : 'text'} name={c.nom}
                        value={courant(c.nom)}
-                       required={c.nom === 'hote' || c.nom === 'base'} />
+                       required={c.nom === 'hote' || c.nom === 'identifiant'} />
                 {c.aide && <em>{c.aide}</em>}
                 {c.nom === 'base' && (
                   <em>Ou cherchez-les sur le serveur ci-dessous pour choisir dans une liste.</em>
@@ -204,7 +204,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
       )}
 
       <div class="pied">
-        <button class="bouton bouton--sobre" type="submit" name="action" value="sonder" formnovalidate>
+        <button class="bouton bouton--sobre" type="submit" name="action" value="sonder">
           <Icone nom="search" taille={15} /> Chercher les bases sur ce serveur
         </button>
         <button class="bouton bouton--marque" type="submit" disabled={!coffre && !parProspect.get(ouvert)}>
