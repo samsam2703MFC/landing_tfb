@@ -361,33 +361,48 @@ par dire deux prix différents — et c'est nous qui aurions tort. Les
 coordonnées du client, en revanche, restent corrigeables : un numéro de TVA
 faux reste faux quel que soit le statut de l'offre.
 
-### Le modèle de base, puis les options
+### Les packs, puis les options
 
-Tout réseau prend d'abord le **modèle de base** — deux socles, un par côté de
-la relation de franchise. Les modules qu'un socle comprend viennent avec lui :
-son prix les couvre, ils ne se refacturent pas à l'unité et ne figurent pas
-dans les options. **Tout le reste du catalogue est une option**, à 49 € par
-mois et par module.
+Un **pack** est un groupe de modules qui se vend d'un bloc, à son propre prix.
+Les modules qu'il comprend viennent avec lui : son prix les couvre, ils ne se
+refacturent pas à l'unité et ne figurent pas dans les options. Tout ce qui
+n'est dans aucun pack se vend seul, à 49 € par mois.
 
-| Socle | Comprend | Prix |
-| --- | --- | --- |
-| **Franchisé** | Caisse POS *ou* Intégration API, Console franchisé, Facturation, Cuisine | 99 € par mois **et par point de vente** |
-| **Franchiseur** | Recettes & Food Cost, Redevances | 199 € par mois, une ligne pour le réseau |
+Deux packs forment le **modèle de base** que tout réseau prend — ils sont
+cochés d'avance sur une offre neuve ; les autres s'y ajoutent.
+
+| Pack | Comprend | Prix | Modèle de base |
+| --- | --- | --- | --- |
+| **Pack franchisé** | Caisse POS *ou* Intégration API, Console franchisé, Facturation, Cuisine | 99 € par mois **et par point de vente** | oui |
+| **Pack franchiseur** | Console marque, Fournisseur, Recettes & Food Cost, Redevances | 199 € par mois, une ligne pour le réseau | oui |
+| **Pack webshop** | Webshop, Tournées de livraison | 98 € par mois | non |
 
 La caisse est un **choix**, pas deux modules : ou bien la nôtre est installée
 dans le point de vente, ou bien le réseau garde la sienne et on s'y branche.
+Le choix n'apparaît que sur le pack qui contient une caisse.
 
-La composition des socles n'est pas écrite dans le code — chaque module porte
-son socle en base, et se déplace depuis l'écran **Modules** sans
-redéploiement. Un module qui quitte un socle redevient une option facturée le
-mois suivant.
+Un pack se facture **par mois** — une ligne pour tout le réseau — ou **par
+mois et par point de vente**, auquel cas sa quantité suit la taille du réseau
+et l'offre demande le nombre de points de vente.
+
+Rien de tout cela n'est écrit dans le code. Les packs sont une table, leur
+prix, leur unité et leur appartenance au modèle de base s'éditent depuis
+l'écran **Modules**, et chaque module y choisit son pack. Un module qui quitte
+un pack redevient une option, facturée dès l'enregistrement suivant ;
+supprimer un pack rend ses modules aux options plutôt que de les laisser
+pointer dans le vide.
+
+Un pack est **recopié sur l'offre** avec son prix, son unité et sa
+composition. Changer la grille ne change pas une offre déjà chiffrée — il faut
+en créer une nouvelle version, qui reprend les mêmes packs aux prix du jour.
 
 Ce qui se vend, avec les prix par défaut :
 
 | Poste | Prix | Rythme |
 | --- | --- | --- |
-| Socle franchisé | 99 € | par mois, × points de vente |
-| Socle franchiseur | 199 € | par mois |
+| Pack franchisé | 99 € | par mois, × points de vente |
+| Pack franchiseur | 199 € | par mois |
+| Pack webshop | 98 € | par mois |
 | Modules en option | 49 € par module | par mois — prix propre possible par module |
 | Prestations d'onboarding (Design…) | catalogue | une fois |
 | Lignes libres, propres à une offre | saisi | une fois |
@@ -396,10 +411,10 @@ Ce qui se vend, avec les prix par défaut :
 | Application, louée à la vue | 1 000 € | par mois et par vue |
 | Application, achetée ferme | 24 mois de location | une fois, + 5 %/an |
 
-Les socles remplacent les deux lignes « poste en magasin » (199 €) et « poste
+Les packs remplacent les deux lignes « poste en magasin » (199 €) et « poste
 franchiseur » (999 €) d'avant. Les offres déjà chiffrées à ces tarifs-là ne
 bougent pas : elles en portent une copie, et le calculateur ne cumule jamais
-un socle avec le poste qu'il remplace.
+un pack avec le poste qu'il remplace.
 
 Les **mois offerts** ne sont pas une remise : le prix mensuel ne bouge pas, on
 renonce aux N premières échéances. Les confondre ferait apparaître un

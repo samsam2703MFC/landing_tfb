@@ -26,8 +26,9 @@ import {
   enregistrerOffre,
   languesOffre,
   listerPrestations,
-  modulesDesSocles,
+  instantanePacks,
   modulesOptionnels,
+  packsVendables,
   nouvelleVersion,
   offreFigee,
   supprimerOffre,
@@ -68,7 +69,7 @@ function direManque(m) {
  * depuis la base — perdre dix minutes de saisie parce qu'un prix contenait
  * une lettre serait la meilleure façon de faire détester l'écran.
  */
-async function lireConfig(f, catalogue, modules, soucis) {
+async function lireConfig(f, catalogues, soucis) {
   // La saisie telle qu'elle a été tapée, pour les seuls champs refusés :
   // réafficher « 0,00 » à la place de « environ 1000 » ferait croire que la
   // valeur est passée, dans le champ précisément qu'on demande de corriger.
@@ -86,7 +87,7 @@ async function lireConfig(f, catalogue, modules, soucis) {
   };
 
   const choisies = new Set(f.getAll('prestation').map(String));
-  const prestations = catalogue
+  const prestations = catalogues.prestations
     .filter((p) => choisies.has(String(p.id)))
     // Le prix est recopié : une remise de catalogue le mois prochain ne doit
     // pas changer le montant d'une offre déjà chiffrée.
@@ -116,12 +117,16 @@ async function lireConfig(f, catalogue, modules, soucis) {
   // Les modules de l'ERP retenus, avec leur prix et leur argumentaire du
   // jour : une fiche réécrite plus tard ne doit pas changer une offre partie.
   const cochés = new Set(f.getAll('module').map(String));
-  const modulesRetenus = modules
+  const modulesRetenus = catalogues.modules
     .filter((m) => cochés.has(String(m.id)))
     .map((m) => ({
       slug: m.slug, nom: m.nom, prix_cents: m.prix_cents,
       pourquoi: m.pourquoi, apporte: m.apporte,
     }));
+
+  // Les packs retenus, recopiés avec leur prix et leur unité du jour.
+  const packsCoches = new Set(f.getAll('pack').map(String));
+  const packsRetenus = instantanePacks(catalogues.packs.filter((p) => packsCoches.has(p.cle)));
 
   const nombres = f.getAll('vue_nombre');
   const notes = f.getAll('vue_note');
@@ -154,8 +159,7 @@ async function lireConfig(f, catalogue, modules, soucis) {
     postes_onboardes: lire(enEntier, String(f.get('postes_onboardes') || '0').trim() || '0', 'Postes à onboarder', 'postes_onboardes'),
     mois_offerts: lire(enEntier, String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts', 'mois_offerts'),
     option_app: String(f.get('option_app') || 'aucune'),
-    socle_franchise: f.get('socle_franchise') === '1',
-    socle_franchiseur: f.get('socle_franchiseur') === '1',
+    packs: packsRetenus,
     socle_pos: String(f.get('socle_pos') || 'pos') === 'api' ? 'api' : 'pos',
     prestations,
     modules: modulesRetenus,
@@ -234,9 +238,12 @@ if (Astro.request.method === 'POST') {
       );
     }
 
-    const catalogue = await listerPrestations();
     const soucis = [];
-    const config = await lireConfig(f, catalogue, await modulesOptionnels(), soucis);
+    const config = await lireConfig(f, {
+      prestations: await listerPrestations(),
+      modules: await modulesOptionnels(),
+      packs: await packsVendables(),
+    }, soucis);
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
     // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
     // le meilleur moyen de faire détester l'écran.
@@ -260,7 +267,7 @@ if (Astro.request.method === 'POST') {
 let offre = null;
 let catalogue = [];
 let modules = [];
-let socles = { franchise: [], franchiseur: [] };
+let packs = [];
 let langues = [];
 let vigueur = null;
 let chiffres = {};
@@ -269,7 +276,7 @@ try {
   langues = await languesOffre();
   catalogue = await listerPrestations({ activesSeulement: true });
   modules = await modulesOptionnels();
-  socles = await modulesDesSocles();
+  packs = await packsVendables();
   vigueur = await tarifsEnVigueur();
   chiffres = await compteurs();
 } catch (err) {
@@ -297,6 +304,10 @@ const libresFautives = new Set(incompletes.filter((m) => m.ou === 'libre').map((
 const message = Astro.url.searchParams.get('ok');
 const choisies = new Set((offre?.prestations || []).filter((p) => !p.libre).map((p) => p.cle));
 const modulesRetenus = new Set((offre?.modules || []).map((m) => m.slug));
+// Les packs de l'offre, et la question qu'ils posent : faut-il demander un
+// nombre de points de vente ? Seulement si l'un d'eux s'y facture.
+const retenus = new Set((offre?.packs || []).map((p) => p.cle));
+const auPointDeVente = (offre?.packs || []).some((p) => p.unite === 'poste_mois');
 
 // Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
 // La ligne de réserve s'affiche entièrement vide — un « 0,00 » préimprimé en
@@ -396,90 +407,86 @@ const ETAT_STATUT = {
           <section class="bloc" style="margin-block-end:20px">
             <div class="bloc__tete">
               <div>
-                <h2>Le modèle de base</h2>
+                <h2>Les packs</h2>
                 <p>
-                  Ce que tout réseau prend. Les modules qu'il comprend sont dedans : ils ne
-                  se refacturent pas à l'unité, et ne figurent pas dans les options.
+                  Ce qui se vend d'un bloc. Les modules qu'un pack comprend sont dedans : ils
+                  ne se refacturent pas à l'unité et ne figurent pas dans les options.
                 </p>
               </div>
             </div>
 
-            <div class="socles">
-              <div class="socle">
-                <label class="case case--seule">
-                  <input type="checkbox" name="socle_franchise" value="1" checked={offre.socle_franchise} />
-                  <span>
-                    <span class="case__tete">
-                      <strong>Franchisé</strong>
-                      <span class="fb-num case__prix">
-                        {formater(offre.prix_socle_franchise_cents)}/mois par point de vente
-                      </span>
-                    </span>
-                    <span class="champ__aide">
-                      {socles.franchise.filter((m) => m.slug !== 'pos').map((m) => m.nom).join(' · ')}
-                      {socles.franchise.some((m) => m.slug === 'pos') && ' · caisse'}
-                    </span>
-                  </span>
-                </label>
-
-                <div class="socle__reglages">
-                  <div class="champ champ--nombre">
-                    <label for="o-postes">Points de vente</label>
-                    <span class="tarif__saisie">
-                      <input
-                        id="o-postes"
-                        type="text"
-                        name="nombre_postes"
-                        value={refus('nombre_postes', offre.nombre_postes || 0)}
-                        inputmode="numeric"
-                      />
-                      <span class="tarif__unite">×</span>
-                    </span>
-                    <span class="champ__aide">
-                      Soit {formater((offre.nombre_postes || 0) * offre.prix_socle_franchise_cents)} par mois.
-                    </span>
-                  </div>
-
-                  <div class="champ">
-                    <span class="legende">La caisse</span>
+            {packs.length === 0 ? (
+              <div class="bloc__pied">
+                Aucun pack au catalogue. Un administrateur en crée depuis l'écran Modules.
+              </div>
+            ) : (
+              <div class="socles">
+                {packs.map((p) => (
+                  <div class="socle">
                     <label class="case case--seule">
-                      <input type="radio" name="socle_pos" value="pos" checked={offre.socle_pos !== 'api'} />
+                      <input type="checkbox" name="pack" value={p.cle} checked={retenus.has(p.cle)} />
                       <span>
-                        <strong>Caisse POS</strong>
-                        <span class="champ__aide">La nôtre, installée dans le point de vente.</span>
+                        <span class="case__tete">
+                          <strong>{p.nom}</strong>
+                          <span class="fb-num case__prix">
+                            {formater(p.prix_cents)}{p.unite === 'poste_mois' ? '/mois par point de vente' : '/mois'}
+                          </span>
+                        </span>
+                        <span class="champ__aide">
+                          {p.modules.map((m) => m.nom).join(' · ') || 'Aucun module rattaché.'}
+                        </span>
+                        {p.base && <span class="case__apporte">→ Modèle de base</span>}
                       </span>
                     </label>
-                    <label class="case case--seule">
-                      <input type="radio" name="socle_pos" value="api" checked={offre.socle_pos === 'api'} />
-                      <span>
-                        <strong>Intégration API</strong>
-                        <span class="champ__aide">Le réseau garde sa caisse ; on s'y branche.</span>
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              </div>
 
-              <div class="socle">
-                <label class="case case--seule">
-                  <input type="checkbox" name="socle_franchiseur" value="1" checked={offre.socle_franchiseur} />
-                  <span>
-                    <span class="case__tete">
-                      <strong>Franchiseur</strong>
-                      <span class="fb-num case__prix">
-                        {formater(offre.prix_socle_franchiseur_cents)}/mois
-                      </span>
-                    </span>
-                    <span class="champ__aide">
-                      {socles.franchiseur.map((m) => m.nom).join(' · ')}
-                    </span>
-                  </span>
-                </label>
-                <p class="champ__aide">
-                  Une seule ligne pour tout le réseau : le siège ne se compte pas par magasin.
-                </p>
+                    {p.avec_caisse && (
+                      <div class="socle__reglages">
+                        <div class="champ">
+                          <span class="legende">La caisse</span>
+                          <label class="case case--seule">
+                            <input type="radio" name="socle_pos" value="pos" checked={offre.socle_pos !== 'api'} />
+                            <span>
+                              <strong>Caisse POS</strong>
+                              <span class="champ__aide">La nôtre, installée dans le point de vente.</span>
+                            </span>
+                          </label>
+                          <label class="case case--seule">
+                            <input type="radio" name="socle_pos" value="api" checked={offre.socle_pos === 'api'} />
+                            <span>
+                              <strong>Intégration API</strong>
+                              <span class="champ__aide">Le réseau garde sa caisse ; on s'y branche.</span>
+                            </span>
+                          </label>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
+
+            {auPointDeVente && (
+              <div class="champ champ--nombre" style="margin-block-start:14px">
+                <label for="o-postes">Points de vente</label>
+                <span class="tarif__saisie">
+                  <input
+                    id="o-postes"
+                    type="text"
+                    name="nombre_postes"
+                    value={refus('nombre_postes', offre.nombre_postes || 0)}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">×</span>
+                </span>
+                <span class="champ__aide">
+                  Multiplie les packs facturés au point de vente. Sans ce nombre, ils ne se
+                  facturent pas : on ne devine pas « au moins un ».
+                </span>
+              </div>
+            )}
+            {!auPointDeVente && (
+              <input type="hidden" name="nombre_postes" value={offre.nombre_postes || 0} />
+            )}
           </section>
 
           <section class="bloc" style="margin-block-end:20px">

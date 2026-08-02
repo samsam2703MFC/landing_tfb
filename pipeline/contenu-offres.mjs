@@ -46,22 +46,6 @@ export const TARIFS = [
     ordre: 4,
   },
   {
-    cle: 'prix_socle_franchise',
-    valeur: '9900',
-    type: 'cents',
-    libelle: 'Socle franchisé, par point de vente et par mois',
-    aide: "Le modèle de base côté magasin. Multiplié par le nombre de points de vente. Les modules du socle sont compris dedans : ils ne se refacturent pas à l'unité.",
-    ordre: 5,
-  },
-  {
-    cle: 'prix_socle_franchiseur',
-    valeur: '19900',
-    type: 'cents',
-    libelle: 'Socle franchiseur, par mois',
-    aide: 'Le modèle de base côté siège, une seule ligne pour tout le réseau. Les modules du socle sont compris dedans.',
-    ordre: 6,
-  },
-  {
     cle: 'prix_onboarding_poste',
     valeur: '150000',
     type: 'cents',
@@ -137,20 +121,54 @@ The Franchise Buddy`,
  * qu'ils existent.
  */
 /**
- * Ce que comprend le modèle de base, socle par socle.
+ * Les packs : des modules qui se vendent d'un bloc, à leur propre prix.
  *
- * Un module qui figure ici n'est pas une option : il vient avec son socle et
- * le prix du socle le couvre. Semé une seule fois — ensuite la composition
- * se règle dans la console, module par module, sans redéploiement.
+ * Un module empaqueté n'est pas une option — il vient avec son pack, et le
+ * prix du pack le couvre. Les deux packs marqués `base` forment le modèle de
+ * base que tout réseau prend ; les autres s'y ajoutent.
  *
- * `pos` est un cas à part : le socle franchisé prend **ou bien** notre caisse
+ * `pos` est un cas à part : le pack franchisé prend **ou bien** notre caisse
  * **ou bien** l'intégration de celle que le réseau utilise déjà. C'est un
  * choix qui se fait sur l'offre, pas deux modules à cocher.
+ *
+ * Semé une seule fois. Ensuite tout — le prix, l'unité, la composition — se
+ * règle dans la console, sans redéploiement.
  */
-export const SOCLES = {
-  franchise: ['pos', 'console-franchise', 'facturation', 'cuisine'],
-  franchiseur: ['recettes', 'redevances'],
-};
+export const PACKS = [
+  {
+    cle: 'franchise',
+    nom: 'Pack franchisé',
+    description: 'Le modèle de base côté magasin : la caisse, la console du franchisé, la facturation et la cuisine.',
+    prix_cents: 9_900,
+    unite: 'poste_mois',
+    base: true,
+    ordre: 1,
+    modules: ['pos', 'console-franchise', 'facturation', 'cuisine'],
+  },
+  {
+    cle: 'franchiseur',
+    nom: 'Pack franchiseur',
+    description: "Le modèle de base côté siège : ce que le réseau vend, ce qu'il achète, ses recettes et ses redevances.",
+    prix_cents: 19_900,
+    unite: 'mois',
+    base: true,
+    ordre: 2,
+    modules: ['console-marque', 'fournisseurs', 'recettes', 'redevances'],
+  },
+  {
+    cle: 'webshop',
+    nom: 'Pack webshop',
+    // Prix de départ : la somme de ce que les deux modules coûtaient à
+    // l'unité. Les empaqueter ne fait pas baisser le prix tout seul — c'est
+    // une décision commerciale, qui se prend dans la console.
+    description: 'La boutique en ligne du réseau et les tournées qui livrent ce qu’elle vend.',
+    prix_cents: 9_800,
+    unite: 'mois',
+    base: false,
+    ordre: 3,
+    modules: ['webshop', 'livraison'],
+  },
+];
 
 export const PRESTATIONS = [
   {

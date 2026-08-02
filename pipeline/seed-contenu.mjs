@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
-import { PRESTATIONS, SOCLES, TARIFS } from './contenu-offres.mjs';
+import { PACKS, PRESTATIONS, TARIFS } from './contenu-offres.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
@@ -302,32 +302,62 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
     // grille laisserait croire qu'ils servent encore, et un commercial les
     // verrait à côté des socles sans savoir lequel s'applique. Les offres
     // déjà chiffrées ne bougent pas : elles en portent une copie.
-    const perimes = ['prix_poste', 'prix_poste_franchiseur'];
+    const perimes = ['prix_poste', 'prix_poste_franchiseur', 'prix_socle_franchise', 'prix_socle_franchiseur'];
     const retires = await db.requete(
-      `SELECT cle FROM ${table('tarifs')} WHERE cle IN (?, ?)`,
+      `SELECT cle FROM ${table('tarifs')} WHERE cle IN (?, ?, ?, ?)`,
       perimes,
     );
     if (retires.length > 0) {
-      await db.executer(`DELETE FROM ${table('tarifs')} WHERE cle IN (?, ?)`, perimes);
-      console.log(`✓ ${retires.length} tarif(s) périmé(s) retiré(s) — remplacés par les socles`);
+      await db.executer(`DELETE FROM ${table('tarifs')} WHERE cle IN (?, ?, ?, ?)`, perimes);
+      console.log(`✓ ${retires.length} tarif(s) périmé(s) retiré(s) — le prix vit sur le pack`);
     }
 
-    // La composition du modèle de base. Posée une seule fois : ensuite elle
-    // se règle module par module dans la console, et un module sorti d'un
-    // socle ne doit pas y retourner au déploiement suivant.
-    let soclesPoses = 0;
-    for (const [socle, slugs] of Object.entries(SOCLES)) {
-      for (const slug of slugs) {
-        const dejaLa = await db.requete(
-          `SELECT id, socle FROM ${table('modules')} WHERE slug = ? LIMIT 1`,
+    // Les packs, et la composition de chacun. Posées une seule fois : ensuite
+    // le prix, l'unité et l'appartenance se règlent dans la console, et un
+    // module sorti d'un pack ne doit pas y retourner au déploiement suivant.
+    let packsEcrits = 0;
+    let modulesPoses = 0;
+    for (const pack of PACKS) {
+      const dejaLa = await db.requete(`SELECT id FROM ${table('packs')} WHERE cle = ? LIMIT 1`, [pack.cle]);
+      if (dejaLa.length === 0) {
+        await upsert(db, table('packs'), 'cle', pack.cle, {
+          nom: pack.nom,
+          description: pack.description,
+          prix_cents: pack.prix_cents,
+          unite: pack.unite,
+          base: pack.base,
+          actif: true,
+          ordre: pack.ordre,
+        });
+        packsEcrits += 1;
+      }
+      for (const slug of pack.modules) {
+        const module = await db.requete(
+          `SELECT id, pack FROM ${table('modules')} WHERE slug = ? LIMIT 1`,
           [slug],
         );
-        if (dejaLa.length === 0 || dejaLa[0].socle != null) continue;
-        await db.executer(`UPDATE ${table('modules')} SET socle = ? WHERE id = ?`, [socle, dejaLa[0].id]);
-        soclesPoses += 1;
+        if (module.length === 0 || module[0].pack != null) continue;
+        await db.executer(`UPDATE ${table('modules')} SET pack = ? WHERE id = ?`, [pack.cle, module[0].id]);
+        modulesPoses += 1;
       }
     }
-    if (soclesPoses > 0) console.log(`✓ ${soclesPoses} module(s) rattaché(s) au modèle de base`);
+    if (packsEcrits > 0) console.log(`✓ ${packsEcrits} pack(s)`);
+    if (modulesPoses > 0) console.log(`✓ ${modulesPoses} module(s) rattaché(s) à un pack`);
+
+    // Les modules rattachés avant que les packs n'existent : `socle` portait
+    // la clé, `pack` la porte maintenant. Rejouable — la colonne d'origine
+    // peut avoir disparu, auquel cas il n'y a rien à reprendre.
+    try {
+      const aReprendre = await db.requete(
+        `SELECT id, socle FROM ${table('modules')} WHERE socle IS NOT NULL AND pack IS NULL`,
+      );
+      for (const m of aReprendre) {
+        await db.executer(`UPDATE ${table('modules')} SET pack = ? WHERE id = ?`, [m.socle, m.id]);
+      }
+      if (aReprendre.length > 0) console.log(`✓ ${aReprendre.length} module(s) repris de socle vers pack`);
+    } catch {
+      // Pas de colonne `socle` : rien à migrer.
+    }
 
     let prestationsEcrites = 0;
     for (const prestation of PRESTATIONS) {

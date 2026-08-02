@@ -107,16 +107,16 @@ const MOTS = {
  * en italien qui les affiche en français a l'air d'une traduction bâclée.
  */
 const LIGNES = {
-  fr: { socle_franchise: 'Socle franchisé', socle_franchiseur: 'Socle franchiseur', formation: 'Formation', poste: 'Postes en magasin', poste_franchiseur: 'Poste franchiseur', onboarding_poste: 'Onboarding des postes', achat: "Achat de l'application", maintenance: 'Maintenance annuelle' },
-  en: { socle_franchise: 'Franchisee core', socle_franchiseur: 'Franchisor core', formation: 'Training', poste: 'In-store seats', poste_franchiseur: 'Head-office seat', onboarding_poste: 'Seat onboarding', achat: 'Application purchase', maintenance: 'Annual maintenance' },
-  nl: { socle_franchise: 'Basispakket franchisenemer', socle_franchiseur: 'Basispakket franchisegever', formation: 'Opleiding', poste: 'Werkplekken in de winkel', poste_franchiseur: 'Werkplek hoofdkantoor', onboarding_poste: 'Onboarding van werkplekken', achat: 'Aankoop van de applicatie', maintenance: 'Jaarlijks onderhoud' },
-  de: { socle_franchise: 'Basispaket Franchisenehmer', socle_franchiseur: 'Basispaket Franchisegeber', formation: 'Schulung', poste: 'Arbeitsplätze im Geschäft', poste_franchiseur: 'Arbeitsplatz Zentrale', onboarding_poste: 'Onboarding der Arbeitsplätze', achat: 'Kauf der Anwendung', maintenance: 'Jährliche Wartung' },
-  it: { socle_franchise: 'Pacchetto base affiliato', socle_franchiseur: 'Pacchetto base affiliante', formation: 'Formazione', poste: 'Postazioni in negozio', poste_franchiseur: 'Postazione sede', onboarding_poste: 'Onboarding delle postazioni', achat: "Acquisto dell'applicazione", maintenance: 'Manutenzione annuale' },
-  es: { socle_franchise: 'Paquete base del franquiciado', socle_franchiseur: 'Paquete base del franquiciador', formation: 'Formación', poste: 'Puestos en tienda', poste_franchiseur: 'Puesto de la central', onboarding_poste: 'Onboarding de los puestos', achat: 'Compra de la aplicación', maintenance: 'Mantenimiento anual' },
-  pl: { socle_franchise: 'Pakiet bazowy franczyzobiorcy', socle_franchiseur: 'Pakiet bazowy franczyzodawcy', formation: 'Szkolenie', poste: 'Stanowiska w sklepie', poste_franchiseur: 'Stanowisko centrali', onboarding_poste: 'Wdrożenie stanowisk', achat: 'Zakup aplikacji', maintenance: 'Roczne utrzymanie' },
-  uk: { socle_franchise: 'Базовий пакет франчайзі', socle_franchiseur: 'Базовий пакет франчайзера', formation: 'Навчання', poste: 'Робочі місця в магазині', poste_franchiseur: 'Робоче місце центру', onboarding_poste: 'Впровадження робочих місць', achat: 'Придбання застосунку', maintenance: 'Річне обслуговування' },
-  ru: { socle_franchise: 'Базовый пакет франчайзи', socle_franchiseur: 'Базовый пакет франчайзера', formation: 'Обучение', poste: 'Рабочие места в магазине', poste_franchiseur: 'Рабочее место центра', onboarding_poste: 'Внедрение рабочих мест', achat: 'Покупка приложения', maintenance: 'Годовое обслуживание' },
-  ar: { socle_franchise: 'الباقة الأساسية للممنوح', socle_franchiseur: 'الباقة الأساسية للمانح', formation: 'تدريب', poste: 'محطات في المتجر', poste_franchiseur: 'محطة المقر', onboarding_poste: 'تهيئة المحطات', achat: 'شراء التطبيق', maintenance: 'صيانة سنوية' },
+  fr: { formation: 'Formation', poste: 'Postes en magasin', poste_franchiseur: 'Poste franchiseur', onboarding_poste: 'Onboarding des postes', achat: "Achat de l'application", maintenance: 'Maintenance annuelle' },
+  en: { formation: 'Training', poste: 'In-store seats', poste_franchiseur: 'Head-office seat', onboarding_poste: 'Seat onboarding', achat: 'Application purchase', maintenance: 'Annual maintenance' },
+  nl: { formation: 'Opleiding', poste: 'Werkplekken in de winkel', poste_franchiseur: 'Werkplek hoofdkantoor', onboarding_poste: 'Onboarding van werkplekken', achat: 'Aankoop van de applicatie', maintenance: 'Jaarlijks onderhoud' },
+  de: { formation: 'Schulung', poste: 'Arbeitsplätze im Geschäft', poste_franchiseur: 'Arbeitsplatz Zentrale', onboarding_poste: 'Onboarding der Arbeitsplätze', achat: 'Kauf der Anwendung', maintenance: 'Jährliche Wartung' },
+  it: { formation: 'Formazione', poste: 'Postazioni in negozio', poste_franchiseur: 'Postazione sede', onboarding_poste: 'Onboarding delle postazioni', achat: "Acquisto dell'applicazione", maintenance: 'Manutenzione annuale' },
+  es: { formation: 'Formación', poste: 'Puestos en tienda', poste_franchiseur: 'Puesto de la central', onboarding_poste: 'Onboarding de los puestos', achat: 'Compra de la aplicación', maintenance: 'Mantenimiento anual' },
+  pl: { formation: 'Szkolenie', poste: 'Stanowiska w sklepie', poste_franchiseur: 'Stanowisko centrali', onboarding_poste: 'Wdrożenie stanowisk', achat: 'Zakup aplikacji', maintenance: 'Roczne utrzymanie' },
+  uk: { formation: 'Навчання', poste: 'Робочі місця в магазині', poste_franchiseur: 'Робоче місце центру', onboarding_poste: 'Впровадження робочих місць', achat: 'Придбання застосунку', maintenance: 'Річне обслуговування' },
+  ru: { formation: 'Обучение', poste: 'Рабочие места в магазине', poste_franchiseur: 'Рабочее место центра', onboarding_poste: 'Внедрение рабочих мест', achat: 'Покупка приложения', maintenance: 'Годовое обслуживание' },
+  ar: { formation: 'تدريب', poste: 'محطات في المتجر', poste_franchiseur: 'محطة المقر', onboarding_poste: 'تهيئة المحطات', achat: 'شراء التطبيق', maintenance: 'صيانة سنوية' },
 };
 
 /**

@@ -11,13 +11,19 @@ import Pastille from '../../../components/Pastille.astro';
 import { lien } from '../../../lib/lien.mjs';
 import { leviersDe } from '../../../lib/leviers.mjs';
 import {
+  ajouterPack,
   basculerFonction,
   basculerModule,
+  basculerPack,
   chargerModuleAdmin,
   compteurs,
   enregistrerLigneModule,
+  enregistrerPack,
   famillesConnues,
   listerModules,
+  packsVendables,
+  supprimerPack,
+  UNITES_PACK,
   tarifsEnVigueur,
   validerFonction,
   validerModule,
@@ -59,6 +65,36 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Composant mis à jour.')}`, 303);
     }
 
+    // Les packs : créés, modifiés, activés ou supprimés depuis le bloc du
+    // haut. Ils vivent ici parce que c'est ici qu'on décide ce qu'ils
+    // contiennent — un pack et ses modules ne se règlent pas à deux écrans
+    // de distance.
+    if (action === 'pack-ajout') {
+      const cle = await ajouterPack({
+        nom: f.get('nom'), description: f.get('description'), prix: f.get('prix'),
+        unite: f.get('unite'), base: f.get('base'), ordre: f.get('ordre'),
+      });
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`Pack « ${cle} » créé.`)}`, 303);
+    }
+    if (action === 'pack-enregistrer') {
+      await enregistrerPack(f.get('cle'), {
+        nom: f.get('nom'), description: f.get('description'), prix: f.get('prix'),
+        unite: f.get('unite'), base: f.get('base'), ordre: f.get('ordre'),
+      });
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Pack enregistré.')}`, 303);
+    }
+    if (action === 'pack-bascule') {
+      await basculerPack(f.get('cle'), f.get('actif') === '1');
+      return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Pack mis à jour.')}`, 303);
+    }
+    if (action === 'pack-suppression') {
+      await supprimerPack(f.get('cle'));
+      return Astro.redirect(
+        `${BASE}/admin/modules?ok=${encodeURIComponent('Pack supprimé. Ses modules redeviennent des options.')}`,
+        303,
+      );
+    }
+
     // Deux actions sur la même table : basculer la publication, ou
     // enregistrer la ligne modifiée sur place.
     if (action === 'publication') {
@@ -75,7 +111,7 @@ if (Astro.request.method === 'POST') {
       icone: f.get('icone'),
       ordre: f.get('ordre'),
       prix: f.get('prix'),
-      socle: f.get('socle'),
+      pack: f.get('pack'),
       leviers: f.getAll('leviers').map(String),
     });
     return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} enregistré.`)}`, 303);
@@ -90,8 +126,10 @@ let modules = [];
 let chiffres = {};
 let familles = [];
 let prixParDefaut = 0;
+let packs = [];
 try {
   modules = await listerModules();
+  packs = await packsVendables();
   prixParDefaut = (await tarifsEnVigueur()).prix_module_cents;
   chiffres = await compteurs();
   familles = await famillesConnues();
@@ -115,6 +153,157 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   erreur={erreur}
   compteurs={chiffres}
 >
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les packs</h2>
+        <p>
+          <span class="jeton">landing_packs</span> — ce qui se vend d'un bloc. Un module
+          rattaché à un pack ne se facture plus à l'unité : le prix du pack le couvre.
+          Les packs marqués <strong>modèle de base</strong> sont cochés d'avance sur une
+          offre neuve.
+        </p>
+      </div>
+    </div>
+
+    {packs.length > 0 && (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Pack</th>
+              <th style="inline-size:9rem">Prix</th>
+              <th style="inline-size:13rem">Facturé</th>
+              <th style="inline-size:5rem">Ordre</th>
+              <th style="inline-size:7rem">Base</th>
+              <th style="inline-size:14rem"><span class="invisible">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {packs.map((p) => (
+              <tr>
+                <td>
+                  <form method="post" id={`pack-${p.cle}`}>
+                    <input type="hidden" name="action" value="pack-enregistrer" />
+                    <input type="hidden" name="cle" value={p.cle} />
+                  </form>
+                  <input
+                    form={`pack-${p.cle}`}
+                    type="text"
+                    name="nom"
+                    value={p.nom}
+                    aria-label={`Nom du pack ${p.cle}`}
+                  />
+                  <code class="slug">{p.cle}</code>
+                  <span class="champ__aide">
+                    {p.modules.map((m) => m.nom).join(' · ') || 'Aucun module rattaché.'}
+                  </span>
+                </td>
+                <td>
+                  <span class="tarif__saisie">
+                    <input
+                      form={`pack-${p.cle}`}
+                      type="text"
+                      name="prix"
+                      value={depuisCents(p.prix_cents)}
+                      inputmode="decimal"
+                      aria-label={`Prix du pack ${p.cle}`}
+                    />
+                    <span class="tarif__unite">€</span>
+                  </span>
+                </td>
+                <td>
+                  <select form={`pack-${p.cle}`} name="unite" aria-label={`Unité du pack ${p.cle}`}>
+                    {UNITES_PACK.map((u) => (
+                      <option value={u.cle} selected={p.unite === u.cle}>{u.libelle}</option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <input
+                    class="num"
+                    form={`pack-${p.cle}`}
+                    type="number"
+                    name="ordre"
+                    min="1"
+                    value={p.ordre ?? 100}
+                    aria-label={`Ordre du pack ${p.cle}`}
+                  />
+                </td>
+                <td>
+                  <label class="case case--seule">
+                    <input form={`pack-${p.cle}`} type="checkbox" name="base" value="1" checked={p.base} />
+                    <span><span class="champ__aide">modèle de base</span></span>
+                  </label>
+                </td>
+                <td>
+                  <div class="actions">
+                    <button class="bouton bouton--marque bouton--sm" type="submit" form={`pack-${p.cle}`}>
+                      Enregistrer
+                    </button>
+                    <form method="post" onsubmit="return confirm('Supprimer ce pack ? Ses modules redeviennent des options facturées à l’unité.')">
+                      <input type="hidden" name="action" value="pack-suppression" />
+                      <input type="hidden" name="cle" value={p.cle} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <form method="post">
+      <input type="hidden" name="action" value="pack-ajout" />
+      <div class="duo">
+        <div class="champ">
+          <label for="pk-nom">Nom du pack<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <input id="pk-nom" type="text" name="nom" required placeholder="Pack webshop" />
+          <span class="champ__aide">Le nom donne la clé technique, et figure tel quel sur l'offre.</span>
+        </div>
+        <div class="champ champ--nombre">
+          <label for="pk-prix">Prix<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <span class="tarif__saisie">
+            <input id="pk-prix" type="text" name="prix" required inputmode="decimal" placeholder="99" />
+            <span class="tarif__unite">€</span>
+          </span>
+        </div>
+        <div class="champ">
+          <label for="pk-unite">Facturé</label>
+          <select id="pk-unite" name="unite">
+            {UNITES_PACK.map((u) => <option value={u.cle}>{u.libelle}</option>)}
+          </select>
+        </div>
+        <div class="champ">
+          <label class="case case--seule">
+            <input type="checkbox" name="base" value="1" />
+            <span>
+              <strong>Modèle de base</strong>
+              <span class="champ__aide">Coché d'avance sur toute offre neuve.</span>
+            </span>
+          </label>
+        </div>
+        <div class="champ" style="grid-column:1/-1">
+          <label for="pk-desc">Description</label>
+          <textarea id="pk-desc" name="description" rows="2" placeholder="Ce que le pack comprend, en une phrase."></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="plus" taille={16} /> Créer le pack
+        </button>
+      </div>
+    </form>
+
+    <div class="bloc__pied">
+      Le rattachement d'un module se règle dans la colonne <strong>Pack</strong> du tableau
+      ci-dessous. Un module qui quitte un pack redevient une option, facturée dès
+      l'enregistrement suivant de l'offre.
+    </div>
+  </section>
+
   <section class="bloc">
     <div class="bloc__tete">
       <div>
@@ -137,7 +326,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                 <span>Famille</span>
                 <span>Leviers</span>
                 <span>Ordre</span>
-                <span>Socle</span>
+                <span>Pack</span>
                 <span>Prix / mois</span>
                 <span>Comp.</span>
                 <span>Capt.</span>
@@ -186,13 +375,14 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
 
                   <select
                     class="ligne-module__socle"
-                    name="socle"
-                    title="Un module de socle vient avec le modèle de base : son prix est compris dedans."
-                    aria-label={`Socle de ${m.nom || m.slug}`}
+                    name="pack"
+                    title="Un module empaqueté ne se facture pas à l'unité : le prix du pack le couvre."
+                    aria-label={`Pack de ${m.nom || m.slug}`}
                   >
-                    <option value="" selected={!m.socle}>option</option>
-                    <option value="franchise" selected={m.socle === 'franchise'}>franchisé</option>
-                    <option value="franchiseur" selected={m.socle === 'franchiseur'}>franchiseur</option>
+                    <option value="" selected={!m.pack}>à l'unité</option>
+                    {packs.map((p) => (
+                      <option value={p.cle} selected={m.pack === p.cle}>{p.nom}</option>
+                    ))}
                   </select>
 
                   <span class="tarif__saisie ligne-module__prix">
@@ -328,8 +518,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   /* Un module de socle n'a pas de prix propre : son prix est celui du socle.
      Le champ reste lisible mais dit qu'il ne sert plus. */
   .ligne-module__socle { font-size: var(--text-xs); }
-  .ligne-module:has(.ligne-module__socle option[value='franchise']:checked) .ligne-module__prix,
-  .ligne-module:has(.ligne-module__socle option[value='franchiseur']:checked) .ligne-module__prix {
+  .ligne-module:not(:has(.ligne-module__socle option[value='']:checked)) .ligne-module__prix {
     opacity: 0.45;
   }
   .ligne-module__compte { text-align: end; color: var(--slate-600); }

@@ -62,12 +62,10 @@ function modele(pg) {
         ['leviers', t.objet],
         ['liens', t.objet],
         ['onboarding', t.texte],
-        // Le socle auquel ce module appartient — `franchise`, `franchiseur`,
-        // ou vide pour une option. Les modules d'un socle ne se vendent pas
-        // à l'unité : ils viennent avec lui, et son prix les couvre. C'est
-        // une donnée, pas une liste en dur, pour qu'un module puisse passer
-        // d'un socle aux options sans redéploiement.
-        ['socle', t.chaine(20)],
+        // Le pack auquel ce module appartient, ou vide s'il se vend seul.
+        // Un module empaqueté ne se facture pas à l'unité : il vient avec son
+        // pack, et le prix du pack le couvre.
+        ['pack', t.chaine(60)],
         // Prix du module, par mois, quand il est vendu dans une offre.
         // Zéro veut dire « le prix par défaut de la grille » : on ne recopie
         // pas 49 € treize fois pour devoir les changer treize fois.
@@ -298,14 +296,13 @@ function modele(pg) {
         ['nombre_postes', 'INT DEFAULT 0'],
         ['postes_franchiseur', 'INT DEFAULT 0'],
         ['postes_onboardes', 'INT DEFAULT 0'],
-        // Le modèle de base, avant toute option. Le socle franchisé se
-        // facture par point de vente — `nombre_postes` lui sert de quantité ;
-        // le socle franchiseur est une ligne unique pour le réseau.
+        // Les packs retenus, recopiés avec leur prix et leur unité du jour —
+        // même règle que les modules : une grille qui bouge ne doit pas
+        // changer le montant d'une offre déjà chiffrée.
         //
         // `socle_pos` tranche entre notre caisse et l'intégration de celle
         // que le réseau a déjà : c'est un choix, pas deux modules.
-        ['socle_franchise', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
-        ['socle_franchiseur', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['packs', t.objet],
         ['socle_pos', `${t.chaine(10)} DEFAULT 'pos'`],
         // Le geste commercial : les N premiers mois ne sont pas facturés. Ce
         // n'est pas une remise — le prix mensuel ne bouge pas — donc ça ne
@@ -329,9 +326,7 @@ function modele(pg) {
         ['multiplicateur_achat', 'INT DEFAULT 0'],
         ['taux_annuel', 'INT DEFAULT 0'],
         ['prix_jour_formation_cents', 'INT DEFAULT 0'],
-        ['prix_socle_franchise_cents', 'INT DEFAULT 0'],
-        ['prix_socle_franchiseur_cents', 'INT DEFAULT 0'],
-        // Les deux tarifs que les socles remplacent. Conservés parce que les
+        // Les deux tarifs que les packs remplacent. Conservés parce que les
         // offres déjà chiffrées les portent : les effacer changerait leurs
         // montants, ce qu'une offre envoyée ne doit jamais faire.
         ['prix_poste_cents', 'INT DEFAULT 0'],
@@ -350,9 +345,8 @@ function modele(pg) {
       colonnes: [
         ['id', t.id],
         ['offre_id', 'INT NOT NULL'],
-        // prestation · formation · socle_franchise · socle_franchiseur ·
-        // module · poste · poste_franchiseur · onboarding_poste · vue ·
-        // achat · maintenance
+        // prestation · formation · pack · module · poste ·
+        // poste_franchiseur · onboarding_poste · vue · achat · maintenance
         ['type', `${t.chaine(20)} NOT NULL`],
         ['libelle', t.chaine(255)],
         ['note', t.texte],
@@ -360,6 +354,30 @@ function modele(pg) {
         ['prix_unitaire_cents', 'INT DEFAULT 0'],
         // unique · mensuel · annuel
         ['recurrence', `${t.chaine(10)} DEFAULT 'unique'`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Un pack : un groupe de modules qui se vend d'un bloc, à son prix.
+      //
+      // Deux d'entre eux forment le **modèle de base** que tout réseau prend
+      // — le pack franchisé et le pack franchiseur ; les autres s'ajoutent.
+      // La distinction est une donnée (`base`) et non une liste en dur : un
+      // pack peut entrer dans le modèle de base ou en sortir sans toucher au
+      // code.
+      nom: table('packs'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['description', t.texte],
+        ['prix_cents', 'INT DEFAULT 0'],
+        // `mois` — une ligne pour le réseau ; `poste_mois` — multiplié par le
+        // nombre de points de vente. C'est toute la différence entre 199 € et
+        // 99 € × douze magasins.
+        ['unite', `${t.chaine(20)} DEFAULT 'mois'`],
+        ['base', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['ordre', 'INT DEFAULT 100'],
       ],
     },

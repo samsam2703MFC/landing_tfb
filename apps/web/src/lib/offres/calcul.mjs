@@ -51,13 +51,11 @@ function entier(valeur) {
  * @param {number} offre.tarifs.multiplicateur_achat Nombre de mois rachetés.
  * @param {number} offre.tarifs.taux_annuel Maintenance annuelle, en points.
  * @param {number} offre.tarifs.prix_jour_formation_cents
- * @param {boolean} offre.socle_franchise Le modèle de base côté magasin.
- * @param {boolean} offre.socle_franchiseur Le modèle de base côté siège.
+ * @param {Array<{cle, nom, prix_cents, unite, avec_caisse?}>} offre.packs
+ *   Les packs retenus, avec leur prix et leur unité du jour.
  * @param {'pos'|'api'} offre.socle_pos Notre caisse, ou l'intégration de la leur.
- * @param {number} offre.tarifs.prix_socle_franchise_cents Prix **mensuel** par point de vente.
- * @param {number} offre.tarifs.prix_socle_franchiseur_cents Prix **mensuel** du socle siège.
- * @param {number} offre.tarifs.prix_poste_cents D'avant les socles — zéro aujourd'hui.
- * @param {number} offre.tarifs.prix_poste_franchiseur_cents D'avant les socles.
+ * @param {number} offre.tarifs.prix_poste_cents D'avant les packs — zéro aujourd'hui.
+ * @param {number} offre.tarifs.prix_poste_franchiseur_cents D'avant les packs.
  * @param {number} offre.tarifs.prix_onboarding_poste_cents Onboarding d'un poste, **une fois**.
  * @returns {Array<{type, libelle, note, quantite, prix_unitaire_cents, recurrence, total_cents}>}
  */
@@ -89,35 +87,29 @@ export function lignesDe(offre) {
     });
   }
 
-  // Le modèle de base, avant toute option.
+  // Les packs retenus, au mois.
   //
-  // Le socle franchisé suit la taille du réseau : il se facture par point de
-  // vente, et sa quantité augmente quand le client ouvre une boutique sans
-  // qu'on renégocie l'offre. Le socle franchiseur, lui, est une seule ligne
-  // pour tout le réseau — le siège n'est pas multiple.
+  // Un pack facturé `poste_mois` suit la taille du réseau : sa quantité est
+  // le nombre de points de vente, et elle augmente quand le client ouvre une
+  // boutique sans qu'on renégocie l'offre. Un pack facturé `mois` est une
+  // ligne unique pour tout le réseau — le siège n'est pas multiple.
   //
-  // Les modules qu'ils comprennent ne produisent pas de ligne : leur prix est
-  // dans celui du socle. Les facturer en plus reviendrait à les vendre deux
-  // fois, et le client le verrait sur le devis.
+  // Les modules qu'un pack comprend ne produisent pas de ligne : leur prix
+  // est dans celui du pack. Les facturer en plus reviendrait à les vendre
+  // deux fois, et le client le verrait sur le devis.
   const pointsDeVente = entier(offre.nombre_postes);
-  if (offre.socle_franchise && pointsDeVente > 0) {
+  for (const p of offre.packs || []) {
+    const auPoste = p.unite === 'poste_mois';
+    const quantite = auPoste ? pointsDeVente : 1;
+    if (quantite === 0) continue;
     lignes.push({
-      type: 'socle_franchise',
-      libelle: 'Socle franchisé',
-      note: offre.socle_pos === 'api' ? 'Intégration API' : 'Caisse POS',
-      quantite: pointsDeVente,
-      prix_unitaire_cents: entier(t.prix_socle_franchise_cents),
-      recurrence: 'mensuel',
-    });
-  }
-
-  if (offre.socle_franchiseur) {
-    lignes.push({
-      type: 'socle_franchiseur',
-      libelle: 'Socle franchiseur',
-      note: null,
-      quantite: 1,
-      prix_unitaire_cents: entier(t.prix_socle_franchiseur_cents),
+      type: 'pack',
+      libelle: p.nom,
+      // La caisse retenue ne concerne que le pack qui en contient une : c'est
+      // ce que le client regarde en premier sur cette ligne-là.
+      note: p.avec_caisse ? (offre.socle_pos === 'api' ? 'Intégration API' : 'Caisse POS') : null,
+      quantite,
+      prix_unitaire_cents: entier(p.prix_cents),
       recurrence: 'mensuel',
     });
   }
@@ -157,8 +149,9 @@ export function lignesDe(offre) {
   // tarif dans sa copie ; une offre d'aujourd'hui l'a à zéro et passe par le
   // socle franchisé, qui utilise la même quantité. Les deux ne peuvent donc
   // pas se cumuler — sans quoi le point de vente serait facturé deux fois.
+  const auPointDeVente = (offre.packs || []).some((p) => p.unite === 'poste_mois');
   const postes = entier(offre.nombre_postes);
-  if (postes > 0 && !offre.socle_franchise && entier(t.prix_poste_cents) > 0) {
+  if (postes > 0 && !auPointDeVente && entier(t.prix_poste_cents) > 0) {
     lignes.push({
       type: 'poste',
       libelle: 'Postes en magasin',
@@ -169,10 +162,10 @@ export function lignesDe(offre) {
     });
   }
 
-  // Le poste du siège, même histoire : remplacé par le socle franchiseur, et
-  // conservé pour les offres qui le portaient déjà.
+  // Le poste du siège, même histoire : remplacé par un pack, et conservé
+  // pour les offres qui le portaient déjà.
   const siege = entier(offre.postes_franchiseur);
-  if (siege > 0 && !offre.socle_franchiseur && entier(t.prix_poste_franchiseur_cents) > 0) {
+  if (siege > 0 && (offre.packs || []).length === 0 && entier(t.prix_poste_franchiseur_cents) > 0) {
     lignes.push({
       type: 'poste_franchiseur',
       libelle: 'Poste franchiseur',

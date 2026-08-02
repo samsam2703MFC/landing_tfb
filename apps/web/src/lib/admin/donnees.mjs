@@ -805,10 +805,9 @@ export async function tarifsEnVigueur() {
     multiplicateur_achat: nombre('multiplicateur_achat'),
     taux_annuel: nombre('taux_annuel'),
     prix_jour_formation_cents: nombre('prix_jour_formation'),
-    prix_socle_franchise_cents: nombre('prix_socle_franchise'),
-    prix_socle_franchiseur_cents: nombre('prix_socle_franchiseur'),
-    // Les deux tarifs que les socles remplacent. Absents de la grille, donc
-    // à zéro pour une offre neuve : seules les offres d'avant les portent.
+    // Les deux tarifs que les packs remplacent. Absents de la grille, donc à
+    // zéro pour une offre neuve : seules les offres d'avant les portent. Le
+    // prix d'un pack vit sur le pack, pas ici.
     prix_poste_cents: nombre('prix_poste'),
     prix_poste_franchiseur_cents: nombre('prix_poste_franchiseur'),
     prix_onboarding_poste_cents: nombre('prix_onboarding_poste'),
@@ -862,7 +861,7 @@ export async function enregistrerTarifs(formulaire) {
 export async function modulesVendables() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, slug, nom, accroche, benefices, prix_cents, groupe, socle
+    `SELECT id, slug, nom, accroche, benefices, prix_cents, groupe, pack
      FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
     [vrai(true)],
   );
@@ -879,32 +878,127 @@ export async function modulesVendables() {
       detail: benefices[0]?.texte || null,
       prix_cents: Number(m.prix_cents) || defaut,
       prix_propre: Number(m.prix_cents) > 0,
-      // Vide pour une option, `franchise` ou `franchiseur` pour un module du
-      // modèle de base — celui-là ne se vend pas à l'unité.
-      socle: m.socle || null,
+      // Vide si le module se vend seul ; sinon la clé de son pack — celui-là
+      // ne se facture pas à l'unité, le prix du pack le couvre.
+      pack: m.pack || null,
     };
   });
 }
 
-/** Les modules du modèle de base, socle par socle. */
-export async function modulesDesSocles() {
-  const tous = await modulesVendables();
-  return {
-    franchise: tous.filter((m) => m.socle === 'franchise'),
-    franchiseur: tous.filter((m) => m.socle === 'franchiseur'),
-  };
+/**
+ * La copie d'un pack telle qu'elle part sur une offre.
+ *
+ * Le prix et l'unité sont recopiés, pas référencés : une grille qui bouge le
+ * mois prochain ne doit pas changer le montant d'une offre déjà chiffrée. La
+ * composition suit, parce qu'elle figure sur le document — le client doit
+ * pouvoir relire ce qu'il a acheté même si le pack a changé depuis.
+ */
+export function instantanePacks(packs) {
+  return packs.map((p) => ({
+    cle: p.cle,
+    nom: p.nom,
+    prix_cents: p.prix_cents,
+    unite: p.unite,
+    base: Boolean(p.base),
+    avec_caisse: Boolean(p.avec_caisse),
+    modules: (p.modules || []).map((m) => ({ slug: m.slug, nom: m.nom })),
+  }));
 }
 
-/** Les modules vendus à l'unité : tout ce qui n'est dans aucun socle. */
-export async function modulesOptionnels() {
-  return (await modulesVendables()).filter((m) => !m.socle);
-}
-
-/** Rattache un module à un socle, ou l'en sort. */
-export async function enregistrerSocleModule(slug, socle) {
-  const valeur = ['franchise', 'franchiseur'].includes(String(socle)) ? String(socle) : null;
+/** Les packs, dans l'ordre où ils se présentent. */
+export async function listerPacks({ actifsSeulement = false } = {}) {
   const db = await connexion();
-  await db.executer(`UPDATE ${table('modules')} SET socle = ? WHERE slug = ?`, [valeur, String(slug)]);
+  const sql = actifsSeulement
+    ? `SELECT * FROM ${table('packs')} WHERE actif = ? ORDER BY ordre, nom`
+    : `SELECT * FROM ${table('packs')} ORDER BY ordre, nom`;
+  const lignes = await db.requete(sql, actifsSeulement ? [vrai(true)] : []);
+  return lignes.map((p) => ({ ...p, actif: Boolean(p.actif), base: Boolean(p.base) }));
+}
+
+/**
+ * Les packs vendables, chacun avec les modules qu'il comprend.
+ *
+ * `avec_caisse` dit si le pack contient une caisse : c'est ce qui fait
+ * apparaître le choix « notre caisse ou l'intégration de la vôtre » sur
+ * l'offre, plutôt que de le montrer partout.
+ */
+export async function packsVendables() {
+  const [packs, modules] = [await listerPacks({ actifsSeulement: true }), await modulesVendables()];
+  return packs.map((p) => {
+    const dedans = modules.filter((m) => m.pack === p.cle);
+    return { ...p, modules: dedans, avec_caisse: dedans.some((m) => m.slug === 'pos') };
+  });
+}
+
+/** Les modules vendus à l'unité : tout ce qui n'est dans aucun pack. */
+export async function modulesOptionnels() {
+  return (await modulesVendables()).filter((m) => !m.pack);
+}
+
+/** Les unités de facturation d'un pack, telles qu'elles s'affichent. */
+export const UNITES_PACK = [
+  { cle: 'mois', libelle: 'par mois', aide: 'Une seule ligne pour tout le réseau.' },
+  { cle: 'poste_mois', libelle: 'par mois et par point de vente', aide: 'Multiplié par le nombre de points de vente de l’offre.' },
+];
+
+export async function ajouterPack(valeurs) {
+  const db = await connexion();
+  const cle = normaliserCle(valeurs.cle || valeurs.nom);
+  if (!cle) throw new Error('Un pack a besoin d’un nom.');
+  const dejaLa = await db.requete(`SELECT id FROM ${table('packs')} WHERE cle = ? LIMIT 1`, [cle]);
+  if (dejaLa.length > 0) throw new Error(`Le pack « ${cle} » existe déjà.`);
+  await db.executer(
+    `INSERT INTO ${table('packs')} (cle, nom, description, prix_cents, unite, base, actif, ordre)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      cle,
+      String(valeurs.nom || '').trim() || cle,
+      String(valeurs.description || '').trim() || null,
+      enCents(valeurs.prix || '0', `Prix du pack ${cle}`),
+      UNITES_PACK.some((u) => u.cle === valeurs.unite) ? String(valeurs.unite) : 'mois',
+      vrai(valeurs.base === '1' || valeurs.base === true),
+      vrai(true),
+      Number(valeurs.ordre) || 100,
+    ],
+  );
+  viderCache();
+  return cle;
+}
+
+export async function enregistrerPack(cle, valeurs) {
+  const db = await connexion();
+  await db.executer(
+    `UPDATE ${table('packs')}
+     SET nom = ?, description = ?, prix_cents = ?, unite = ?, base = ?, ordre = ?
+     WHERE cle = ?`,
+    [
+      String(valeurs.nom || '').trim() || String(cle),
+      String(valeurs.description || '').trim() || null,
+      enCents(valeurs.prix || '0', `Prix du pack ${cle}`),
+      UNITES_PACK.some((u) => u.cle === valeurs.unite) ? String(valeurs.unite) : 'mois',
+      vrai(valeurs.base === '1' || valeurs.base === true),
+      Number(valeurs.ordre) || 100,
+      String(cle),
+    ],
+  );
+  viderCache();
+}
+
+export async function basculerPack(cle, actif) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('packs')} SET actif = ? WHERE cle = ?`, [vrai(actif), String(cle)]);
+  viderCache();
+}
+
+/**
+ * Supprime un pack. Les modules qu'il contenait redeviennent des options,
+ * facturées à l'unité — les laisser pointer vers un pack disparu les ferait
+ * disparaître de l'offre sans que personne ne le voie.
+ */
+export async function supprimerPack(cle) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('modules')} SET pack = NULL WHERE pack = ?`, [String(cle)]);
+  await db.executer(`DELETE FROM ${table('packs')} WHERE cle = ?`, [String(cle)]);
   viderCache();
 }
 
@@ -1007,8 +1101,7 @@ function normaliserOffre(ligne) {
   return {
     ...ligne,
     tva_exoneree: Boolean(ligne.tva_exoneree),
-    socle_franchise: Boolean(ligne.socle_franchise),
-    socle_franchiseur: Boolean(ligne.socle_franchiseur),
+    packs: lireJson(ligne.packs, []),
     prestations: lireJson(ligne.prestations, []),
     modules: lireJson(ligne.modules, []),
     vues: lireJson(ligne.vues, []),
@@ -1147,9 +1240,8 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
           prix_jour_formation_cents, nombre_postes, prix_poste_cents,
           postes_franchiseur, prix_poste_franchiseur_cents,
           postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents,
-          socle_franchise, socle_franchiseur, socle_pos,
-          prix_socle_franchise_cents, prix_socle_franchiseur_cents)
-         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?, ?, ?, 'pos', ?, ?)`,
+          packs, socle_pos)
+         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?, ?, 'pos')`,
         [
           Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
           tarifs.tva_defaut, vrai(false), json([]), json([]), json([]),
@@ -1157,10 +1249,10 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
           tarifs.taux_annuel, tarifs.prix_jour_formation_cents, tarifs.prix_poste_cents,
           tarifs.prix_poste_franchiseur_cents, tarifs.prix_onboarding_poste_cents,
           tarifs.prix_module_cents,
-          // Le modèle de base est coché d'avance : c'est ce qu'on vend à tout
-          // le monde, et le décocher est le geste rare.
-          vrai(true), vrai(true),
-          tarifs.prix_socle_franchise_cents, tarifs.prix_socle_franchiseur_cents,
+          // Le modèle de base est retenu d'avance : c'est ce qu'on vend à
+          // tout le monde, et le décocher est le geste rare. Les packs
+          // optionnels, eux, se cochent.
+          json(instantanePacks((await packsVendables()).filter((p) => p.base))),
         ],
       );
       viderCache();
@@ -1213,8 +1305,7 @@ export function configDe(offre) {
       libre: Boolean(p.libre),
     })),
     modules: offre.modules || [],
-    socle_franchise: Boolean(offre.socle_franchise),
-    socle_franchiseur: Boolean(offre.socle_franchiseur),
+    packs: offre.packs || [],
     socle_pos: offre.socle_pos || 'pos',
     jours_formation: offre.jours_formation || 0,
     nombre_postes: offre.nombre_postes || 0,
@@ -1228,8 +1319,6 @@ export function configDe(offre) {
       multiplicateur_achat: offre.multiplicateur_achat,
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
-      prix_socle_franchise_cents: offre.prix_socle_franchise_cents,
-      prix_socle_franchiseur_cents: offre.prix_socle_franchiseur_cents,
       prix_poste_cents: offre.prix_poste_cents,
       prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
       prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
@@ -1263,11 +1352,7 @@ export async function enregistrerOffre(id, config) {
   // fois qu'il s'en sert — une offre envoyée, jamais : elle est figée avant
   // d'arriver ici.
   const manquants = {};
-  const aRattraper = [
-    ['socle_franchise', 'prix_socle_franchise_cents'],
-    ['socle_franchiseur', 'prix_socle_franchiseur_cents'],
-    ['postes_onboardes', 'prix_onboarding_poste_cents'],
-  ];
+  const aRattraper = [['postes_onboardes', 'prix_onboarding_poste_cents']];
   if (aRattraper.some(([q, p]) => config[q] > 0 && !offre[p])) {
     const vigueur = await tarifsEnVigueur();
     for (const [quantite, prix] of aRattraper) {
@@ -1287,7 +1372,7 @@ export async function enregistrerOffre(id, config) {
     `UPDATE ${table('offres')} SET
        langue = ?, jours_formation = ?, nombre_postes = ?, postes_franchiseur = ?,
        postes_onboardes = ?, mois_offerts = ?, option_app = ?, prestations = ?, modules = ?, vues = ?,
-       socle_franchise = ?, socle_franchiseur = ?, socle_pos = ?,
+       packs = ?, socle_pos = ?,
        remise_type = ?, remise_valeur = ?, tva_taux = ?, tva_exoneree = ?, tva_mention = ?,
        portee = ?, delai = ?, valide_jusqu_au = ?
      WHERE id = ?`,
@@ -1295,7 +1380,7 @@ export async function enregistrerOffre(id, config) {
       config.langue, config.jours_formation, config.nombre_postes, config.postes_franchiseur,
       config.postes_onboardes, config.mois_offerts, config.option_app,
       json(config.prestations), json(config.modules), json(config.vues),
-      vrai(config.socle_franchise), vrai(config.socle_franchiseur), config.socle_pos || 'pos',
+      json(config.packs || []), config.socle_pos || 'pos',
       config.remise_type, config.remise_valeur,
       config.tva_taux, vrai(config.tva_exoneree), config.tva_mention || null,
       config.portee || null, config.delai || null, config.valide_jusqu_au || null,
@@ -1306,8 +1391,7 @@ export async function enregistrerOffre(id, config) {
   const lignes = lignesDe({
     prestations: config.prestations,
     modules: config.modules,
-    socle_franchise: config.socle_franchise,
-    socle_franchiseur: config.socle_franchiseur,
+    packs: config.packs,
     socle_pos: config.socle_pos,
     jours_formation: config.jours_formation,
     nombre_postes: config.nombre_postes,
@@ -1320,8 +1404,6 @@ export async function enregistrerOffre(id, config) {
       multiplicateur_achat: offre.multiplicateur_achat,
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
-      prix_socle_franchise_cents: offre.prix_socle_franchise_cents,
-      prix_socle_franchiseur_cents: offre.prix_socle_franchiseur_cents,
       prix_poste_cents: offre.prix_poste_cents,
       prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
       prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
@@ -1369,9 +1451,8 @@ export async function nouvelleVersion(reference) {
       prestations, modules, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
       nombre_postes, prix_poste_cents, postes_franchiseur, prix_poste_franchiseur_cents,
       postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents, portee, delai,
-      socle_franchise, socle_franchiseur, socle_pos,
-      prix_socle_franchise_cents, prix_socle_franchiseur_cents)
-     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      packs, socle_pos)
+     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       source.prospect_id, String(reference), version, source.langue, source.devise,
       source.cree_par, new Date(), valideJusquAu,
@@ -1385,8 +1466,12 @@ export async function nouvelleVersion(reference) {
       source.postes_onboardes, tarifs.prix_onboarding_poste_cents,
       source.mois_offerts, tarifs.prix_module_cents,
       source.portee, source.delai,
-      vrai(source.socle_franchise), vrai(source.socle_franchiseur), source.socle_pos || 'pos',
-      tarifs.prix_socle_franchise_cents, tarifs.prix_socle_franchiseur_cents,
+      // Les mêmes packs, mais aux prix d'aujourd'hui : c'est tout l'objet
+      // d'une nouvelle version. Un pack disparu du catalogue disparaît.
+      json(instantanePacks(
+        (await packsVendables()).filter((p) => (source.packs || []).some((q) => q.cle === p.cle)),
+      )),
+      source.socle_pos || 'pos',
     ],
   );
 
@@ -1763,17 +1848,23 @@ export async function enregistrerLigneModule(slug, valeurs) {
       [brut ? enCents(brut, `Prix de ${slug}`) : 0, String(slug)],
     );
   }
-  // Le socle auquel le module appartient. Vide = une option, vendue à
-  // l'unité ; sinon il vient avec son socle et le prix du socle le couvre.
-  const socle = ['franchise', 'franchiseur'].includes(String(valeurs.socle)) ? String(valeurs.socle) : null;
+  // Le pack auquel le module appartient. Vide = il se vend seul ; sinon il
+  // vient avec son pack et le prix du pack le couvre. Une clé inconnue est
+  // refusée plutôt que posée : un module rattaché à un pack inexistant
+  // disparaîtrait de l'offre sans que rien ne le signale.
+  let pack = String(valeurs.pack || '').trim() || null;
+  if (pack) {
+    const connu = await db.requete(`SELECT id FROM ${table('packs')} WHERE cle = ? LIMIT 1`, [pack]);
+    if (connu.length === 0) throw new Error(`Le pack « ${pack} » n'existe pas.`);
+  }
   await db.executer(
-    `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ?, socle = ? WHERE slug = ?`,
+    `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ?, pack = ? WHERE slug = ?`,
     [
       String(valeurs.groupe || '').trim() || null,
       String(valeurs.icone || '').trim() || null,
       Number(valeurs.ordre) || 100,
       json(valeurs.leviers),
-      socle,
+      pack,
       String(slug),
     ],
   );
