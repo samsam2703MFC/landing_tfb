@@ -58,6 +58,7 @@ const TOUTES = [
     entrees: [
       { cle: 'offres', href: '/admin/offres', libelle: 'Offres', icone: 'receipt', compte: compteurs.offres },
       { cle: 'etapes', href: '/admin/etapes', libelle: 'Étapes', icone: 'list-checks', compte: compteurs.etapes },
+      { cle: 'contrats', href: '/admin/contrats', libelle: 'Contrats', icone: 'handshake', compte: compteurs.contrats },
       { cle: 'tarifs', href: '/admin/tarifs', libelle: 'Tarifs', icone: 'percent' },
       { cle: 'prestations', href: '/admin/prestations', libelle: 'Prestations', icone: 'wallet', compte: compteurs.prestations },
     ],
@@ -102,6 +103,14 @@ const RUBRIQUES = TOUTES
     <meta name="theme-color" content="#0c1329" />
 
     <style is:global>
+      /* La console ne charge pas la feuille de base du design system — elle a
+         la sienne — et se retrouvait donc en `content-box`, seule de tout le
+         site. Un champ à cent pour cent de sa colonne y ajoutait son
+         rembourrage et sa bordure, et débordait de son bloc de quatorze
+         pixels par la droite. Invisible tant qu'on regarde la gauche, où la
+         marge est correcte. */
+      *, *::before, *::after { box-sizing: border-box; }
+
       body { font: var(--type-body); color: var(--navy-900); background: var(--slate-50); margin: 0; }
 
       /* ── Ossature ──────────────────────────────────────────────────────── */

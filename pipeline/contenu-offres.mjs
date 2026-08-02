@@ -120,6 +120,88 @@ The Franchise Buddy`,
     aide: "Habille la version HTML de l'offre. Décorative : les largeurs et les marges sont posées dans le document, parce qu'un client de messagerie sur deux jette la feuille de style. Vider ce champ rend une lettre lisible, mais sans les couleurs de la marque.",
     ordre: 14,
   },
+
+  // ── Le contrat ──────────────────────────────────────────────────────────
+  {
+    cle: 'contrat_auto',
+    valeur: '0',
+    type: 'booleen',
+    libelle: 'Générer le contrat quand l’offre est acceptée',
+    aide: "Décoché, le contrat s'édite à la main depuis la fiche de l'offre : même geste, sans automatisme. Un dossier incomplet arrête l'édition et dit ce qui manque.",
+    ordre: 20,
+  },
+  {
+    cle: 'contrat_duree_mois',
+    valeur: '12',
+    type: 'entier',
+    libelle: 'Durée du contrat, en mois',
+    ordre: 21,
+  },
+  {
+    cle: 'contrat_preavis_jours',
+    valeur: '90',
+    type: 'entier',
+    libelle: 'Préavis de résiliation, en jours',
+    ordre: 22,
+  },
+  {
+    cle: 'contrat_reconduction',
+    valeur: 'Tacite, par périodes de douze mois.',
+    type: 'texte',
+    libelle: 'Reconduction',
+    aide: "Recopiée sur le contrat à son édition, comme la durée et le préavis : un contrat signé garde ses conditions si ce champ change ensuite.",
+    ordre: 23,
+  },
+  {
+    cle: 'contrat_gabarit',
+    valeur: `CONTRAT DE SERVICE — {reference}
+
+ENTRE
+  The Franchise Buddy, ci-après « le prestataire »,
+ET
+  {client}, {forme_juridique}, {numero_registre},
+  dont le siège est établi {adresse_siege}, ci-après « le client »,
+  représenté par {signataire_nom}, {signataire_role}, dûment habilité.
+
+ARTICLE 1 — OBJET
+Le prestataire met à disposition du client les modules et services décrits à
+l'offre {reference}, annexée au présent contrat dont elle fait partie
+intégrante.
+
+{recapitulatif}
+
+ARTICLE 2 — DURÉE
+Le contrat prend effet le {date_effet} pour une durée de {duree_mois} mois.
+Reconduction : {reconduction}
+Il peut être résilié par lettre recommandée moyennant un préavis de
+{preavis_jours} jours avant l'échéance.
+
+ARTICLE 3 — PRIX ET FACTURATION
+Les montants figurent à l'offre annexée. Les redevances récurrentes sont
+facturées mensuellement à terme échu, payables à {delai_paiement_jours} jours.
+Facturation adressée à {facturation_adresse}, à l'attention de
+{facturation_email}.
+Compte à créditer : {iban} ({bic}).
+
+ARTICLE 4 — CONDITIONS GÉNÉRALES
+Les conditions générales annexées font partie du contrat. En cas de
+contradiction, le présent contrat prévaut.
+
+Fait le {date_du_jour}, à signer électroniquement par {signataire_nom}
+({signataire_email}).`,
+    type: 'texte',
+    libelle: 'Gabarit du contrat',
+    aide: "Jetons du dossier client, des conditions et de l'offre — la liste complète est rappelée sur la fiche du contrat. Un jeton inconnu ou vide reste visible et bloque l'édition : jamais effacé en silence.",
+    ordre: 24,
+  },
+  {
+    cle: 'cgv',
+    valeur: '',
+    type: 'texte',
+    libelle: 'Conditions générales',
+    aide: "Annexées au contrat. Vides, l'article 4 du gabarit renvoie à un document qui n'existe pas : à remplir avant le premier envoi en signature.",
+    ordre: 25,
+  },
 ];
 
 /**

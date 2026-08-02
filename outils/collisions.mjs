@@ -15,7 +15,7 @@ const PAGES = [
   '/admin', '/admin/modules', '/admin/composants', '/admin/leviers', '/admin/captures',
   '/admin/textes', '/admin/site', '/admin/questions', '/admin/langues',
   '/admin/traductions?langue=en&entite=site', '/admin/tarifs', '/admin/prestations',
-  '/admin/etapes', '/admin/offres', '/admin/offres/nouvelle', '/admin/utilisateurs',
+  '/admin/etapes', '/admin/contrats', '/admin/contrats/TFB-2026-0001-C', '/admin/prospects/1', '/admin/offres', '/admin/offres/nouvelle', '/admin/utilisateurs',
   '/admin/clients', '/admin/leads', '/admin/sync', '/admin/reglages',
 ];
 

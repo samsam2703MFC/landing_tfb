@@ -68,8 +68,16 @@ const exemple = vigueur
   : null;
 
 const message = Astro.url.searchParams.get('ok');
-const chiffres_ = tarifs.filter((t) => t.type !== 'texte');
-const textes = tarifs.filter((t) => t.type === 'texte');
+// Le contrat a sa propre section : ses réglages ne chiffrent rien, et les
+// mêler à la grille ferait chercher le préavis de résiliation entre le prix
+// par vue et le taux de TVA.
+const DU_CONTRAT = new Set([
+  'contrat_auto', 'contrat_duree_mois', 'contrat_preavis_jours',
+  'contrat_reconduction', 'contrat_gabarit', 'cgv',
+]);
+const contrat = tarifs.filter((t) => DU_CONTRAT.has(t.cle));
+const chiffres_ = tarifs.filter((t) => t.type !== 'texte' && t.type !== 'booleen' && !DU_CONTRAT.has(t.cle));
+const textes = tarifs.filter((t) => t.type === 'texte' && !DU_CONTRAT.has(t.cle));
 ---
 
 <Console
@@ -166,6 +174,64 @@ const textes = tarifs.filter((t) => t.type === 'texte');
       </section>
     )}
 
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Le contrat</h2>
+          <p>
+            Ce qui se passe quand une offre est acceptée. Les conditions — durée, préavis,
+            reconduction — sont <strong>recopiées sur le contrat</strong> au moment de son
+            édition : les changer ici ne touche pas un contrat déjà signé.
+          </p>
+        </div>
+      </div>
+
+      {contrat.filter((t) => t.type === 'booleen').map((t) => (
+        <div class="champ">
+          {/* Déclarée ici pour que l'enregistrement sache qu'elle existe :
+              une case décochée n'envoie rien d'autre. */}
+          <input type="hidden" name="cases" value={t.cle} />
+          <label class="case case--seule">
+            <input type="checkbox" name="case" value={t.cle} checked={String(t.valeur) === '1'} />
+            <span>
+              <strong>{t.libelle || t.cle}</strong>
+              <span class="champ__aide">{t.aide}</span>
+            </span>
+          </label>
+        </div>
+      ))}
+
+      <div class="duo" style="margin-block-start:16px">
+        {contrat.filter((t) => t.type === 'entier').map((t) => (
+          <div class="champ champ--nombre">
+            <label for={`c-${t.cle}`}>{t.libelle || t.cle}</label>
+            <input type="hidden" name="cle" value={t.cle} />
+            <span class="tarif__saisie">
+              <input id={`c-${t.cle}`} type="text" name="valeur" value={afficherTarif(t)} inputmode="numeric" />
+            </span>
+          </div>
+        ))}
+      </div>
+
+      {contrat.filter((t) => t.type === 'texte').map((t) => (
+        <div class="champ" style="margin-block-start:16px">
+          <label for={`c-${t.cle}`}>
+            <strong>{t.libelle || t.cle}</strong>
+            {t.aide && <span class="champ__aide">{t.aide}</span>}
+          </label>
+          <input type="hidden" name="cle" value={t.cle} />
+          <textarea id={`c-${t.cle}`} name="valeur" rows={String(t.valeur || '').length > 200 ? 18 : 4}>{afficherTarif(t)}</textarea>
+        </div>
+      ))}
+
+      <div class="bloc__pied">
+        La signature électronique se branche par variables d'environnement
+        (<span class="jeton">DOCUSIGN_BASE_URI</span>, <span class="jeton">DOCUSIGN_ACCOUNT_ID</span>,
+        <span class="jeton">DOCUSIGN_JETON</span>). Sans elles, un contrat s'édite et s'imprime,
+        mais rien ne part en signature — et la console le dit plutôt que de le laisser croire.
+      </div>
+    </section>
+
     <section class="bloc">
       <div class="bloc__tete">
         <div>
@@ -181,7 +247,7 @@ const textes = tarifs.filter((t) => t.type === 'texte');
             <span class="champ__aide">{t.aide}</span>
           </label>
           <input type="hidden" name="cle" value={t.cle} />
-          <textarea id={`t-${t.cle}`} name="valeur" rows={String(t.valeur || '').length > 120 ? 10 : 2}>{t.valeur || ''}</textarea>
+          <textarea id={`t-${t.cle}`} name="valeur" rows={String(t.valeur || '').length > 120 ? 10 : 2}>{afficherTarif(t)}</textarea>
         </div>
       ))}
     </section>

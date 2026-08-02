@@ -83,12 +83,29 @@ export function enEntier(saisie, champ = 'nombre') {
 }
 
 /**
+ * Un texte en fins de ligne d'ici, quel que soit ce que le navigateur envoie.
+ *
+ * Une `<textarea>` soumet ses retours en CRLF — la norme HTML l'exige. Sans
+ * cette normalisation, un gabarit de contrat enregistré depuis la console
+ * porte un `\r` à chaque ligne : invisible à l'écran, il ressort dans le
+ * document envoyé en signature, et il fait croire à un changement à chaque
+ * enregistrement puisque la valeur relue ne ressemble plus à celle qu'on
+ * avait écrite.
+ */
+function fins(valeur) {
+  return String(valeur ?? '').replace(/\r\n?/g, '\n');
+}
+
+/**
  * Lit une valeur de `landing_tarifs` selon son type déclaré.
  * Le type est stocké à côté de la valeur : rien n'est deviné.
  */
 export function lireTarif(ligne) {
   if (!ligne) return null;
-  if (ligne.type === 'texte') return String(ligne.valeur ?? '');
+  // Normalisé aussi à la lecture : les valeurs écrites avant cette règle
+  // portent encore leurs CRLF, et rien ne les réécrira tant que personne ne
+  // rouvre l'écran.
+  if (ligne.type === 'texte') return fins(ligne.valeur);
   const n = Number(ligne.valeur);
   return Number.isFinite(n) ? Math.trunc(n) : 0;
 }
@@ -98,7 +115,7 @@ export function afficherTarif(ligne) {
   if (!ligne) return '';
   if (ligne.type === 'cents') return depuisCents(ligne.valeur);
   if (ligne.type === 'points') return depuisPoints(ligne.valeur);
-  return String(ligne.valeur ?? '');
+  return fins(ligne.valeur);
 }
 
 /** La conversion inverse, à l'enregistrement. */
@@ -106,5 +123,5 @@ export function saisirTarif(ligne, saisie) {
   if (ligne.type === 'cents') return String(enCents(saisie, ligne.libelle || ligne.cle));
   if (ligne.type === 'points') return String(enPoints(saisie, ligne.libelle || ligne.cle));
   if (ligne.type === 'entier') return String(enEntier(saisie, ligne.libelle || ligne.cle));
-  return String(saisie ?? '');
+  return fins(saisie);
 }

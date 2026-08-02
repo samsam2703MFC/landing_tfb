@@ -22,6 +22,8 @@ import {
   changerStatutOffre,
   chargerOffre,
   changerEtapeOffre,
+  contratDeLOffre,
+  genererContrat,
   compteurs,
   etapeParCle,
   journaliser,
@@ -240,6 +242,14 @@ if (Astro.request.method === 'POST') {
       );
     }
 
+    if (action === 'contrat') {
+      const { reference: ref, regenere } = await genererContrat(courante.id, session.id);
+      return Astro.redirect(
+        `${BASE}/admin/contrats/${ref}?ok=${encodeURIComponent(regenere ? 'Contrat régénéré.' : 'Contrat édité.')}`,
+        303,
+      );
+    }
+
     if (action === 'suppression') {
       await supprimerOffre(courante.id);
       return Astro.redirect(`${BASE}/admin/offres?ok=${encodeURIComponent('Brouillon supprimé.')}`, 303);
@@ -340,6 +350,7 @@ if (offre && soumis) offre = { ...offre, ...soumis };
 
 if (offre) suivi = await listerSuivi(offre.id);
 const etapeCourante = offre ? await etapeParCle(offre.etape) : null;
+const contrat = offre ? await contratDeLOffre(offre.id) : null;
 
 const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
@@ -1095,6 +1106,34 @@ const ETAT_STATUT = {
             </p>
           </div>
         </div>
+
+        {/* Le contrat n'apparaît qu'une fois l'offre acceptée : le proposer
+            plus tôt inviterait à écrire un contrat pour une offre que le
+            client n'a pas encore dite bonne. */}
+        {offre.statut === 'acceptee' && (
+          <div class="champ" style="margin-block-start:14px">
+            <span class="legende">Le contrat</span>
+            {contrat ? (
+              <p class="champ__aide" style="margin:0">
+                <a href={`${BASE}/admin/contrats/${contrat.reference}`}><strong>{contrat.reference}</strong></a>
+                {' '}— {contrat.statut}, édité le {jourCourt(contrat.genere_le)}.
+              </p>
+            ) : (
+              <>
+                <p class="champ__aide" style="margin:0">
+                  Aucun contrat pour cette offre. Il se rédige depuis le gabarit et le dossier
+                  du client — s'il en manque une pièce, l'écran le dira nommément.
+                </p>
+                <form method="post" class="actions actions--case">
+                  <input type="hidden" name="action" value="contrat" />
+                  <button class="bouton bouton--marque bouton--sm" type="submit">
+                    <Icone nom="handshake" taille={16} /> Éditer le contrat
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        )}
 
         {etapeCourante?.gabarit_actif && (
           <div class="champ" style="margin-block-start:14px">

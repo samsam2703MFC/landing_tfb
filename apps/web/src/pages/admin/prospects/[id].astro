@@ -11,13 +11,24 @@
  * différentes, et la page le dit.
  */
 import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
 import {
   CHAMPS_PROSPECT,
+  ajouterPiece,
   chargerProspect,
   compteurs,
+  enregistrerDossier,
   enregistrerProspect,
   listerOffres,
+  listerPieces,
+  supprimerPiece,
 } from '../../../lib/admin/donnees.mjs';
+import {
+  CHAMPS_DOSSIER,
+  GROUPES_DOSSIER,
+  TYPES_PIECE,
+  dossierComplet,
+} from '../../../lib/contrats/gabarit.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const { id } = Astro.params;
@@ -26,11 +37,25 @@ let erreur = null;
 if (Astro.request.method === 'POST') {
   try {
     const f = await Astro.request.formData();
-    await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
-    return Astro.redirect(
-      `${BASE}/admin/prospects/${id}?ok=${encodeURIComponent('Coordonnées enregistrées.')}`,
-      303,
-    );
+    const action = String(f.get('action') || 'coordonnees');
+    let dit = 'Coordonnées enregistrées.';
+    if (action === 'dossier') {
+      await enregistrerDossier(id, Object.fromEntries(CHAMPS_DOSSIER.map((c) => [c.nom, f.get(c.nom)])));
+      dit = 'Dossier enregistré.';
+    } else if (action === 'piece') {
+      await ajouterPiece(id, {
+        type: f.get('type'),
+        fichier: f.get('fichier'),
+        deposePar: (Astro.locals.session || {}).id || null,
+      });
+      dit = 'Pièce déposée.';
+    } else if (action === 'piece-suppression') {
+      await supprimerPiece(f.get('piece_id'));
+      dit = 'Pièce retirée.';
+    } else {
+      await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
+    }
+    return Astro.redirect(`${BASE}/admin/prospects/${id}?ok=${encodeURIComponent(dit)}`, 303);
   } catch (err) {
     erreur = err.message;
   }
@@ -38,14 +63,22 @@ if (Astro.request.method === 'POST') {
 
 let prospect = null;
 let offres = [];
+let pieces = [];
 let chiffres = {};
 try {
   prospect = await chargerProspect(id);
-  if (prospect) offres = (await listerOffres()).filter((o) => o.prospect_id === prospect.id);
+  if (prospect) {
+    offres = (await listerOffres()).filter((o) => o.prospect_id === prospect.id);
+    pieces = await listerPieces(prospect.id);
+  }
   chiffres = await compteurs();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
+
+const etat = prospect ? dossierComplet(prospect, { pieces }) : { complet: false, manque: [] };
+const libellePiece = (cle) => (TYPES_PIECE.find((t) => t.cle === cle) || {}).libelle || cle;
+const poids = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(o / 1024)} ko`);
 
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
 
@@ -74,6 +107,7 @@ const message = Astro.url.searchParams.get('ok');
         </div>
 
         <form method="post">
+          <input type="hidden" name="action" value="coordonnees" />
           <div class="duo">
             {CHAMPS_PROSPECT.map((c) => (
               <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
@@ -98,6 +132,146 @@ const message = Astro.url.searchParams.get('ok');
           </div>
           <div class="actions">
             <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le dossier</h2>
+            <p>
+              Ce qu'il faut pour signer et facturer. Rien n'est obligatoire ici — c'est
+              au moment d'éditer le contrat qu'on refuse d'avancer sans, et l'écran dit
+              alors précisément ce qui manque. Bloquer plus tôt ferait fuir un prospect
+              qu'on n'a pas encore convaincu.
+            </p>
+          </div>
+          <span class={etat.complet ? 'etat etat--on' : 'etat etat--manque'}>
+            {etat.complet ? 'complet' : `${etat.manque.length} manque(s)`}
+          </span>
+        </div>
+
+        {!etat.complet && (
+          <div class="champ">
+            <span class="champ__aide">
+              Pour éditer un contrat, il manque : {etat.manque.map((m) => m.libelle).join(', ')}.
+            </span>
+          </div>
+        )}
+
+        <form method="post">
+          <input type="hidden" name="action" value="dossier" />
+          {GROUPES_DOSSIER.map((g) => (
+            <div class="groupe">
+              <span class="groupe__titre">{g.titre}</span>
+              <p class="champ__aide">{g.aide}</p>
+              <div class="duo">
+                {CHAMPS_DOSSIER.filter((c) => c.groupe === g.cle).map((c) => (
+                  <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
+                    {c.case ? (
+                      <>
+                        <span class="legende">{c.libelle}</span>
+                        <label class="case case--seule">
+                          <input type="checkbox" name={c.nom} value="1" checked={Boolean(prospect[c.nom])} />
+                          <span><strong>Oui</strong></span>
+                        </label>
+                      </>
+                    ) : (
+                      <>
+                        <label for={`d-${c.nom}`}>{c.libelle}</label>
+                        {c.zone ? (
+                          <textarea id={`d-${c.nom}`} name={c.nom} rows="2" placeholder={c.exemple}>{prospect[c.nom] || ''}</textarea>
+                        ) : c.nombre ? (
+                          <span class="tarif__saisie">
+                            <input id={`d-${c.nom}`} type="text" name={c.nom} value={prospect[c.nom] ?? 30} inputmode="numeric" />
+                            <span class="tarif__unite">{c.unite}</span>
+                          </span>
+                        ) : (
+                          <input
+                            id={`d-${c.nom}`}
+                            type={c.type || 'text'}
+                            name={c.nom}
+                            value={prospect[c.nom] || ''}
+                            placeholder={c.exemple}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer le dossier</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Les pièces</h2>
+            <p>
+              Stockées en base, comme les logos des réseaux : elles survivent au
+              déploiement et partent avec la sauvegarde. PDF, PNG, JPEG ou WebP, 8 Mo
+              au plus.
+            </p>
+          </div>
+        </div>
+
+        {pieces.length === 0 ? (
+          <div class="champ"><span class="champ__aide">Aucune pièce déposée.</span></div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr><th>Type</th><th>Fichier</th><th class="nombre">Poids</th><th></th></tr>
+              </thead>
+              <tbody>
+                {pieces.map((p) => (
+                  <tr>
+                    <td><strong>{libellePiece(p.type)}</strong></td>
+                    <td>
+                      <a href={`${BASE}/admin/pieces/${p.id}`}>{p.nom}</a>
+                      <code class="slug">{p.type_mime}</code>
+                    </td>
+                    <td class="nombre fb-num champ__aide">{poids(p.taille)}</td>
+                    <td>
+                      <form method="post" class="actions" onsubmit="return confirm('Retirer cette pièce du dossier ?')">
+                        <input type="hidden" name="action" value="piece-suppression" />
+                        <input type="hidden" name="piece_id" value={p.id} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Retirer</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form method="post" enctype="multipart/form-data">
+          <input type="hidden" name="action" value="piece" />
+          <div class="duo">
+            <div class="champ">
+              <label for="pi-type">Type de pièce</label>
+              <select id="pi-type" name="type">
+                {TYPES_PIECE.map((t) => (
+                  <option value={t.cle}>{t.libelle}{t.requise ? ' — requise' : ''}</option>
+                ))}
+              </select>
+            </div>
+            <div class="champ">
+              <label for="pi-fichier">Fichier</label>
+              <input id="pi-fichier" type="file" name="fichier" accept="application/pdf,image/png,image/jpeg,image/webp" required />
+            </div>
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="plus" taille={16} /> Déposer
+            </button>
           </div>
         </form>
       </section>
@@ -132,3 +306,17 @@ const message = Astro.url.searchParams.get('ok');
     </>
   )}
 </Console>
+
+<style is:global>
+  /* Un groupe du dossier : un titre et de l'air, sans le trait d'un
+     `fieldset` — un filet qui flotte entre deux rangées ajoute une ligne à
+     lire sans rien dire. Et sans `legend` non plus : une légende se pose sur
+     la bordure de son cadre et ignore le rembourrage du haut, si bien que le
+     titre du deuxième groupe se collait à la dernière saisie du premier. */
+  .groupe { margin-block-start: 24px; }
+  .groupe:first-of-type { margin-block-start: 0; }
+  .groupe__titre {
+    display: block; font: 600 var(--text-sm) / 1.3 var(--font-sans); color: var(--slate-700);
+  }
+  .groupe > .champ__aide { margin: 4px 0 12px; }
+</style>

@@ -1,0 +1,141 @@
+---
+/**
+ * Les contrats nés des offres acceptées.
+ *
+ * Un contrat n'existe pas tout seul : il vient d'une offre, dont il recopie
+ * les montants, et d'un dossier client, dont il recopie l'identité. C'est
+ * pourquoi rien ne se crée depuis cet écran — on y voit où en est chacun, et
+ * l'on ouvre celui qui attend quelque chose.
+ */
+import Console from '../../../components/Console.astro';
+import { compteurs, listerContrats } from '../../../lib/admin/donnees.mjs';
+import { STATUTS_CONTRAT, serviceSignature } from '../../../lib/contrats/signature.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+let contrats = [];
+let chiffres = {};
+try {
+  contrats = await listerContrats();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const service = serviceSignature();
+const filtre = Astro.url.searchParams.get('statut') || '';
+const vus = filtre ? contrats.filter((c) => c.statut === filtre) : contrats;
+const message = Astro.url.searchParams.get('ok');
+
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : '—');
+const classeEtat = (s) => (s === 'signe' ? 'etat etat--on' : s === 'refuse' || s === 'expire' ? 'etat etat--manque' : 'etat');
+---
+
+<Console
+  titre="Contrats"
+  fil="TFB Admin · Commercial · Contrats"
+  actif="contrats"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {!service.signe && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Aucune signature électronique n'est branchée</h2>
+          <p>
+            Les contrats s'éditent et s'impriment, mais rien ne part en signature. Les trois
+            variables <span class="jeton">DOCUSIGN_BASE_URI</span>,
+            <span class="jeton">DOCUSIGN_ACCOUNT_ID</span> et
+            <span class="jeton">DOCUSIGN_JETON</span> se posent sur le serveur —
+            aucune ne se saisit dans la console, et aucune n'est écrite dans le dépôt.
+          </p>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Filtrer</h2>
+        <p>{contrats.length} contrat(s).</p>
+      </div>
+    </div>
+    <form method="get" class="filtres">
+      <div class="champ">
+        <label for="f-statut">Statut</label>
+        <select id="f-statut" name="statut">
+          <option value="">Tous</option>
+          {STATUTS_CONTRAT.map((s) => <option value={s} selected={filtre === s}>{s}</option>)}
+        </select>
+      </div>
+      <div class="champ">
+        <span class="legende">&nbsp;</span>
+        <button class="bouton bouton--sobre" type="submit">Filtrer</button>
+      </div>
+    </form>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Le portefeuille</h2>
+        <p>Un contrat par offre acceptée. Son texte est figé à l'édition — le gabarit peut changer, lui non.</p>
+      </div>
+    </div>
+
+    {vus.length === 0 ? (
+      <div class="bloc__pied">
+        Aucun contrat. Ils naissent d'une offre passée en « acceptée » — automatiquement si
+        la case est cochée sur l'écran Tarifs, d'un bouton depuis la fiche de l'offre sinon.
+      </div>
+    ) : (
+      <div class="roule">
+        <table class="contrats">
+          <thead>
+            <tr>
+              <th>Référence</th><th>Client</th><th>Signataire</th><th>Statut</th>
+              <th>Édité</th><th>Envoyé</th><th>Signé</th><th class="nombre">Durée</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vus.map((c) => (
+              <tr>
+                <td>
+                  <a href={`${BASE}/admin/contrats/${c.reference}`}><strong>{c.reference}</strong></a>
+                  {c.offre_reference && <code class="slug">offre {c.offre_reference}</code>}
+                </td>
+                <td>{c.raison_sociale || '—'}</td>
+                <td>
+                  {c.signataire_nom || '—'}
+                  {c.signataire_email && <code class="slug">{c.signataire_email}</code>}
+                </td>
+                <td><span class={classeEtat(c.statut)}>{c.statut}</span></td>
+                <td class="fb-num champ__aide">{jour(c.genere_le)}</td>
+                <td class="fb-num champ__aide">{jour(c.envoye_le)}</td>
+                <td class="fb-num champ__aide">{jour(c.signe_le)}</td>
+                <td class="nombre fb-num champ__aide">{c.duree_mois ? `${c.duree_mois} mois` : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="bloc__pied">
+      Un contrat envoyé en signature ne se réécrit plus : le signataire a le premier
+      texte sous les yeux. Si les conditions changent, c'est une nouvelle offre.
+    </div>
+  </section>
+</Console>
+
+<style is:global>
+  .filtres { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); align-items: end; }
+  /* Huit colonnes dont trois dates : sous cette largeur les références se
+     coupent en deux. La table défile plutôt que de se tasser. */
+  .contrats { min-inline-size: 72rem; }
+  .contrats td, .contrats th { white-space: nowrap; }
+</style>

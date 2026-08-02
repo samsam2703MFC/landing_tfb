@@ -44,7 +44,11 @@ second ; quand un élément imbriqué déborde sa propre boîte, elle annonce un
 écart nul là où l'écran en montre trente. Mesurez au pixel avant de corriger —
 modifier le CSS pour faire taire l'outil abîmerait une mise en page correcte.
 Sa mesure « contre un bord », elle, compare deux boîtes dont l'une contient
-l'autre : celle-là est fiable.
+l'autre : celle-là est fiable. Elle a d'ailleurs trouvé seule ce qu'aucun des
+quatre autres ne voyait — la console ne chargeait pas le `box-sizing` du
+design system, et tout champ à cent pour cent de sa colonne débordait de son
+bloc par la droite. Quand elle signale quelque chose, mesurez avant de
+conclure au faux positif : c'est arrivé qu'on lui donne tort à tort.
 
 **Aucun ne juge du goût.** Ils disent qu'une chose en touche une autre, jamais
 qu'elle est laide au bon endroit.

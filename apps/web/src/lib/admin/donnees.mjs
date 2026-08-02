@@ -11,7 +11,10 @@
 
 import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
 import { enCents, enEntier, lireTarif, saisirTarif } from '../offres/montants.mjs';
-import { calculerOffre, lignesDe } from '../offres/calcul.mjs';
+import { calculerOffre, formater as formaterMontant, lignesDe } from '../offres/calcul.mjs';
+import { recapTexte } from '../offres/courriel.mjs';
+import { CHAMPS_DOSSIER, contexteContrat, dossierComplet, remplirGabarit } from '../contrats/gabarit.mjs';
+import { serviceSignature } from '../contrats/signature.mjs';
 import { ROLES, empreinteValide, hacher } from './session.mjs';
 import { lireImage } from './images.mjs';
 
@@ -103,6 +106,11 @@ export async function compteurs() {
   const [offres] = await db.requete(
     `SELECT COUNT(*) AS total FROM ${table('offres')} WHERE statut = 'brouillon'`,
   );
+  // Les contrats qui attendent quelque chose de nous : un brouillon à
+  // envoyer, une signature qui n'est pas revenue.
+  const [contrats] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('contrats')} WHERE statut IN ('brouillon', 'envoye')`,
+  );
   const [aValider] = await db.requete(
     `SELECT (SELECT COUNT(*) FROM ${table('modules')} WHERE statut = 'nouveau')
           + (SELECT COUNT(*) FROM ${table('fonctions')} WHERE statut = 'nouveau') AS total`,
@@ -121,6 +129,7 @@ export async function compteurs() {
     questions: nombre(questions),
     prestations: nombre(prestations),
     offres: nombre(offres),
+    contrats: nombre(contrats),
     aValider: nombre(aValider),
   };
 }
@@ -845,6 +854,21 @@ export async function enregistrerTarifs(formulaire) {
     if (valeur !== String(ligne.valeur ?? '')) aEcrire.push({ cle: ligne.cle, valeur });
   }
 
+  // Les cases à cocher voyagent sous leur propre nom.
+  //
+  // Une case décochée n'envoie rien : glissée dans le tableau `valeur`, elle
+  // en décalerait tout le reste et l'on enregistrerait le préavis dans la
+  // durée. Le formulaire déclare donc ses cases dans `cases`, et celles qui
+  // sont cochées reviennent dans `case`.
+  const declarees = formulaire.getAll('cases').map(String);
+  const cochees = new Set(formulaire.getAll('case').map(String));
+  for (const cle of declarees) {
+    const ligne = existants.get(cle);
+    if (!ligne || ligne.type !== 'booleen') continue;
+    const valeur = cochees.has(cle) ? '1' : '0';
+    if (valeur !== String(ligne.valeur ?? '')) aEcrire.push({ cle, valeur });
+  }
+
   for (const { cle, valeur } of aEcrire) {
     await db.executer(`UPDATE ${table('tarifs')} SET valeur = ? WHERE cle = ?`, [valeur, cle]);
   }
@@ -1076,6 +1100,30 @@ export async function changerEtapeOffre(id, cle, utilisateurId = null) {
  * statut qui entraîne l'étape. Les faire s'appeler l'un l'autre tournerait en
  * rond ; ils appellent tous deux ceci, qui n'appelle rien.
  */
+/**
+ * Le contrat qui s'édite tout seul, si la case des réglages le demande.
+ *
+ * Ne lève jamais. Un dossier incomplet est la règle plutôt que l'exception au
+ * moment où l'on marque une offre acceptée — refuser le changement de statut
+ * pour cette raison empêcherait de noter une bonne nouvelle. Le manque est
+ * journalisé, la fiche le répète, et le contrat s'édite d'un bouton quand le
+ * dossier est prêt.
+ */
+async function contratAutomatique(offreId, utilisateurId) {
+  const tarifs = new Map((await listerTarifs()).map((l) => [l.cle, l]));
+  if (String(lireTarif(tarifs.get('contrat_auto')) || 0) !== '1') return;
+  try {
+    const { reference } = await genererContrat(offreId, utilisateurId);
+    console.log(`✓ contrat ${reference} édité automatiquement`);
+  } catch (err) {
+    await journaliser(offreId, {
+      type: 'contrat',
+      texte: `Contrat non édité : ${err.message}`,
+      utilisateurId,
+    });
+  }
+}
+
 async function ecrireStatut(db, id, statut, utilisateurId) {
   const [avant] = await db.requete(
     `SELECT statut, envoyee_le FROM ${table('offres')} WHERE id = ? LIMIT 1`,
@@ -1092,6 +1140,7 @@ async function ecrireStatut(db, id, statut, utilisateurId) {
   // Le journal garde la trace : « qui a marqué cette offre refusée, et
   // quand » est exactement la question qu'on se pose trois mois plus tard.
   await journaliser(id, { type: 'statut', texte: `Statut : ${statut}`, utilisateurId });
+  if (statut === 'acceptee') await contratAutomatique(id, utilisateurId);
   return true;
 }
 
@@ -2242,6 +2291,307 @@ export async function enAttente() {
       ORDER BY m.ordre, f.ordre`,
   );
   return { modules, fonctions };
+}
+
+// ---------------------------------------------------------------------------
+// Le dossier client, les pièces, et le contrat
+// ---------------------------------------------------------------------------
+
+/**
+ * Enregistre le dossier d'un prospect.
+ *
+ * Séparé de `enregistrerProspect` à dessein : la fiche de premier contact
+ * exige trois champs, le dossier en exige dix de plus. Les mélanger
+ * obligerait à tout remplir pour corriger un numéro de téléphone.
+ */
+export async function enregistrerDossier(id, valeurs) {
+  const db = await connexion();
+  const colonnes = CHAMPS_DOSSIER.map((c) => c.nom);
+  const lire = (champ) => {
+    const brut = String(valeurs[champ.nom] ?? '').trim();
+    if (champ.case) return vrai(brut === '1' || brut === 'on');
+    if (champ.nombre) return brut ? enEntier(brut, champ.libelle) : 0;
+    return brut || null;
+  };
+  await db.executer(
+    `UPDATE ${table('prospects')} SET ${colonnes.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
+    [...CHAMPS_DOSSIER.map(lire), Number(id)],
+  );
+  viderCache();
+}
+
+/** Les pièces d'un prospect, la plus récente d'abord. */
+export async function listerPieces(prospectId) {
+  const db = await connexion();
+  // Sans `contenu` : une liste de dix pièces chargerait dix fichiers en
+  // mémoire pour n'afficher que leurs noms.
+  return db.requete(
+    `SELECT id, prospect_id, contrat_id, type, nom, type_mime, taille, depose_le, depose_par
+     FROM ${table('pieces')} WHERE prospect_id = ? ORDER BY id DESC`,
+    [Number(prospectId)],
+  );
+}
+
+/** Une pièce avec son contenu, pour le téléchargement. */
+export async function chargerPiece(id) {
+  const db = await connexion();
+  const lignes = await db.requete(`SELECT * FROM ${table('pieces')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  return lignes[0] || null;
+}
+
+/** Ce qu'on accepte de recevoir, et jusqu'à quel poids. */
+const PIECE_TAILLE_MAX = 8 * 1024 * 1024;
+const PIECE_TYPES = new Map([
+  ['application/pdf', 'pdf'],
+  ['image/png', 'png'],
+  ['image/jpeg', 'jpg'],
+  ['image/webp', 'webp'],
+]);
+
+export async function ajouterPiece(prospectId, { type, fichier, contratId = null, deposePar = null }) {
+  if (!fichier || typeof fichier === 'string' || !fichier.size) {
+    throw new Error('Aucun fichier reçu.');
+  }
+  if (fichier.size > PIECE_TAILLE_MAX) {
+    throw new Error(
+      `Le fichier fait ${Math.round(fichier.size / 1024 / 1024)} Mo, le maximum est ${PIECE_TAILLE_MAX / 1024 / 1024} Mo.`,
+    );
+  }
+  const mime = String(fichier.type || '');
+  if (!PIECE_TYPES.has(mime)) {
+    throw new Error(
+      `Format refusé (${mime || 'inconnu'}). Un PDF, un PNG, un JPEG ou un WebP — un scan de carte d'identité ou d'extrait de registre est toujours l'un des quatre.`,
+    );
+  }
+  const octets = Buffer.from(new Uint8Array(await fichier.arrayBuffer()));
+  const db = await connexion();
+  await db.executer(
+    `INSERT INTO ${table('pieces')}
+     (prospect_id, contrat_id, type, nom, type_mime, taille, contenu, depose_le, depose_par)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      Number(prospectId), Number(contratId) || null, String(type || 'autre'),
+      String(fichier.name || 'piece').slice(0, 255), mime, octets.length,
+      octets.toString('base64'), new Date(), Number(deposePar) || null,
+    ],
+  );
+  viderCache();
+}
+
+export async function supprimerPiece(id) {
+  const db = await connexion();
+  await db.executer(`DELETE FROM ${table('pieces')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/** Les contrats, du plus récent au plus ancien. */
+export async function listerContrats({ statut = '' } = {}) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT c.*, p.raison_sociale, p.signataire_nom, p.signataire_email,
+            o.reference AS offre_reference, o.version AS offre_version,
+            u.nom AS auteur_nom
+     FROM ${table('contrats')} c
+     LEFT JOIN ${table('prospects')} p ON p.id = c.prospect_id
+     LEFT JOIN ${table('offres')} o ON o.id = c.offre_id
+     LEFT JOIN ${table('utilisateurs')} u ON u.id = c.cree_par
+     ORDER BY c.id DESC`,
+  );
+  return statut ? lignes.filter((c) => c.statut === statut) : lignes;
+}
+
+export async function chargerContrat(reference) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT c.*, p.raison_sociale, p.signataire_nom, p.signataire_email,
+            o.reference AS offre_reference, o.version AS offre_version
+     FROM ${table('contrats')} c
+     LEFT JOIN ${table('prospects')} p ON p.id = c.prospect_id
+     LEFT JOIN ${table('offres')} o ON o.id = c.offre_id
+     WHERE c.reference = ? LIMIT 1`,
+    [String(reference)],
+  );
+  return lignes[0] || null;
+}
+
+/** Le contrat d'une offre, s'il en existe un. */
+export async function contratDeLOffre(offreId) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT * FROM ${table('contrats')} WHERE offre_id = ? ORDER BY id DESC LIMIT 1`,
+    [Number(offreId)],
+  );
+  return lignes[0] || null;
+}
+
+/**
+ * Édite le contrat d'une offre acceptée.
+ *
+ * Trois refus, dans cet ordre, parce que le premier rend les autres inutiles :
+ * pas de contrat sans offre, pas de contrat sur un dossier incomplet, pas de
+ * contrat sur un gabarit vide. Chacun dit ce qui manque — un « impossible »
+ * sans raison fait rouvrir cinq écrans pour trouver le champ coupable.
+ *
+ * Régénérer un contrat déjà parti en signature est refusé : le signataire a
+ * le premier texte sous les yeux.
+ */
+export async function genererContrat(offreId, utilisateurId = null) {
+  const db = await connexion();
+  const [offreBrute] = await db.requete(`SELECT * FROM ${table('offres')} WHERE id = ? LIMIT 1`, [Number(offreId)]);
+  if (!offreBrute) throw new Error("Cette offre n'existe pas.");
+  const offre = normaliserOffre(offreBrute);
+  const prospect = await chargerProspect(offre.prospect_id);
+  if (!prospect) throw new Error("Cette offre n'a pas de client.");
+
+  const existant = await contratDeLOffre(offre.id);
+  if (existant && existant.statut !== 'brouillon') {
+    throw new Error(
+      `Le contrat ${existant.reference} est déjà ${existant.statut} : son texte ne se réécrit plus. Créez une nouvelle offre si les conditions ont changé.`,
+    );
+  }
+
+  const pieces = await listerPieces(prospect.id);
+  const { complet, manque } = dossierComplet(prospect, { pieces });
+  if (!complet) {
+    throw new Error(
+      `Le dossier de ${prospect.raison_sociale} est incomplet : ${manque.map((m) => m.libelle).join(', ')}.`,
+    );
+  }
+
+  const tarifs = new Map((await listerTarifs()).map((l) => [l.cle, l]));
+  const gabarit = lireTarif(tarifs.get('contrat_gabarit')) || '';
+  if (!gabarit.trim()) throw new Error("Le gabarit de contrat est vide — il se règle sur l'écran Tarifs.");
+
+  const conditions = {
+    date_effet: new Date(),
+    duree_mois: lireTarif(tarifs.get('contrat_duree_mois')) || 0,
+    preavis_jours: lireTarif(tarifs.get('contrat_preavis_jours')) || 0,
+    reconduction: lireTarif(tarifs.get('contrat_reconduction')) || '',
+  };
+
+  // Le récapitulatif est celui du courriel : une seule source, sinon le
+  // contrat et la lettre finissent par annoncer deux prix.
+  const resultat = calculerOffre(configDe(offre));
+  const recapitulatif = recapTexte(offre, resultat, (c) => formaterMontant(c, offre.langue, offre.devise));
+
+  const { texte, inconnus, vides } = remplirGabarit(
+    gabarit,
+    contexteContrat({ offre, prospect, conditions, recapitulatif }),
+  );
+  if (inconnus.length > 0) {
+    throw new Error(
+      `Le gabarit utilise des jetons qui n'existent pas : ${inconnus.map((j) => `{${j}}`).join(', ')}. Corrigez-le sur l'écran Tarifs.`,
+    );
+  }
+  if (vides.length > 0) {
+    throw new Error(
+      `Ces jetons du gabarit n'ont rien à écrire : ${vides.map((j) => `{${j}}`).join(', ')}. Complétez le dossier ou retirez-les du gabarit.`,
+    );
+  }
+
+  const reference = existant ? existant.reference : `${offre.reference}-C`;
+  if (existant) {
+    await db.executer(
+      `UPDATE ${table('contrats')}
+       SET corps = ?, genere_le = ?, date_effet = ?, duree_mois = ?, preavis_jours = ?, reconduction = ?
+       WHERE id = ?`,
+      [texte, new Date(), conditions.date_effet, conditions.duree_mois,
+        conditions.preavis_jours, conditions.reconduction, existant.id],
+    );
+  } else {
+    await db.executer(
+      `INSERT INTO ${table('contrats')}
+       (reference, offre_id, prospect_id, statut, corps, genere_le,
+        date_effet, duree_mois, preavis_jours, reconduction, cree_par)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [reference, offre.id, prospect.id, 'brouillon', texte, new Date(),
+        conditions.date_effet, conditions.duree_mois, conditions.preavis_jours,
+        conditions.reconduction, Number(utilisateurId) || null],
+    );
+  }
+  await journaliser(offre.id, {
+    type: 'contrat',
+    texte: existant ? `Contrat ${reference} régénéré` : `Contrat ${reference} édité`,
+    utilisateurId,
+  });
+  viderCache();
+  return { reference, regenere: Boolean(existant) };
+}
+
+/**
+ * Envoie un contrat en signature.
+ *
+ * Sans service configuré, rien ne part et le contrat reste `brouillon` : un
+ * contrat marqué « envoyé » qui dort dans un journal ferait attendre un
+ * commercial pour un courriel que personne n'a reçu.
+ */
+export async function envoyerEnSignature(reference, utilisateurId = null) {
+  const db = await connexion();
+  const contrat = await chargerContrat(reference);
+  if (!contrat) throw new Error(`Le contrat ${reference} n'existe pas.`);
+  if (contrat.statut === 'signe') throw new Error('Ce contrat est déjà signé.');
+
+  const service = serviceSignature();
+  const { enveloppe, statut } = await service.envoyer({
+    reference: contrat.reference,
+    signataire_nom: contrat.signataire_nom,
+    signataire_email: contrat.signataire_email,
+    corps: contrat.corps,
+  });
+
+  await db.executer(
+    `UPDATE ${table('contrats')}
+     SET statut = ?, envoye_le = ?, signature_service = ?, signature_enveloppe = ?,
+         signature_statut = ?, signature_maj_le = ?
+     WHERE id = ?`,
+    [statut, service.signe ? new Date() : null, service.nom, enveloppe || null,
+      statut, new Date(), contrat.id],
+  );
+  await journaliser(contrat.offre_id, {
+    type: 'contrat',
+    texte: service.signe
+      ? `Contrat ${reference} envoyé en signature par ${service.nom}`
+      : `Contrat ${reference} : aucun service de signature configuré, rien n'est parti`,
+    utilisateurId,
+  });
+  viderCache();
+  return { expedie: service.signe, service: service.nom };
+}
+
+/**
+ * Demande au prestataire où en est la signature.
+ *
+ * Interrogé à la demande plutôt que par un rappel automatique : un contrat
+ * se relève une fois par jour au plus, et un abonnement à des rappels
+ * exigerait une adresse publique que ce serveur n'a pas.
+ */
+export async function rafraichirSignature(reference, utilisateurId = null) {
+  const db = await connexion();
+  const contrat = await chargerContrat(reference);
+  if (!contrat) throw new Error(`Le contrat ${reference} n'existe pas.`);
+  if (!contrat.signature_enveloppe) {
+    throw new Error("Ce contrat n'a pas d'enveloppe chez un prestataire : il n'y a rien à interroger.");
+  }
+  const service = serviceSignature();
+  const { statut } = await service.etat(contrat.signature_enveloppe);
+  const change = statut !== contrat.statut;
+  await db.executer(
+    `UPDATE ${table('contrats')}
+     SET statut = ?, signature_statut = ?, signature_maj_le = ?${statut === 'signe' ? ', signe_le = ?' : ''}
+     WHERE id = ?`,
+    statut === 'signe'
+      ? [statut, statut, new Date(), new Date(), contrat.id]
+      : [statut, statut, new Date(), contrat.id],
+  );
+  if (change) {
+    await journaliser(contrat.offre_id, {
+      type: 'contrat',
+      texte: `Contrat ${reference} : ${statut}`,
+      utilisateurId,
+    });
+  }
+  viderCache();
+  return { statut, change };
 }
 
 // ---------------------------------------------------------------------------

@@ -120,3 +120,27 @@ describe('les tarifs, selon leur type déclaré', () => {
     assert.throws(() => saisirTarif(prix, 'gratuit'), /Prix par vue/);
   });
 });
+
+describe('les fins de ligne des tarifs texte', () => {
+  // Une `<textarea>` soumet ses retours en CRLF : la norme HTML l'exige.
+  // Sans normalisation, un gabarit de contrat ressort avec un `\r` par ligne
+  // dans le document envoyé en signature.
+  const ligne = { cle: 'contrat_gabarit', type: 'texte', valeur: 'a\r\nb\r\nc' };
+
+  it('normalise à l’enregistrement', () => {
+    assert.equal(saisirTarif(ligne, 'x\r\ny'), 'x\ny');
+  });
+
+  it('normalise aussi à la lecture, pour les valeurs déjà en base', () => {
+    assert.equal(lireTarif(ligne), 'a\nb\nc');
+    assert.equal(afficherTarif(ligne), 'a\nb\nc');
+  });
+
+  it('laisse un texte déjà propre intact', () => {
+    assert.equal(saisirTarif(ligne, 'x\ny'), 'x\ny');
+  });
+
+  it('ne touche pas aux nombres', () => {
+    assert.equal(saisirTarif({ cle: 'tva', type: 'points', libelle: 'TVA' }, '21'), '2100');
+  });
+});
