@@ -24,6 +24,7 @@ import {
   noterViesProspect,
   supprimerPiece,
 } from '../../../lib/admin/donnees.mjs';
+import { cheminAutorise } from '../../../lib/admin/session.mjs';
 import { serviceVies } from '../../../lib/onboarding/vies.mjs';
 import {
   CHAMPS_DOSSIER,
@@ -126,6 +127,11 @@ const message = Astro.url.searchParams.get('ok');
           <span class={prospect.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
             {prospect.tva_verifiee_le ? `TVA vérifiée le ${jour(prospect.tva_verifiee_le)}` : 'TVA non vérifiée'}
           </span>
+          {/* Le lien n'apparaît que pour qui peut l'ouvrir : une entrée qui
+              mènerait à un 403 laisse croire à un droit qu'on n'a pas. */}
+          {cheminAutorise('/admin/charte', (Astro.locals.session || {}).role) && (
+            <a class="etat" href={`${BASE}/admin/charte/${prospect.id}`}>Sa charte</a>
+          )}
         </div>
 
         {prospect.tva_verifiee_nom && prospect.tva_verifiee_nom !== prospect.raison_sociale && (

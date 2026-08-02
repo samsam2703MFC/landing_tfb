@@ -103,6 +103,28 @@ export function cleAnnexeValide(reference, version, proposee) {
   return memeChaine(proposee, cleAnnexe(reference, version));
 }
 
+/**
+ * La clé qui ouvre la page de charte d'un client.
+ *
+ * Même raisonnement que pour l'annexe : la page montre au client ses propres
+ * couleurs, donc rien qu'il ne voie déjà dans son application. Mais un
+ * identifiant de prospect est un entier, et sans signature on lirait la charte
+ * — et donc la raison sociale — de tous les autres en changeant un chiffre.
+ *
+ * Elle n'est **pas** liée à la version : le lien remis au client doit continuer
+ * d'ouvrir sa charte après chaque publication, sinon il faudrait le renvoyer à
+ * chaque changement de couleur.
+ */
+export function cleCharte(prospectId) {
+  return signer(`charte:${Number(prospectId) || 0}`).slice(0, 32);
+}
+
+/** La clé proposée ouvre-t-elle bien la charte de ce client-là ? */
+export function cleCharteValide(prospectId, proposee) {
+  if (!proposee) return false;
+  return memeChaine(proposee, cleCharte(prospectId));
+}
+
 // ---------------------------------------------------------------------------
 // Mots de passe des comptes
 // ---------------------------------------------------------------------------
