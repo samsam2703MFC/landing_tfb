@@ -1147,6 +1147,38 @@ function modele(pg) {
       ],
     },
     {
+      // La charte d'un client : deux lignes par prospect, `brouillon` et
+      // `publie`. Le prospect 0 porte les défauts maison, au-dessus de ceux du
+      // registre — c'est ce qui permet de changer une couleur pour tout le monde
+      // sans toucher au code.
+      nom: table('charte'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['etat', `${t.chaine(12)} NOT NULL`],
+        ['donnees', t.objet],
+        ['version', 'INT DEFAULT 0'],
+        ['maj_le', t.chaine(40)],
+        ['maj_par', t.chaine(200)],
+      ],
+      // Pas d'unique composite : le format de définition ci-dessus n'en connaît
+      // pas, et le magasin lit avant d'écrire. Le couple (prospect_id, etat) est
+      // donc tenu par le code, comme ailleurs dans ce schéma.
+    },
+    {
+      // L'historique des publications. Écrit avec la publication, jamais après :
+      // une ligne qui peut manquer ferait croire l'historique complet.
+      nom: table('charte_journal'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['version', 'INT NOT NULL'],
+        ['publie_le', t.chaine(40)],
+        ['publie_par', t.chaine(200)],
+        ['modifiees', t.objet],
+      ],
+    },
+    {
       nom: table('site'),
       colonnes: [
         ['id', t.id],

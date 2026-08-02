@@ -1,0 +1,247 @@
+---
+/**
+ * La charte d'un client — un formulaire fabriqué depuis le registre.
+ *
+ * Cet écran ne connaît aucune variable en particulier : il rend ce que le
+ * registre déclare, le contrôle choisi par le type. Ajouter une variable, c'est
+ * une entrée dans registre.mjs et zéro ligne ici.
+ *
+ * La colonne de droite dit d'où vient chaque valeur. « Surchargé » contre
+ * « Hérité » est ce qui permet de voir en un coup d'œil ce qui diffère vraiment
+ * pour ce client — sans quoi on lit 21 lignes sans savoir lesquelles comptent.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { lien } from '../../../lib/lien.mjs';
+import { chargerProspect, compteurs } from '../../../lib/admin/donnees.mjs';
+import {
+  MAISON,
+  charteBrouillon,
+  charteMaison,
+  chartePubliee,
+  journalCharte,
+  modifierBrouillon,
+  publierCharte,
+} from '../../../lib/admin/charte.mjs';
+import { REGISTRE, controlerCharte, resoudreTout, valeursResolues } from '../../../lib/charte/registre.mjs';
+import { cleCharte } from '../../../lib/admin/session.mjs';
+
+const id = Number(Astro.params.prospect);
+const estMaison = id === MAISON;
+
+let erreur = null;
+let message = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = String(form.get('action') || '');
+  // Qui a publié : le nom du compte, pas son identifiant numérique. Le journal
+  // est relu par des humains, et « 4 » ne dit rien à personne.
+  const session = Astro.locals.session || {};
+  const qui = session.nom || session.identifiant || (session.secours ? 'clé de secours' : null);
+
+  if (action === 'publier') {
+    const r = await publierCharte(id, qui);
+    if (r.ok) message = `Publiée en v${r.version}.`;
+    else erreur = Object.values(r.erreurs)[0] || 'Publication refusée.';
+  } else if (action === 'reinitialiser') {
+    await modifierBrouillon(id, { [String(form.get('cle'))]: null }, qui);
+    message = 'Surcharge retirée — la valeur est de nouveau héritée.';
+  } else {
+    const cle = String(form.get('cle') || '');
+    const brute = form.get('valeur');
+    // Un champ vidé vaut « je ne surcharge plus », pas « surcharge par du
+    // vide » : sans ça, effacer une couleur écrirait la chaîne vide en base et
+    // le défaut maison ne reprendrait jamais la main.
+    const valeur = brute === null || String(brute).trim() === '' ? null : String(brute).trim();
+    const r = await modifierBrouillon(id, { [cle]: valeur }, qui);
+    if (r.ok) message = valeur === null ? 'Surcharge retirée — la valeur est de nouveau héritée.' : 'Enregistré dans le brouillon.';
+    else erreur = Object.values(r.erreurs)[0] || 'Valeur refusée.';
+  }
+}
+
+const [prospect, brouillon, publie, maison, journal, chiffres] = await Promise.all([
+  estMaison ? Promise.resolve(null) : chargerProspect(id),
+  charteBrouillon(id),
+  chartePubliee(id),
+  estMaison ? Promise.resolve({ donnees: {} }) : charteMaison(),
+  journalCharte(id),
+  compteurs(),
+]);
+
+const resolutions = resoudreTout(brouillon.donnees, maison.donnees);
+const erreursCouple = controlerCharte(valeursResolues(brouillon.donnees, maison.donnees));
+const surcharges = resolutions.filter((r) => r.depuis === 'client').length;
+const enAttente = brouillon.majLe !== null;
+const nom = estMaison ? 'Charte maison' : (prospect?.raison_sociale || `Prospect ${id}`);
+
+// Le lien remis au client : signé, donc non devinable, et stable d'une
+// publication à l'autre — il n'aurait aucun intérêt s'il fallait le renvoyer à
+// chaque changement de couleur.
+const lienClient = estMaison ? null : lien(`/charte/${id}?cle=${cleCharte(id)}`);
+
+const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'registre' };
+---
+
+<Console titre={nom} actif="charte" compteurs={chiffres}>
+  {erreur && <p class="bandeau bandeau--erreur">{erreur}</p>}
+  {message && <p class="bandeau bandeau--ok">{message}</p>}
+
+  {enAttente && (
+    <p class="bandeau bandeau--attente">
+      <Icone nom="triangle-alert" taille={16} />
+      <span>
+        <strong>Brouillon</strong> — ces valeurs ne sont pas encore servies. Le client reçoit
+        toujours <span class="mono">v{publie.version}</span>.
+      </span>
+    </p>
+  )}
+
+  <div class="entete">
+    <div>
+      <h2>{nom}</h2>
+      <p class="sous">
+        {estMaison
+          ? 'Les défauts appliqués à tous les clients qui ne surchargent rien.'
+          : `${surcharges} personnalisation(s) sur ${REGISTRE.length} · version servie v${publie.version}`}
+      </p>
+    </div>
+    {lienClient && (
+      <a class="lien" href={lienClient} target="_blank" rel="noreferrer">
+        <Icone nom="external-link" taille={14} /> page charte du client
+      </a>
+    )}
+    <form method="post">
+      <input type="hidden" name="action" value="publier" />
+      <button class="bouton" type="submit" disabled={!enAttente || Object.keys(erreursCouple).length > 0}>
+        <Icone nom="upload" taille={15} />
+        {Object.keys(erreursCouple).length > 0 ? 'Corriger l’erreur d’abord' : `Publier v${publie.version + 1}`}
+      </button>
+    </form>
+  </div>
+
+  <div class="cellule">
+    {resolutions.map((r) => {
+      const v = REGISTRE.find((x) => x.cle === r.cle);
+      const err = erreursCouple[r.cle];
+      const surcharge = r.depuis === 'client';
+      return (
+        <div class:list={['ligne', surcharge && 'ligne--surcharge']}>
+          <div class="ligne__quoi">
+            <span class="ligne__libelle">{v.libelle}</span>
+            <span class="mono ligne__cle">{r.cle} · {v.type}</span>
+            {v.aide && <span class="ligne__aide">{v.aide}</span>}
+            {err && <span class="ligne__erreur"><Icone nom="circle-alert" taille={13} /> {err}</span>}
+          </div>
+
+          <form class="ligne__champ" method="post">
+            <input type="hidden" name="cle" value={r.cle} />
+            {v.type === 'liste' ? (
+              <select name="valeur" onchange="this.form.submit()">
+                {v.options.map((o) => (
+                  <option value={o.valeur} selected={o.valeur === r.valeur}>{o.libelle}</option>
+                ))}
+              </select>
+            ) : v.type === 'couleur' ? (
+              <span class="couleur">
+                <span class="pastille" style={`background:${r.valeur}`} aria-hidden="true"></span>
+                <input type="text" name="valeur" value={r.valeur ?? ''} size="9" />
+              </span>
+            ) : (
+              <input type="text" name="valeur" value={r.valeur ?? ''} />
+            )}
+            <button class="bouton bouton--sobre" type="submit">Enregistrer</button>
+          </form>
+
+          <div class="ligne__etat">
+            <span class:list={['jeton', surcharge ? 'jeton--client' : 'jeton--herite']}>
+              {surcharge ? 'Surchargé' : `Hérité — ${COUCHES[r.depuis]}`}
+            </span>
+            {surcharge && (
+              <form method="post">
+                <input type="hidden" name="action" value="reinitialiser" />
+                <input type="hidden" name="cle" value={r.cle} />
+                <button class="reinit" type="submit">Réinitialiser</button>
+              </form>
+            )}
+          </div>
+        </div>
+      );
+    })}
+  </div>
+
+  <p class="note">
+    Une ligne absente vaut héritage : « Réinitialiser » <strong>supprime</strong> la surcharge, il ne
+    stocke pas une valeur vide. Le contraste est indicatif ici et bloquant à la publication — il faut
+    pouvoir poser une couleur claire puis changer son encre.
+  </p>
+
+  {lienClient && (
+    <div class="cellule partage">
+      <h3>Le lien à remettre au client</h3>
+      <p class="note">
+        Il montre la charte <strong>publiée</strong>, pas le brouillon, et reste valable après chaque
+        publication. Signé, donc non devinable : changer le numéro dans l'URL n'ouvre la charte de
+        personne d'autre.
+      </p>
+      <input class="mono" type="text" readonly value={new URL(lienClient, Astro.url).href} onclick="this.select()" />
+    </div>
+  )}
+
+  {journal.length > 0 && (
+    <div class="cellule">
+      <h3>Publications</h3>
+      {journal.map((e) => (
+        <div class="journal">
+          <span class="mono jeton jeton--client">v{e.version}</span>
+          <span class="mono">{String(e.publieLe).replace('T', ' ').slice(0, 16)}</span>
+          <span>{e.publiePar || '—'}</span>
+          <span class="journal__cles">
+            {e.modifiees.length === 0
+              ? 'aucune valeur modifiée'
+              : e.modifiees.map((c) => <span class="mono puce">{c}</span>)}
+          </span>
+        </div>
+      ))}
+    </div>
+  )}
+</Console>
+
+<style>
+  .bandeau { display: flex; gap: 10px; align-items: flex-start; padding: 11px 15px;
+             border-radius: var(--radius-card, 12px); margin-block-end: var(--space-4); }
+  .bandeau--attente { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  .bandeau--erreur { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
+  .bandeau--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
+  .entete { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-block-end: var(--space-4); }
+  .entete h2 { margin: 0; }
+  .sous { color: var(--slate-600); margin: 2px 0 0; }
+  .lien { display: inline-flex; align-items: center; gap: 6px; color: var(--slate-600); }
+  .ligne { display: grid; grid-template-columns: minmax(0, 1fr) 320px 190px; gap: var(--space-4);
+           align-items: start; padding: 12px 16px; border-block-start: 1px solid var(--slate-200); }
+  .ligne--surcharge { background: color-mix(in srgb, var(--brand, #7b4488) 5%, transparent); }
+  .ligne__quoi { display: flex; flex-direction: column; gap: 2px; }
+  .ligne__libelle { font: 500 var(--text-sm) / 1.3 var(--font-sans); }
+  .ligne__cle, .ligne__aide { font-size: var(--text-xs); color: var(--slate-500); }
+  .ligne__erreur { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs);
+                   color: var(--red-700, #931f35); margin-block-start: 3px; }
+  .ligne__champ { display: flex; gap: 8px; align-items: center; }
+  .ligne__champ input[type="text"], .ligne__champ select { inline-size: 100%; }
+  .couleur { display: inline-flex; align-items: center; gap: 8px; inline-size: 100%; }
+  .pastille { inline-size: 20px; block-size: 20px; border-radius: 4px; border: 1px solid rgba(12,19,41,.16); flex: none; }
+  .ligne__etat { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+  .jeton { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px; }
+  .jeton--client { background: color-mix(in srgb, var(--brand, #7b4488) 14%, transparent); color: var(--brand, #7b4488); }
+  .jeton--herite { background: var(--slate-100); color: var(--slate-600); }
+  .reinit { background: none; border: 0; padding: 0; cursor: pointer; font-size: var(--text-xs);
+            color: var(--slate-600); text-decoration: underline; text-underline-offset: 2px; }
+  .note { max-inline-size: 70ch; color: var(--slate-600); font-size: var(--text-sm); margin-block-start: var(--space-4); }
+  .partage { padding: 16px; margin-block-start: var(--space-4); }
+  .partage h3 { margin: 0; }
+  .partage input { inline-size: 100%; margin-block-start: var(--space-3); font-size: var(--text-sm); }
+  .journal { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
+             padding: 10px 16px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm); }
+  .journal__cles { display: flex; gap: 6px; flex-wrap: wrap; }
+  .puce { background: var(--slate-100); border-radius: 4px; padding: 1px 7px; font-size: var(--text-xs); }
+  .mono { font-family: var(--font-mono); }
+</style>

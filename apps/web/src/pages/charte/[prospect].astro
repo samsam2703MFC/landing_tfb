@@ -1,0 +1,445 @@
+---
+/**
+ * La charte d'un client, telle qu'il la reçoit.
+ *
+ * Une page et une seule, hors de `/admin` : le client n'a pas de compte, et
+ * lui en demander un pour valider ses couleurs serait le meilleur moyen qu'il
+ * ne les valide jamais. Elle montre **tout** ce que la charte produit — les
+ * aplats, les boutons, les listes, les champs, les états, les icônes, le logo
+ * — parce qu'une pastille de couleur ne dit pas si un bouton restera lisible.
+ *
+ * Elle sert la version **publiée**, jamais le brouillon : le lien est remis une
+ * fois et reste valable, il ne doit donc pas montrer un travail en cours.
+ *
+ * L'accès tient à une clé signée. Ce n'est pas un secret — le client ne
+ * découvre rien qu'il ne voie déjà dans son application — mais sans elle on
+ * lirait la charte, et la raison sociale, de tous les autres en changeant le
+ * numéro dans l'URL. Sans clé valable : 404 et non 403, parce que confirmer
+ * qu'un client existe serait déjà en dire trop.
+ *
+ * Toute la page est écrite contre les variables du design system. Rien n'y est
+ * codé en dur : c'est ce qui permet de dire qu'elle montre la vraie charte et
+ * pas une maquette qui lui ressemble.
+ */
+import '../../design-system/styles.css';
+import Icone from '../../components/Icone.astro';
+import { chargerProspect } from '../../lib/admin/donnees.mjs';
+import { MAISON, charteMaison, chartePubliee } from '../../lib/admin/charte.mjs';
+import { cleCharteValide } from '../../lib/admin/session.mjs';
+import { REGISTRE, resoudreTout, valeursResolues } from '../../lib/charte/registre.mjs';
+import { cssCharte, logoCharte } from '../../lib/charte/theme.mjs';
+
+const id = Number(Astro.params.prospect);
+const introuvable = () => new Response('Page introuvable', { status: 404 });
+
+// L'ordre compte : on vérifie la clé avant de toucher à la base. Une page qui
+// répondrait plus vite pour un identifiant inexistant que pour un identifiant
+// réel dirait lesquels existent, clé ou pas.
+if (!Number.isInteger(id) || id === MAISON || !cleCharteValide(id, Astro.url.searchParams.get('cle'))) {
+  return introuvable();
+}
+
+const [prospect, publie, maison] = await Promise.all([
+  chargerProspect(id),
+  chartePubliee(id),
+  charteMaison(),
+]);
+if (!prospect) return introuvable();
+
+const valeurs = valeursResolues(publie.donnees, maison.donnees);
+const css = cssCharte(valeurs);
+const logo = logoCharte(valeurs);
+const resolutions = resoudreTout(publie.donnees, maison.donnees);
+const propres = resolutions.filter((r) => r.depuis === 'client');
+
+const nomApp = valeurs['app.nom'];
+const support = valeurs['app.support'];
+
+/** Les couleurs, dans l'ordre où on les lit sur un écran. */
+const APLATS = [
+  { cle: 'theme.primaire', libelle: 'Primaire', encre: 'var(--brand-on)', fond: 'var(--brand)' },
+  { cle: 'theme.accent', libelle: 'Accent', encre: 'var(--cta-warm-on)', fond: 'var(--cta-warm)' },
+  { cle: 'theme.fond_page', libelle: 'Fond de page', encre: 'var(--text-primary)', fond: 'var(--surface-page)' },
+  { cle: 'theme.fond_carte', libelle: 'Fond de carte', encre: 'var(--text-primary)', fond: 'var(--surface-card)' },
+  { cle: 'etat.succes', libelle: 'Succès', encre: '#ffffff', fond: 'var(--status-success)' },
+  { cle: 'etat.alerte', libelle: 'Avertissement', encre: '#ffffff', fond: 'var(--status-warning)' },
+  { cle: 'etat.erreur', libelle: 'Erreur', encre: '#ffffff', fond: 'var(--status-danger)' },
+  { cle: 'etat.info', libelle: 'Information', encre: '#ffffff', fond: 'var(--status-info)' },
+];
+
+/** Un échantillon du jeu d'icônes — il en compte davantage. */
+const ICONES = [
+  'store', 'shopping-cart', 'credit-card', 'receipt', 'truck', 'package', 'users', 'calendar',
+  'bar-chart', 'trending-up', 'clock', 'bell', 'search', 'settings', 'qr-code', 'smartphone',
+  'utensils', 'chef-hat', 'map-pin', 'star', 'check', 'circle-alert',
+];
+
+const ESPACES = [
+  ['--space-1', 4], ['--space-2', 8], ['--space-3', 12],
+  ['--space-4', 16], ['--space-6', 24], ['--space-8', 32],
+];
+---
+
+<html lang="fr" dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{`Charte — ${prospect.raison_sociale}`}</title>
+    {/* Le lien est signé, pas secret : on préfère quand même qu'il ne finisse
+        pas dans un index de moteur de recherche. */}
+    <meta name="robots" content="noindex, nofollow" />
+  </head>
+
+  <body>
+    {/* La charte s'applique à toute la page, en surcharge du design system
+        chargé au-dessus. C'est exactement ce qui se passe dans l'application du
+        client : rien n'est compilé pour lui, ce sont des variables. */}
+    <style is:inline set:html={`:root {\n  ${css}\n}`}></style>
+
+    <header class="tete">
+      <div class="tete__dedans">
+        {logo
+          ? <img class="tete__logo" src={logo} alt={prospect.raison_sociale} />
+          : <span class="tete__pastille">{prospect.raison_sociale.slice(0, 2).toUpperCase()}</span>}
+        <div>
+          <p class="tete__sur">Charte graphique · {nomApp}</p>
+          <h1>{prospect.raison_sociale}</h1>
+        </div>
+        <span class="jeton">Version {publie.version || 0}</span>
+      </div>
+    </header>
+
+    <main class="page">
+      <p class="chapo">
+        Voici l'apparence de votre application.{' '}
+        {propres.length === 0
+          ? 'Elle utilise pour l’instant nos réglages par défaut : rien n’a encore été personnalisé pour vous.'
+          : `${propres.length} réglage(s) sur ${REGISTRE.length} vous sont propres ; le reste suit nos défauts.`}
+        {' '}Une remarque sur une couleur, une police ou un contraste : écrivez à{' '}
+        <a href={`mailto:${support}`}>{support}</a>.
+      </p>
+
+      <section class="bloc">
+        <h2>Vos couleurs</h2>
+        <p class="aide">
+          Chaque aplat est montré avec l'encre qui s'y pose réellement. C'est ce couple qui compte :
+          une couleur seule ne dit pas si le texte restera lisible dessus.
+        </p>
+        <div class="aplats">
+          {APLATS.map((a) => (
+            <div class="aplat" style={`background:${a.fond}; color:${a.encre}`}>
+              <span class="aplat__nom">{a.libelle}</span>
+              <span class="aplat__code">{valeurs[a.cle]}</span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos boutons</h2>
+        <div class="rangee">
+          <button class="b b--primaire" type="button">Action principale</button>
+          <button class="b b--accent" type="button"><Icone nom="shopping-cart" taille={15} /> Commander</button>
+          <button class="b b--contour" type="button">Action secondaire</button>
+          <button class="b b--nu" type="button">Annuler</button>
+          <button class="b b--primaire" type="button" disabled>Indisponible</button>
+        </div>
+        <div class="rangee">
+          <button class="b b--succes" type="button"><Icone nom="check" taille={15} /> Valider</button>
+          <button class="b b--danger" type="button"><Icone nom="trash-2" taille={15} /> Supprimer</button>
+          <button class="b b--primaire b--petit" type="button">Petit</button>
+          <a class="b b--lien" href={`mailto:${support}`}>Un lien <Icone nom="arrow-up-right" taille={13} /></a>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos champs et vos listes</h2>
+        <div class="grille2">
+          <label class="champ">
+            <span>Nom du point de vente</span>
+            <input type="text" value="Belleville — Centre" />
+          </label>
+          <label class="champ">
+            <span>Mode de service</span>
+            <select>
+              <option>Sur place</option>
+              <option>À emporter</option>
+              <option>Livraison</option>
+            </select>
+          </label>
+          <label class="champ">
+            <span>Champ au repos</span>
+            <input type="text" placeholder="Rechercher un article…" />
+          </label>
+          <label class="champ champ--faux">
+            <span>Champ en erreur</span>
+            <input type="text" value="27,5,0" />
+            <em><Icone nom="circle-alert" taille={13} /> Montant non reconnu.</em>
+          </label>
+        </div>
+        <div class="rangee">
+          <label class="case"><input type="checkbox" checked /> Recevoir le récapitulatif</label>
+          <label class="case"><input type="radio" name="d" checked /> Quotidien</label>
+          <label class="case"><input type="radio" name="d" /> Hebdomadaire</label>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos messages</h2>
+        <div class="messages">
+          <p class="msg msg--info"><Icone nom="info" taille={16} /> La synchronisation de vos ventes a lieu toutes les heures.</p>
+          <p class="msg msg--succes"><Icone nom="circle-check" taille={16} /> Commande enregistrée et transmise en cuisine.</p>
+          <p class="msg msg--alerte"><Icone nom="triangle-alert" taille={16} /> Deux articles passent sous le seuil de réassort.</p>
+          <p class="msg msg--erreur"><Icone nom="circle-alert" taille={16} /> Le terminal de paiement ne répond pas.</p>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos cartes</h2>
+        <div class="grille3">
+          <article class="carte">
+            <span class="carte__mesure">1 248 €</span>
+            <span class="carte__quoi">Chiffre d'affaires du jour</span>
+            <span class="carte__delta"><Icone nom="trending-up" taille={13} /> +12 % sur sept jours</span>
+          </article>
+          <article class="carte">
+            <span class="carte__mesure">86</span>
+            <span class="carte__quoi">Commandes servies</span>
+            <span class="carte__delta">Moyenne 14,5 €</span>
+          </article>
+          <article class="carte carte--marque">
+            <span class="carte__mesure">4</span>
+            <span class="carte__quoi">Alertes de stock</span>
+            <span class="carte__delta">À traiter avant 18 h</span>
+          </article>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Votre typographie</h2>
+        <div class="typo">
+          <p class="typo__titre">Un titre dans votre police d'affichage</p>
+          <p class="typo__corps">
+            Un paragraphe dans votre police d'interface. C'est celle que vos équipes liront toute la
+            journée : elle est choisie pour la lecture à l'écran, pas pour l'effet.
+          </p>
+          <p class="typo__doux">Un texte secondaire — mentions, aides, précisions.</p>
+          <p class="typo__mono">Réf. 4021-88 · 27,50 € · TVA 20 %</p>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos icônes</h2>
+        <p class="aide">Un jeu unique, en traits, qui prend la couleur du texte où il se pose.</p>
+        <div class="icones">
+          {ICONES.map((n) => (
+            <span class="icone-case" title={n}><Icone nom={n} taille={20} /></span>
+          ))}
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Vos formes et vos espaces</h2>
+        <div class="grille2">
+          <div>
+            <p class="aide">Arrondis et profondeur</p>
+            <div class="rangee">
+              <span class="forme" style="border-radius:var(--radius-sm); box-shadow:var(--shadow-sm)">sm</span>
+              <span class="forme" style="border-radius:var(--radius-md); box-shadow:var(--shadow-md)">md</span>
+              <span class="forme" style="border-radius:var(--radius-lg); box-shadow:var(--shadow-lg)">lg</span>
+              <span class="forme" style="border-radius:999px; box-shadow:var(--shadow-sm)">rond</span>
+            </div>
+          </div>
+          <div>
+            <p class="aide">Échelle d'espacement — elle suit la densité choisie</p>
+            <div class="espaces">
+              {ESPACES.map(([nom, base]) => (
+                <span class="espace">
+                  <span class="espace__barre" style={`inline-size:var(${nom})`}></span>
+                  <span class="espace__nom">{base}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="bloc">
+        <h2>Le détail des réglages</h2>
+        <p class="aide">
+          Ce que vous voyez plus haut vient de cette liste, et de rien d'autre. « Défaut » signifie que
+          le réglage suit le nôtre — c'est un choix, pas un oubli, et il peut être personnalisé.
+        </p>
+        <table>
+          <thead>
+            <tr><th>Réglage</th><th>Valeur</th><th>Origine</th></tr>
+          </thead>
+          <tbody>
+            {resolutions.map((r) => (
+              <tr>
+                <td>{REGISTRE.find((v) => v.cle === r.cle).libelle}</td>
+                <td class="mono">
+                  {String(r.valeur ?? '—').startsWith('#') && (
+                    <span class="pastille" style={`background:${r.valeur}`} aria-hidden="true"></span>
+                  )}
+                  {r.valeur ?? '—'}
+                </td>
+                <td>
+                  {r.depuis === 'client'
+                    ? <span class="jeton jeton--vous">Vous</span>
+                    : <span class="jeton jeton--defaut">Défaut</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+    </main>
+
+    <footer class="pied">
+      <p>
+        Charte publiée en version {publie.version || 0}
+        {publie.majLe && ` le ${String(publie.majLe).slice(0, 10).split('-').reverse().join('/')}`}.
+        Une question : <a href={`mailto:${support}`}>{support}</a>.
+      </p>
+    </footer>
+  </body>
+</html>
+
+<style>
+  /* Tout est écrit contre les variables du design system : c'est ce qui rend
+     cette page fidèle. Une couleur codée en dur ici mentirait au client. */
+  body { background: var(--surface-page); color: var(--text-primary);
+         font: var(--type-body); margin: 0; }
+
+  .tete { background: var(--surface-brand); color: var(--brand-on); }
+  .tete__dedans { max-inline-size: 1040px; margin: 0 auto; display: flex; align-items: center;
+                  gap: var(--space-4); padding: var(--space-6) var(--space-4); }
+  .tete__logo { block-size: 44px; inline-size: auto; max-inline-size: 200px; }
+  .tete__pastille { inline-size: 44px; block-size: 44px; border-radius: var(--radius-md);
+                    background: rgba(255, 255, 255, .18); display: grid; place-items: center;
+                    font: 700 var(--text-base) / 1 var(--font-display); flex: none; }
+  /* `color: inherit` n'est pas décoratif : la feuille de base pose
+     `h1 { color: var(--text-primary) }`, qui l'emporte sur la couleur héritée
+     du bandeau. Sans ça le nom du client sort en encre de page sur l'aplat de
+     marque — illisible, sur la page même qui prétend prouver la lisibilité. */
+  .tete h1 { font: 700 28px / 1.15 var(--font-display); margin: 2px 0 0; color: inherit; }
+  .tete__sur { font: var(--type-caption); text-transform: uppercase; letter-spacing: .1em;
+               opacity: .82; margin: 0; }
+  .tete .jeton { margin-inline-start: auto; background: rgba(255, 255, 255, .18); color: inherit; }
+
+  .page { max-inline-size: 1040px; margin: 0 auto; padding: var(--space-8) var(--space-4) var(--space-6); }
+  .chapo { font-size: var(--text-base); max-inline-size: 78ch; margin: 0 0 var(--space-8); }
+  .chapo a, .pied a { color: var(--text-link); }
+
+  .bloc { background: var(--surface-card); border: 1px solid var(--border-default);
+          border-radius: var(--radius-card); box-shadow: var(--shadow-sm);
+          padding: var(--space-6); margin-block-end: var(--space-6); }
+  .bloc h2 { font: 700 19px / 1.25 var(--font-display); margin: 0 0 var(--space-3); }
+  .aide { color: var(--text-secondary); font-size: var(--text-sm); margin: 0 0 var(--space-4); max-inline-size: 78ch; }
+
+  .aplats { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--space-3); }
+  .aplat { border-radius: var(--radius-md); padding: var(--space-4); min-block-size: 84px;
+           display: flex; flex-direction: column; justify-content: space-between;
+           border: 1px solid var(--border-subtle); }
+  .aplat__nom { font: 600 var(--text-sm) / 1.3 var(--font-sans); }
+  .aplat__code { font: var(--type-data); font-family: var(--font-mono); opacity: .85; }
+
+  .rangee { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: center;
+            margin-block-end: var(--space-3); }
+  .rangee:last-child { margin-block-end: 0; }
+
+  .b { display: inline-flex; align-items: center; gap: 7px; border: 1px solid transparent;
+       border-radius: var(--radius-control); padding: 9px 16px; cursor: pointer;
+       font: 600 var(--text-sm) / 1.2 var(--font-sans); }
+  .b--petit { padding: 5px 11px; font-size: var(--text-xs); }
+  .b--primaire { background: var(--brand); color: var(--brand-on); box-shadow: var(--shadow-xs); }
+  .b--primaire:hover { background: var(--brand-hover); }
+  .b--primaire:active { background: var(--brand-press); }
+  .b--accent { background: var(--cta-warm); color: var(--cta-warm-on); box-shadow: var(--shadow-xs); }
+  .b--accent:hover { background: var(--cta-warm-hover); }
+  .b--contour { background: transparent; border-color: var(--border-brand); color: var(--text-brand); }
+  .b--contour:hover { background: var(--surface-brand-subtle); }
+  .b--nu { background: transparent; color: var(--text-secondary); }
+  .b--nu:hover { background: var(--surface-hover); }
+  .b--succes { background: var(--status-success); color: #fff; }
+  .b--danger { background: var(--status-danger); color: #fff; }
+  .b--lien { background: none; padding: 0; color: var(--text-link); text-decoration: underline;
+             text-underline-offset: 3px; }
+  .b:focus-visible { outline: none; box-shadow: var(--shadow-focus); }
+  .b[disabled] { opacity: .45; cursor: not-allowed; }
+
+  .grille2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--space-4); }
+  .grille3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4); }
+
+  .champ { display: flex; flex-direction: column; gap: 5px; }
+  .champ > span { font: var(--type-label); color: var(--text-secondary); }
+  .champ input, .champ select { inline-size: 100%; padding: 9px 11px; font: var(--type-body-sm);
+                                color: var(--text-primary); background: var(--surface-card);
+                                border: 1px solid var(--border-default); border-radius: var(--radius-control); }
+  .champ input:focus, .champ select:focus { outline: none; border-color: var(--border-brand);
+                                            box-shadow: var(--shadow-focus); }
+  .champ--faux input { border-color: var(--status-danger); }
+  .champ em { display: inline-flex; align-items: center; gap: 5px; font-style: normal;
+              font-size: var(--text-xs); color: var(--text-danger); }
+  .case { display: inline-flex; align-items: center; gap: 7px; font-size: var(--text-sm);
+          color: var(--text-secondary); }
+  .case input { accent-color: var(--brand); inline-size: 16px; block-size: 16px; }
+
+  .messages { display: flex; flex-direction: column; gap: var(--space-2); }
+  .msg { display: flex; align-items: center; gap: 9px; margin: 0; padding: 11px 14px;
+         border-radius: var(--radius-md); font-size: var(--text-sm); }
+  .msg--info { background: var(--surface-info-subtle); color: var(--status-info); }
+  .msg--succes { background: var(--surface-success-subtle); color: var(--text-success); }
+  .msg--alerte { background: var(--surface-warning-subtle); color: var(--text-warning); }
+  .msg--erreur { background: var(--surface-danger-subtle); color: var(--text-danger); }
+
+  .carte { display: flex; flex-direction: column; gap: 3px; padding: var(--space-4);
+           border: 1px solid var(--border-subtle); border-radius: var(--radius-md);
+           background: var(--surface-raised); box-shadow: var(--shadow-xs); }
+  .carte--marque { border-color: var(--border-brand); background: var(--surface-brand-subtle); }
+  .carte__mesure { font: 700 26px / 1.1 var(--font-display); font-variant-numeric: tabular-nums; }
+  .carte__quoi { font: var(--type-label); color: var(--text-secondary); }
+  .carte__delta { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs);
+                  color: var(--text-tertiary); }
+
+  .typo > p { margin: 0 0 var(--space-3); max-inline-size: 74ch; }
+  .typo__titre { font: 700 26px / 1.2 var(--font-display); }
+  .typo__corps { font: var(--type-body); }
+  .typo__doux { font: var(--type-body-sm); color: var(--text-secondary); }
+  .typo__mono { font: var(--type-data); font-family: var(--font-mono); color: var(--text-secondary); }
+
+  .icones { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+  .icone-case { inline-size: 40px; block-size: 40px; display: grid; place-items: center;
+                border: 1px solid var(--border-subtle); border-radius: var(--radius-sm);
+                color: var(--text-brand); background: var(--surface-raised); }
+
+  .forme { inline-size: 62px; block-size: 62px; display: grid; place-items: center;
+           background: var(--surface-brand-subtle); color: var(--text-brand);
+           font: var(--type-caption); }
+  .espaces { display: flex; flex-direction: column; gap: 7px; }
+  .espace { display: flex; align-items: center; gap: 10px; }
+  .espace__barre { block-size: 12px; background: var(--brand); border-radius: 2px; }
+  .espace__nom { font: var(--type-caption); font-family: var(--font-mono); color: var(--text-tertiary); }
+
+  table { inline-size: 100%; border-collapse: collapse; }
+  th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
+       letter-spacing: .08em; color: var(--text-tertiary); padding: 8px 10px; }
+  td { padding: 9px 10px; border-block-start: 1px solid var(--border-subtle); font-size: var(--text-sm); }
+  .mono { font-family: var(--font-mono); }
+  .pastille { display: inline-block; inline-size: 13px; block-size: 13px; border-radius: 3px;
+              border: 1px solid var(--border-default); margin-inline-end: 7px;
+              vertical-align: -2px; }
+
+  .jeton { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px; }
+  .jeton--vous { background: var(--surface-brand-subtle); color: var(--text-brand); }
+  .jeton--defaut { background: var(--surface-sunken); color: var(--text-secondary); }
+
+  .pied { max-inline-size: 1040px; margin: 0 auto; padding: 0 var(--space-4) var(--space-8);
+          color: var(--text-secondary); font-size: var(--text-sm); }
+
+  @media (max-width: 640px) {
+    .tete__dedans { flex-wrap: wrap; }
+    .tete .jeton { margin-inline-start: 0; }
+  }
+</style>
