@@ -1179,6 +1179,35 @@ function modele(pg) {
       ],
     },
     {
+      // La base de données d'un client. Chaque client a la sienne, de structure
+      // identique aux autres : l'isolation n'est pas une colonne dans un WHERE,
+      // c'est la connexion.
+      //
+      // Le mot de passe est chiffré par le coffre (mêmes colonnes que
+      // landing_connexion_secrets) : rien d'exploitable ne se lit dans un dump,
+      // et aucun identifiant ne figure dans le dépôt.
+      nom: table('bases'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['libelle', t.chaine(200)],
+        ['hote', `${t.chaine(255)} NOT NULL`],
+        ['port', 'INT DEFAULT 3306'],
+        ['base', `${t.chaine(120)} NOT NULL`],
+        ['identifiant', t.chaine(120)],
+        ['chiffre', t.binaire],
+        ['iv', t.binaire],
+        ['sceau', t.binaire],
+        ['version_cle', 'INT DEFAULT 1'],
+        ['quatre', t.chaine(8)],
+        // brouillon · active · erreur
+        ['statut', `${t.chaine(20)} DEFAULT 'brouillon'`],
+        ['dernier_test_le', t.chaine(40)],
+        ['dernier_test', t.objet],
+        ['maj_le', t.chaine(40)],
+      ],
+    },
+    {
       // Les propositions de l'assistant d'import du catalogue. Inertes : aucune
       // route ne les sert. Une proposition devient réelle quand quelqu'un colle
       // l'entrée générée dans catalogue.mjs et qu'elle passe en revue — c'est
@@ -1187,6 +1216,9 @@ function modele(pg) {
       colonnes: [
         ['id', t.id],
         ['cle', `${t.chaine(120)} NOT NULL`],
+        // base_client · colonne — où vit la donnée, donc ce qui isole un
+        // client d'un autre.
+        ['portee', `${t.chaine(20)} DEFAULT 'colonne'`],
         ['source', `${t.chaine(120)} NOT NULL`],
         ['source_genre', t.chaine(10)],
         ['vue', t.chaine(120)],

@@ -16,6 +16,7 @@ import Icone from '../../../components/Icone.astro';
 import { lien } from '../../../lib/lien.mjs';
 import { compteurs } from '../../../lib/admin/donnees.mjs';
 import { COLONNE_CLIENT, OPERATEURS, OPERATEURS_DITS } from '../../../lib/donnees/catalogue.mjs';
+import { listerBases } from '../../../lib/donnees/bases.mjs';
 import {
   decrireSource,
   instructionVue,
@@ -40,8 +41,10 @@ if (Astro.request.method === 'POST') {
     if (ops.length > 0) filtres[c] = ops;
   }
 
+  const portee = String(f.get('portee') || 'colonne');
   const proposition = {
     cle: String(f.get('cle') || '').trim(),
+    portee,
     source: String(f.get('source') || ''),
     sourceGenre: String(f.get('genre') || 'table'),
     vue: String(f.get('vue') || '').trim(),
@@ -49,7 +52,7 @@ if (Astro.request.method === 'POST') {
     filtres,
     triables: f.getAll('triable').map(String).filter((c) => colonnes.includes(c)),
     maxLignes: Number(f.get('max_lignes') || 500),
-    colonneClient: String(f.get('colonne_client') || '').trim(),
+    colonneClient: portee === 'base_client' ? null : String(f.get('colonne_client') || '').trim(),
   };
 
   const r = await ajouterProposition(proposition, session.nom || session.identifiant || null);
@@ -68,14 +71,26 @@ if (Astro.request.method === 'POST') {
 
 const dispo = introspectionDisponible();
 const choisie = Astro.url.searchParams.get('source');
+// Les bases clientes ont toutes la même structure : en introspecter une seule
+// suffit à décrire les autres. Décrire celle de la console proposerait des vues
+// sur des tables qui n'existent pas chez le client.
+const surClient = Number(Astro.url.searchParams.get('base') || 0) || null;
 
-const [chiffres, sources] = await Promise.all([
-  compteurs(),
-  dispo ? listerSources().catch((e) => { souci = souci || e.message; return []; }) : Promise.resolve([]),
-]);
+const [chiffres, bases] = await Promise.all([compteurs(), listerBases().catch(() => [])]);
+const sources = dispo
+  ? await listerSources(surClient).catch((e) => { souci = souci || e.message; return []; })
+  : [];
 
 const source = choisie ? sources.find((s) => s.nom === choisie) || null : null;
-const colonnes = source ? await decrireSource(source.nom).catch(() => null) : null;
+const colonnes = source ? await decrireSource(source.nom, surClient).catch(() => null) : null;
+const porteeDefaut = surClient ? 'base_client' : 'colonne';
+const url = (params) => {
+  const q = new URLSearchParams();
+  if (surClient) q.set('base', String(surClient));
+  for (const [k, v] of Object.entries(params)) if (v) q.set(k, String(v));
+  const reste = q.toString();
+  return lien(`/admin/catalogue/import${reste ? `?${reste}` : ''}`);
+};
 const vueProposee = source ? (source.genre === 'vue' ? source.nom : nomVuePour(source.nom)) : '';
 const clientDefaut = colonnes?.find((c) => c.clientProbable)?.nom || COLONNE_CLIENT;
 
@@ -111,6 +126,24 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
     </div>
   )}
 
+  {dispo && (
+    <div class="cellule surquoi">
+      <span class="surquoi__quoi">Lire la structure de&nbsp;:</span>
+      <a class:list={['puce', !surClient && 'puce--actif']} href={lien('/admin/catalogue/import')}>
+        la base de la console
+      </a>
+      {bases.map((b) => (
+        <a class:list={['puce', surClient === b.prospectId && 'puce--actif']}
+           href={lien(`/admin/catalogue/import?base=${b.prospectId}`)}>{b.client}</a>
+      ))}
+      {bases.length === 0 && (
+        <span class="aide">
+          Aucune base cliente déclarée — <a href={lien('/admin/bases')}>en déclarer une</a>.
+        </span>
+      )}
+    </div>
+  )}
+
   {dispo && !source && (
     <>
       <p class="intro">
@@ -132,7 +165,7 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
                 <td class="chiffre">{s.lignes.toLocaleString('fr-FR')}</td>
                 <td class="chiffre">{s.colonnes}</td>
                 <td class="fin">
-                  <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/catalogue/import?source=${encodeURIComponent(s.nom)}`)}>
+                  <a class="bouton bouton--sobre bouton--sm" href={url({ source: s.nom })}>
                     Choisir
                   </a>
                 </td>
@@ -148,6 +181,7 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
     <form method="post">
       <input type="hidden" name="source" value={source.nom} />
       <input type="hidden" name="genre" value={source.genre} />
+      <input type="hidden" name="portee" value={porteeDefaut} />
 
       <div class="cellule bloc">
         <h3>La ressource</h3>
@@ -167,15 +201,26 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
             <input type="number" name="max_lignes" value="500" min="1" max="1000" required />
             <em>Entre 1 et 1000. Jamais illimité.</em>
           </label>
-          <label class="champ">
-            <span>Colonne portant le client</span>
-            <select name="colonne_client" required>
-              {colonnes.map((c) => (
-                <option value={c.nom} selected={c.nom === clientDefaut}>{c.nom}</option>
-              ))}
-            </select>
-            <em>Injectée côté serveur. Elle filtre, elle ne sort pas — ne la cochez pas ci-dessous.</em>
-          </label>
+          {porteeDefaut === 'base_client' ? (
+            <div class="champ">
+              <span>Isolation</span>
+              <p class="fixe">La base du client</p>
+              <em>
+                Chaque client a la sienne : le SQL ne nomme jamais le client, et aucune colonne ne
+                sert à filtrer.
+              </em>
+            </div>
+          ) : (
+            <label class="champ">
+              <span>Colonne portant le client</span>
+              <select name="colonne_client" required>
+                {colonnes.map((c) => (
+                  <option value={c.nom} selected={c.nom === clientDefaut}>{c.nom}</option>
+                ))}
+              </select>
+              <em>Injectée côté serveur. Elle filtre, elle ne sort pas — ne la cochez pas ci-dessous.</em>
+            </label>
+          )}
         </div>
       </div>
 
@@ -228,7 +273,7 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
       </div>
 
       <div class="pied">
-        <a class="bouton bouton--sobre" href={lien('/admin/catalogue/import')}>Changer de source</a>
+        <a class="bouton bouton--sobre" href={url({})}>Changer de source</a>
         <button class="bouton bouton--marque" type="submit">
           <Icone nom="save" taille={15} />
           Proposer — sans rien servir
@@ -272,6 +317,13 @@ const retenue = (c) => !c.sensible && !c.clientProbable;
   .jeton--sensible { display: inline-flex; align-items: center; gap: 4px;
                      background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
   .pied { display: flex; gap: var(--space-3); align-items: center; }
+  .surquoi { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 14px;
+             margin-block-end: var(--space-4); }
+  .surquoi__quoi { font: 500 var(--text-sm) / 1.3 var(--font-sans); color: var(--slate-600); }
+  .puce { font-size: var(--text-sm); padding: 3px 11px; border-radius: 999px;
+          background: var(--slate-100); color: var(--slate-600); }
+  .puce--actif { background: var(--plum-500, #7b4488); color: #fff; }
+  .fixe { font: 600 var(--text-sm) / 1.3 var(--font-sans); margin: 0; }
   table { inline-size: 100%; border-collapse: collapse; }
   th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
        letter-spacing: .09em; color: var(--slate-500); padding: 10px 14px; }

@@ -14,6 +14,24 @@
 
 import { connexion, estPostgres } from '../db.mjs';
 import { estIdentifiant } from './catalogue.mjs';
+import { connexionBase } from './bases.mjs';
+
+/**
+ * Sur quelle base lire.
+ *
+ * Les bases clientes ont toutes la même structure : en introspecter **une**
+ * suffit à décrire les autres. C'est aussi la seule façon honnête de proposer
+ * une ressource en portée « base_client » — décrire la base de la console
+ * proposerait des vues sur des tables qui n'existent pas chez le client.
+ */
+async function acces(prospectId = null) {
+  if (prospectId == null) {
+    const db = await connexion();
+    return (sql, params) => db.requete(sql, params);
+  }
+  const pool = await connexionBase(prospectId);
+  return async (sql, params) => (await pool.query(sql, params))[0];
+}
 
 /**
  * Les noms de colonnes qu'on ne coche jamais tout seul.
@@ -84,10 +102,10 @@ export function introspectionDisponible() {
 }
 
 /** Les tables et les vues du schéma de la connexion. */
-export async function listerSources() {
+export async function listerSources(prospectId = null) {
   if (!introspectionDisponible()) return [];
-  const db = await connexion();
-  const lignes = await db.requete(
+  const requete = await acces(prospectId);
+  const lignes = await requete(
     `SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS,
             (SELECT COUNT(*) FROM information_schema.COLUMNS c
               WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME) AS COLS
@@ -108,9 +126,9 @@ export async function listerSources() {
 }
 
 /** Tout nom de colonne portant un index quelque part dans ce schéma. */
-async function nomsIndexes() {
-  const db = await connexion();
-  const lignes = await db.requete(
+async function nomsIndexes(prospectId = null) {
+  const requete = await acces(prospectId);
+  const lignes = await requete(
     'SELECT DISTINCT COLUMN_NAME FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE()',
     [],
   );
@@ -121,21 +139,21 @@ async function nomsIndexes() {
  * Les colonnes d'une source, annotées de ce qu'il faut pour un défaut sain :
  * ce qui est indexé, ce qui ressemble au client, ce qui doit rester décoché.
  */
-export async function decrireSource(nom) {
+export async function decrireSource(nom, prospectId = null) {
   // Le nom part en paramètre lié, jamais en interpolation — mais il est vérifié
   // quand même, pour qu'une valeur malformée échoue ici et non à la base.
   if (!estIdentifiant(nom) || !introspectionDisponible()) return null;
 
-  const db = await connexion();
+  const requete = await acces(prospectId);
   const [colonnes, indexees] = await Promise.all([
-    db.requete(
+    requete(
       `SELECT COLUMN_NAME, DATA_TYPE, COLUMN_TYPE, IS_NULLABLE
          FROM information_schema.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?
         ORDER BY ORDINAL_POSITION`,
       [nom],
     ),
-    nomsIndexes(),
+    nomsIndexes(prospectId),
   ]);
 
   if (colonnes.length === 0) return null;
@@ -167,11 +185,19 @@ export async function decrireSource(nom) {
  * elle, la vue ne pourrait plus être filtrée par client, et la ressource
  * rendrait les lignes de tout le monde.
  */
-export function instructionVue(table, nomVue, colonnes, colonneClient) {
+export function instructionVue(table, nomVue, colonnes, colonneClient = null) {
   if (!estIdentifiant(table) || !estIdentifiant(nomVue)) return null;
-  if (!colonnes.every(estIdentifiant) || !estIdentifiant(colonneClient)) return null;
+  if (!colonnes.every(estIdentifiant)) return null;
+  // En base par client, il n'y a personne d'autre dans la base : pas de colonne
+  // à conserver pour filtrer, et en ajouter une inventerait une donnée.
+  if (colonneClient === null) return corpsVue(nomVue, colonnes, table);
+  if (!estIdentifiant(colonneClient)) return null;
   const toutes = colonnes.includes(colonneClient) ? colonnes : [colonneClient, ...colonnes];
-  return `CREATE OR REPLACE VIEW \`${nomVue}\` AS\n  SELECT ${toutes.map((c) => `\`${c}\``).join(', ')}\n    FROM \`${table}\`;`;
+  return corpsVue(nomVue, toutes, table);
+}
+
+function corpsVue(nomVue, colonnes, table) {
+  return `CREATE OR REPLACE VIEW \`${nomVue}\` AS\n  SELECT ${colonnes.map((c) => `\`${c}\``).join(', ')}\n    FROM \`${table}\`;`;
 }
 
 /** Le nom de vue par défaut d'une table, selon la convention « v_ » du catalogue. */

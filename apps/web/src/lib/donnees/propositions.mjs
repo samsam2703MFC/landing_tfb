@@ -19,19 +19,22 @@ import { controlerRessource, estIdentifiant } from './catalogue.mjs';
 export function controlerProposition(p) {
   if (!p || !estIdentifiant(p.source)) return 'Source invalide.';
   return controlerRessource(p.cle, {
+    portee: p.portee,
     source: p.vue || p.source,
     colonnes: p.colonnes,
     filtres: p.filtres,
     triables: p.triables,
     maxLignes: p.maxLignes,
-    colonneClient: p.colonneClient,
+    // En base par client il n'y a pas de colonne de client, et en poser une
+    // ferait croire à un filtre qui n'existe pas.
+    colonneClient: p.portee === 'base_client' ? null : p.colonneClient,
   });
 }
 
 export async function listerPropositions() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, cle, source, source_genre, vue, colonnes, filtres, triables, max_lignes,
+    `SELECT id, cle, portee, source, source_genre, vue, colonnes, filtres, triables, max_lignes,
             colonne_client, cree_le, cree_par
        FROM ${table('catalogue_propositions')} ORDER BY id DESC`,
     [],
@@ -39,6 +42,7 @@ export async function listerPropositions() {
   return lignes.map((l) => ({
     id: Number(l.id),
     cle: l.cle,
+    portee: l.portee || 'colonne',
     source: l.source,
     sourceGenre: l.source_genre,
     vue: l.vue,
@@ -65,12 +69,13 @@ export async function ajouterProposition(p, creePar = null) {
   await db.executer(`DELETE FROM ${table('catalogue_propositions')} WHERE cle = ?`, [p.cle]);
   await db.executer(
     `INSERT INTO ${table('catalogue_propositions')}
-       (cle, source, source_genre, vue, colonnes, filtres, triables, max_lignes, colonne_client, cree_le, cree_par)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (cle, portee, source, source_genre, vue, colonnes, filtres, triables, max_lignes, colonne_client, cree_le, cree_par)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      p.cle, p.source, p.sourceGenre || 'table', p.vue,
+      p.cle, p.portee, p.source, p.sourceGenre || 'table', p.vue,
       JSON.stringify(p.colonnes), JSON.stringify(p.filtres || {}), JSON.stringify(p.triables || []),
-      Number(p.maxLignes), p.colonneClient, new Date().toISOString(), creePar || null,
+      Number(p.maxLignes), p.portee === 'base_client' ? null : p.colonneClient,
+      new Date().toISOString(), creePar || null,
     ],
   );
   viderCache();
@@ -97,13 +102,14 @@ export function codeProposition(p) {
   return [
     `  '${p.cle}': {`,
     `    version: 1,`,
+    `    portee: '${p.portee}',`,
     `    libelle: '…',`,
     `    source: '${p.vue}',`,
     `    colonnes: [${p.colonnes.map((c) => `'${c}'`).join(', ')}],`,
     filtres ? `    filtres: {\n${filtres}\n    },` : `    filtres: {},`,
     `    triables: [${(p.triables || []).map((c) => `'${c}'`).join(', ')}],`,
     `    maxLignes: ${p.maxLignes},`,
-    `    colonneClient: '${p.colonneClient}',`,
+    ...(p.portee === 'base_client' ? [] : [`    colonneClient: '${p.colonneClient}',`]),
     `  },`,
   ].join('\n');
 }

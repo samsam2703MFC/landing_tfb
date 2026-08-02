@@ -13,6 +13,7 @@
 
 import { connexion, estPostgres } from '../db.mjs';
 import { OPERATEURS, estIdentifiant } from './catalogue.mjs';
+import { connexionBase } from './bases.mjs';
 
 export class DemandeRefusee extends Error {
   constructor(message, statut = 400) {
@@ -70,7 +71,10 @@ function citer(identifiant) {
 /** Le SQL qu'une demande produirait, sans l'exécuter — ce que la console montre. */
 export function sqlDe(r, options) {
   const colonnes = r.colonnes.map(citer).join(', ');
-  const ou = [`${citer(r.colonneClient)} = ?`];
+  // En base par client, l'isolation est la connexion : il n'y a rien à filtrer,
+  // et inventer un filtre reviendrait à nommer dans le SQL un client dont la
+  // base ne connaît pas l'existence.
+  const ou = r.portee === 'base_client' ? [] : [`${citer(r.colonneClient)} = ?`];
   const valeurs = [];
 
   for (const f of options.filtres) {
@@ -93,9 +97,10 @@ export function sqlDe(r, options) {
   const tri = options.tri
     ? ` ORDER BY ${citer(options.tri.colonne)} ${options.tri.sens === 'asc' ? 'ASC' : 'DESC'}`
     : '';
+  const filtre = ou.length > 0 ? ` WHERE ${ou.join(' AND ')}` : '';
 
   return {
-    sql: `SELECT ${colonnes} FROM ${citer(r.source)} WHERE ${ou.join(' AND ')}${tri} LIMIT ?`,
+    sql: `SELECT ${colonnes} FROM ${citer(r.source)}${filtre}${tri} LIMIT ?`,
     valeurs,
   };
 }
@@ -105,9 +110,22 @@ export function sqlDe(r, options) {
  *
  * `prospectId` est résolu côté serveur par l'appelant et passé ici. Il n'est
  * jamais lu dans la chaîne de requête.
+ *
+ * En portée « base_client », la requête part sur la base du client — et
+ * `connexionBase()` lève plutôt que de retomber sur celle de la console. C'est
+ * volontairement l'appel qui échoue : une ressource qui interrogerait la base
+ * d'administration par défaut rendrait les prospects et les offres de tout le
+ * monde, avec un SQL d'apparence irréprochable.
  */
 export async function executerRessource(r, prospectId, options) {
   const { sql, valeurs } = sqlDe(r, options);
+
+  if (r.portee === 'base_client') {
+    const pool = await connexionBase(prospectId);
+    const [lignes] = await pool.query(sql, [...valeurs, options.limite]);
+    return lignes.map(normaliserLigne);
+  }
+
   const db = await connexion();
   const lignes = await db.requete(sql, [Number(prospectId), ...valeurs, options.limite]);
   return lignes.map(normaliserLigne);
