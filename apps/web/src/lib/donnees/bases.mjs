@@ -25,7 +25,7 @@
  * qu'un hôte, un nom de base et quatre caractères masqués.
  */
 
-import { connexion, lireJson, table, viderCache } from '../db.mjs';
+import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
 import { CoffreFerme, chiffrer, coffreOuvert, dechiffrer, masque } from '../onboarding/coffre.mjs';
 
 /** Levée quand la base d'un client n'est pas utilisable. Toujours explicite. */
@@ -139,6 +139,18 @@ export async function enregistrerBase(prospectId, valeurs, motDePasse = null) {
   // Déplacer une base d'un client à un autre reste possible : on la retire du
   // premier, puis on la déclare sur le second. Un clic de plus pour un cas rare,
   // contre une fuite silencieuse pour un cas fréquent.
+  // La base de la console n'est la base d'aucun client. L'y déclarer donnerait à
+  // son application les prospects, les offres, les contrats et les secrets
+  // chiffrés de tout le monde — et le SQL n'y paraîtrait rien, puisqu'en portée
+  // « base client » il ne nomme personne.
+  if (base === (process.env.DB_NAME || '') && hote === (process.env.DB_HOST || '')) {
+    return {
+      ok: false,
+      erreur: 'Ceci est la base de la console, pas celle d’un client. L’y déclarer ouvrirait à ce '
+        + 'client les prospects, les offres et les contrats de tout le monde.',
+    };
+  }
+
   const autres = await dejaPrise(hote, port, base, prospectId);
   if (autres.length > 0) {
     return {
@@ -428,4 +440,72 @@ export async function dejaPrise(hote, port, base, saufProspectId = 0) {
     [String(hote), Number(port) || 3306, String(base), Number(saufProspectId) || 0],
   );
   return lignes.map((l) => l.raison_sociale || `Prospect ${l.prospect_id}`);
+}
+
+/**
+ * L'inventaire du serveur sur lequel tourne la console, **sans identifiants à
+ * saisir** : la connexion existe déjà, elle est dans l'environnement du serveur.
+ *
+ * C'est le bon point de départ quand on découvre un parc : on regarde ce qui
+ * existe avant de commencer à taper des comptes. Deux limites à dire à l'écran
+ * plutôt qu'à laisser découvrir :
+ *
+ *   · il ne montre que le serveur de la console. Une base cliente hébergée
+ *     ailleurs n'y figure pas, et c'est à cela que sert la recherche par
+ *     identifiants ;
+ *   · il ne montre que ce que le compte de la console a le droit de voir.
+ *
+ * Chaque entrée dit qui l'utilise déjà, parce que la question qu'on se pose en
+ * lisant un inventaire est « laquelle est encore libre ».
+ */
+export async function inventaireConsole() {
+  if (estPostgres()) {
+    return { ok: false, dit: 'L’inventaire est écrit pour MySQL. Le dire plutôt que d’afficher une liste fausse.' };
+  }
+  try {
+    const db = await connexion();
+    const lignes = await db.requete(
+      `SELECT s.SCHEMA_NAME AS nom,
+              (SELECT COUNT(*) FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = s.SCHEMA_NAME) AS tables_,
+              (SELECT COALESCE(SUM(t.TABLE_ROWS), 0) FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = s.SCHEMA_NAME) AS lignes_
+         FROM information_schema.SCHEMATA s
+        ORDER BY s.SCHEMA_NAME ASC`,
+      [],
+    );
+
+    const prises = await connexion().then((c) => c.requete(
+      `SELECT b.base, b.hote, p.raison_sociale, b.prospect_id
+         FROM ${table('bases')} b
+         LEFT JOIN ${table('prospects')} p ON p.id = b.prospect_id`,
+      [],
+    ));
+    const hote = process.env.DB_HOST || '';
+    const parNom = new Map(
+      prises
+        .filter((l) => !l.hote || l.hote === hote)
+        .map((l) => [l.base, l.raison_sociale || `Prospect ${l.prospect_id}`]),
+    );
+
+    return {
+      ok: true,
+      hote,
+      port: Number(process.env.DB_PORT || 3306),
+      bases: lignes
+        .filter((l) => !SCHEMAS_SYSTEME.has(String(l.nom).toLowerCase()))
+        .map((l) => ({
+          nom: l.nom,
+          tables: Number(l.tables_ || 0),
+          lignes: Number(l.lignes_ || 0),
+          // Celle de la console : la déclarer pour un client lui donnerait les
+          // prospects, les offres, les contrats et les secrets chiffrés de tout
+          // le monde. L'écran le dit, et enregistrerBase() le refuse.
+          console: l.nom === (process.env.DB_NAME || ''),
+          prisePar: parNom.get(l.nom) || null,
+        })),
+    };
+  } catch (err) {
+    return { ok: false, dit: `Inventaire indisponible : ${err.code || err.message}` };
+  }
 }
