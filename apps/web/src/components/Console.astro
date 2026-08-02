@@ -35,6 +35,11 @@ const TOUTES = [
     // un commercial avec une rubrique de ce nom contenant ce seul lien.
     entrees: [
       { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
+      // En tête, et pas dans « Réseau » où elle était : le rail fait une
+      // hauteur d'écran pour vingt-cinq liens, donc la dernière rubrique n'est
+      // visible qu'après défilement. Une entrée qu'il faut chercher est une
+      // entrée qui n'existe pas.
+      { cle: 'charte', href: '/admin/charte', libelle: 'Chartes clients', icone: 'sparkles' },
     ],
   },
   {
@@ -88,7 +93,6 @@ const TOUTES = [
     entrees: [
       { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'users', compte: compteurs.leads },
       { cle: 'clients', href: '/admin/clients', libelle: 'Réseaux clients', icone: 'building', compte: compteurs.clients },
-      { cle: 'charte', href: '/admin/charte', libelle: 'Chartes clients', icone: 'sparkles' },
     ],
   },
 ];
