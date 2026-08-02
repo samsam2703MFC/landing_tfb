@@ -37,9 +37,25 @@ export const OPERATEURS_DITS = {
 };
 
 /**
- * La colonne qui porte le client dans cette base. Injectée côté serveur, jamais
- * lue depuis la requête : un `?prospect=` pris au mot est exactement la façon
- * dont un client finit par lire les lignes d'un autre.
+ * Où vivent les données, et donc **ce qui isole un client d'un autre**.
+ *
+ *   · `base_client` — chaque client a sa base, de structure identique aux
+ *     autres. L'isolation est la connexion : le SQL ne nomme jamais le client.
+ *   · `colonne` — tout le monde partage une base, et l'isolation est un filtre
+ *     injecté côté serveur.
+ *
+ * La portée est **déclarée**, jamais devinée. Les deux erreurs qui font fuiter
+ * ne se ressemblent pas : en portée « colonne », c'est un filtre oublié, visible
+ * dans le SQL et donc testable ; en portée « base_client », c'est une connexion
+ * mal choisie, et le SQL a l'air parfaitement sain. Choisir un défaut aurait
+ * fait de la seconde une conséquence d'un oubli de frappe.
+ */
+export const PORTEES = ['base_client', 'colonne'];
+
+/**
+ * La colonne qui porte le client dans une base partagée. Injectée côté serveur,
+ * jamais lue depuis la requête : un `?prospect=` pris au mot est exactement la
+ * façon dont un client finit par lire les lignes d'un autre.
  */
 export const COLONNE_CLIENT = 'prospect_id';
 
@@ -90,15 +106,24 @@ export function estCleRessource(valeur) {
 export function controlerRessource(cle, r) {
   if (!estCleRessource(cle)) return 'Clé attendue au format « groupe.ressource », en minuscules.';
   if (!r || typeof r !== 'object') return 'Déclaration absente.';
+  if (!PORTEES.includes(r.portee)) return 'Portée manquante : « base_client » ou « colonne ».';
   if (!estIdentifiant(r.source)) return 'Source invalide.';
   if (!r.source.startsWith('v_')) return 'La source doit être une vue (préfixe « v_ »), jamais une table.';
   if (!Array.isArray(r.colonnes) || r.colonnes.length === 0) return 'Aucune colonne exposée.';
   if (!r.colonnes.every(estIdentifiant)) return 'Nom de colonne invalide.';
-  if (!estIdentifiant(r.colonneClient)) return 'La colonne portant le client est obligatoire.';
-  // Elle sert à filtrer, pas à sortir. L'exposer permettrait à un client de lire
-  // l'identifiant sous lequel il est rangé — inutile pour lui, utile pour deviner
-  // celui des autres.
-  if (r.colonnes.includes(r.colonneClient)) return 'La colonne du client ne doit pas être exposée — elle filtre, elle ne sort pas.';
+
+  if (r.portee === 'colonne') {
+    if (!estIdentifiant(r.colonneClient)) return 'La colonne portant le client est obligatoire en base partagée.';
+    // Elle sert à filtrer, pas à sortir. L'exposer permettrait à un client de
+    // lire l'identifiant sous lequel il est rangé — inutile pour lui, utile
+    // pour deviner celui des autres.
+    if (r.colonnes.includes(r.colonneClient)) return 'La colonne du client ne doit pas être exposée — elle filtre, elle ne sort pas.';
+  } else if (r.colonneClient) {
+    // Une colonne de client dans une base qui n'appartient qu'à ce client
+    // laisserait croire à un filtre là où il n'y en a aucun. Le jour où la
+    // ressource passerait en base partagée, on croirait la protection déjà là.
+    return 'En base par client, aucune colonne de client : l’isolation est la connexion.';
+  }
   if (!Number.isInteger(r.maxLignes) || r.maxLignes < 1 || r.maxLignes > 1000) {
     return 'Le plafond de lignes doit être un entier entre 1 et 1000.';
   }
@@ -123,10 +148,14 @@ export function controlerRessource(cle, r) {
 export function garanties(r) {
   const triOk = (r.triables || []).every((c) => (r.colonnes || []).includes(c));
   const filtresOk = Object.keys(r.filtres || {}).every((c) => (r.colonnes || []).includes(c));
+  const isolation = r.portee === 'base_client'
+    ? [{ libelle: 'Isolation', valeur: 'base propre au client', ok: true },
+       { libelle: 'Connexion', valeur: 'jamais celle de la console', ok: !r.colonneClient }]
+    : [{ libelle: 'Client injecté côté serveur', valeur: r.colonneClient, ok: estIdentifiant(r.colonneClient) },
+       { libelle: 'Colonne du client non exposée', valeur: (r.colonnes || []).includes(r.colonneClient) ? 'exposée' : 'filtre seulement',
+         ok: !(r.colonnes || []).includes(r.colonneClient) }];
   return [
-    { libelle: 'Client injecté côté serveur', valeur: r.colonneClient, ok: estIdentifiant(r.colonneClient) },
-    { libelle: 'Colonne du client non exposée', valeur: (r.colonnes || []).includes(r.colonneClient) ? 'exposée' : 'filtre seulement',
-      ok: !(r.colonnes || []).includes(r.colonneClient) },
+    ...isolation,
     { libelle: 'Colonnes en liste blanche', valeur: String((r.colonnes || []).length), ok: (r.colonnes || []).every(estIdentifiant) },
     { libelle: 'Filtres déclarés', valeur: Object.keys(r.filtres || {}).join(', ') || 'aucun', ok: filtresOk },
     { libelle: 'Tri restreint', valeur: (r.triables || []).join(', ') || 'aucun', ok: triOk },

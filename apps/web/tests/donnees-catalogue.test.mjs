@@ -24,11 +24,13 @@ import {
 } from '../src/lib/donnees/catalogue.mjs';
 import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/donnees/requete.mjs';
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
+import { hoteAcceptable } from '../src/lib/donnees/bases.mjs';
 import { codeProposition, controlerProposition } from '../src/lib/donnees/propositions.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
 const VENTES = {
   version: 1,
+  portee: 'colonne',
   libelle: 'Ventes par jour',
   source: 'v_ventes',
   colonnes: ['jour_exploitation', 'boutique_id', 'total_ttc'],
@@ -243,6 +245,7 @@ describe('instruction CREATE VIEW', () => {
 describe('propositions', () => {
   const p = {
     cle: 'ventes.par_jour',
+    portee: 'colonne',
     source: 'landing_ventes',
     sourceGenre: 'table',
     vue: 'v_ventes',
@@ -312,5 +315,77 @@ describe('détection des colonnes sensibles', () => {
 
   it('ne confond pas le chiffre d’affaires avec un chiffrement', () => {
     assert.equal(sensibiliteDe('chiffre_affaires'), null);
+  });
+});
+
+/**
+ * Chaque client a sa base, de structure identique aux autres. L'isolation n'est
+ * donc plus un filtre dans le SQL mais la connexion elle-même — et c'est
+ * précisément ce qui rend l'erreur invisible : un SQL sans WHERE sur le client
+ * a l'air parfaitement sain. Ces tests portent sur la frontière entre les deux
+ * portées, là où une confusion ferait fuiter sans rien casser.
+ */
+describe('base propre à chaque client', () => {
+  const PAR_BASE = {
+    version: 1,
+    portee: 'base_client',
+    libelle: 'Ventes par jour',
+    source: 'v_ventes',
+    colonnes: ['jour_exploitation', 'total_ttc'],
+    filtres: { jour_exploitation: ['gte', 'lte'] },
+    triables: ['jour_exploitation'],
+    maxLignes: 500,
+  };
+  const sans = (q) => lireDemande(new URL(`https://x/y${q}`), PAR_BASE);
+
+  it('accepte une déclaration sans colonne de client', () => {
+    assert.equal(controlerRessource('ventes.par_jour', PAR_BASE), null);
+  });
+
+  // En poser une ferait croire à un filtre là où il n'y en a aucun : le jour où
+  // la ressource passerait en base partagée, on croirait la protection déjà là.
+  it('refuse une colonne de client dans une base qui n’appartient qu’à lui', () => {
+    const r = controlerRessource('a.b', { ...PAR_BASE, colonneClient: 'prospect_id' });
+    assert.match(r, /l’isolation est la connexion/);
+  });
+
+  it('exige une portée déclarée, sans défaut', () => {
+    const { portee, ...sansPortee } = PAR_BASE;
+    assert.match(controlerRessource('a.b', sansPortee), /Portée manquante/);
+    assert.match(controlerRessource('a.b', { ...PAR_BASE, portee: 'globale' }), /Portée manquante/);
+  });
+
+  it('ne met aucun WHERE quand rien ne doit être filtré', () => {
+    const { sql, valeurs } = sqlDe(PAR_BASE, sans(''));
+    assert.equal(sql, 'SELECT `jour_exploitation`, `total_ttc` FROM `v_ventes` LIMIT ?');
+    assert.deepEqual(valeurs, []);
+  });
+
+  it('garde le WHERE dès qu’un filtre est demandé', () => {
+    const { sql, valeurs } = sqlDe(PAR_BASE, sans('?filtre[jour_exploitation][gte]=2026-08-01'));
+    assert.match(sql, /WHERE `jour_exploitation` >= \?/);
+    assert.deepEqual(valeurs, ['2026-08-01']);
+    assert.ok(!sql.includes('prospect_id'));
+  });
+
+  it('produit une vue sans colonne de client', () => {
+    const vue = instructionVue('ventes', 'v_ventes', ['jour_exploitation', 'total_ttc'], null);
+    assert.equal(vue, 'CREATE OR REPLACE VIEW `v_ventes` AS\n  SELECT `jour_exploitation`, `total_ttc`\n    FROM `ventes`;');
+  });
+
+  it('écrit la portée dans le code proposé, et pas de colonne de client', () => {
+    const code = codeProposition({ ...PAR_BASE, cle: 'ventes.par_jour', vue: 'v_ventes' });
+    assert.match(code, /portee: 'base_client',/);
+    assert.ok(!code.includes('colonneClient'));
+  });
+
+  // 169.254.169.254 répond en HTTP, pas en MySQL : pointer une « base » dessus
+  // ne peut pas être une erreur de saisie honnête.
+  it('refuse un hôte de base sur le lien-local', () => {
+    assert.equal(hoteAcceptable('169.254.169.254'), false);
+    assert.equal(hoteAcceptable('169.254.0.1'), false);
+    assert.equal(hoteAcceptable(''), false);
+    assert.equal(hoteAcceptable('db.belleville.example'), true);
+    assert.equal(hoteAcceptable('10.0.0.4'), true);
   });
 });
