@@ -18,9 +18,8 @@ import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import RecapOffre from '../../../components/RecapOffre.astro';
 import {
-  STATUTS_OFFRE,
-  changerStatutOffre,
   chargerOffre,
+  changerStatutOffre,
   changerEtapeOffre,
   contratDeLOffre,
   genererContrat,
@@ -230,14 +229,6 @@ if (Astro.request.method === 'POST') {
       await changerEtapeOffre(courante.id, String(f.get('etape') || ''), session.id);
       return Astro.redirect(
         `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Étape mise à jour.')}`,
-        303,
-      );
-    }
-
-    if (action === 'statut') {
-      await changerStatutOffre(courante.id, String(f.get('statut')), session.id);
-      return Astro.redirect(
-        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Statut mis à jour.')}`,
         303,
       );
     }
@@ -1076,9 +1067,7 @@ const ETAT_STATUT = {
               <select id="o-etape" name="etape">
                 <option value="">— hors pipeline —</option>
                 {etapes.map((e) => (
-                  <option value={e.cle} selected={e.cle === offre.etape}>
-                    {e.statut ? `${e.nom} → ${e.statut}` : e.nom}
-                  </option>
+                  <option value={e.cle} selected={e.cle === offre.etape}>{e.nom}</option>
                 ))}
               </select>
               <button class="bouton bouton--sobre bouton--sm" type="submit">Déplacer</button>
@@ -1087,10 +1076,10 @@ const ETAT_STATUT = {
               <span class="champ__aide">{etapeCourante.description}</span>
             )}
             <span class="champ__aide">
-              La flèche dit le statut que l'étape entraîne : déplacer l'offre le change
-              aussi{etapeCourante?.statut && etapeCourante.statut !== 'brouillon'
-                ? ", et un statut autre que « brouillon » fige l'offre"
-                : ''}.
+              L'étape commande l'état de l'offre
+              {etapeCourante?.statut && etapeCourante.statut !== 'brouillon'
+                ? " : celle-ci la fige, et elle ne se modifie plus."
+                : " : celle-ci la laisse modifiable, sauf si elle est déjà partie."}
             </span>
           </div>
           <div class="champ">
@@ -1212,8 +1201,9 @@ const ETAT_STATUT = {
           )}
         </div>
         <div class="bloc__pied">
-          Le statut se change depuis <a href={`${BASE}/admin/offres`}>la liste des offres</a>,
-          où l'on suit tout le portefeuille d'un coup d'œil.
+          Une offre se déplace depuis <a href={`${BASE}/admin/offres`}>la liste</a> ou depuis
+          le bloc « Le suivi » ci-dessus : c'est l'étape qui commande, l'état n'en est que
+          la conséquence.
           Une nouvelle version repart des <strong>tarifs d'aujourd'hui</strong> : rouvrir une
           offre de l'an dernier pour la renégocier au prix de l'an dernier n'aurait pas de sens.
         </div>

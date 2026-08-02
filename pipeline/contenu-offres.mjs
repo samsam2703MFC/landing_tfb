@@ -279,9 +279,10 @@ export const ETAPES = [
     nom: 'À qualifier',
     description: "Le besoin n'est pas encore cerné : on ne sait pas ce qu'on vend, ni à qui exactement.",
     ordre: 1,
-    // Sans statut, volontairement : une offre déjà partie qu'on ramènerait
-    // ici redeviendrait modifiable, et l'on réécrirait un document que le
-    // client a dans sa boîte. Un brouillon l'est déjà de naissance.
+    // Sûr depuis la fusion : une offre déjà partie qu'on ramène ici se
+    // déplace, mais ne redevient pas modifiable — le garde-fou est en code,
+    // plus dans le réglage.
+    statut: 'brouillon',
     relance_active: true,
     relance_jours: 3,
   },

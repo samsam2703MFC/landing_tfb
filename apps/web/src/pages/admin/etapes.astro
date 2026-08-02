@@ -6,13 +6,17 @@
  * qu'on redéploie : les étapes se créent, se renomment, se réordonnent et se
  * suppriment ici.
  *
- * **L'étape et le statut sont liés.** Ils disent la même chose vue de deux
- * endroits : l'étape raconte où en est la négociation, le statut décide si
- * l'offre se modifie encore. Chaque étape déclare donc le statut qu'elle
- * entraîne, et le lien joue dans les deux sens — déplacer une offre dans
- * « Gagnée » l'accepte, l'accepter la déplace dans « Gagnée ». Une étape sans
- * statut laisse celui-ci tranquille, pour les étapes qui n'en impliquent
- * aucun.
+ * **L'étape est la seule commande.** Elle et le statut disaient la même
+ * chose chacun dans son coin, et il fallait faire deux fois le même geste en
+ * acceptant les moments où ils se contredisaient. Une offre se déplace
+ * désormais d'un seul mouvement : l'étape dit où en est la négociation, et le
+ * statut n'en est plus que la conséquence technique — modifiable ou figée,
+ * comptée ou non dans les relances. C'est pourquoi il est obligatoire ici.
+ *
+ * Une réserve, et une seule : **une offre partie ne redevient pas un
+ * brouillon.** Ramener une offre envoyée à « À qualifier » la déplace, mais ne
+ * la rouvre pas — sinon l'on réécrirait un document que le client a dans sa
+ * boîte. Le journal de l'offre le dit quand cela arrive.
  *
  * Chaque étape porte deux autres réglages, indépendants :
  *
@@ -88,7 +92,7 @@ try {
 
 const message = Astro.url.searchParams.get('ok');
 const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0).length;
-const statuantes = etapes.filter((e) => e.statut).length;
+const figeantes = etapes.filter((e) => e.statut && e.statut !== 'brouillon').length;
 ---
 
 <Console
@@ -105,10 +109,11 @@ const statuantes = etapes.filter((e) => e.statut).length;
         <h2>Le pipeline</h2>
         <p>
           <span class="jeton">landing_etapes</span> — {etapes.length} étape(s),
-          dont {relancantes} qui relance(nt) le commercial et {statuantes} qui
-          change(nt) le statut de l'offre.
-          L'ordre gouverne la liste déroulante de la liste des offres, et décide
-          quelle étape reçoit une offre dont on change le statut à la main.
+          dont {relancantes} qui relance(nt) le commercial et {figeantes} qui
+          fige(nt) l'offre.
+          C'est le seul endroit d'où l'on déplace une offre : la liste ne
+          propose plus qu'une liste déroulante, et l'ordre ci-dessous la
+          gouverne.
         </p>
       </div>
     </div>
@@ -133,17 +138,14 @@ const statuantes = etapes.filter((e) => e.statut).length;
             </span>
           </div>
           <div class="champ">
-            <label for={`s-${e.cle}`}>Statut entraîné</label>
-            <select id={`s-${e.cle}`} form={`etape-${e.cle}`} name="statut">
-              <option value="">— ne change rien —</option>
+            <label for={`s-${e.cle}`}>État de l’offre<span class="champ__requis" aria-hidden="true"> *</span></label>
+            <select id={`s-${e.cle}`} form={`etape-${e.cle}`} name="statut" required>
               {STATUTS_OFFRE.map((s) => <option value={s} selected={s === e.statut}>{s}</option>)}
             </select>
             <span class="champ__aide">
               {e.statut === 'brouillon'
-                ? 'Entrer ici rouvre l’offre à la modification.'
-                : e.statut
-                  ? `Entrer ici passe l’offre en « ${e.statut} »${e.statut === 'brouillon' ? '' : ' et la fige'}.`
-                  : 'L’offre garde le statut qu’elle avait.'}
+                ? 'L’offre reste modifiable — sauf si elle est déjà partie.'
+                : `L’offre passe en « ${e.statut} » et se fige.`}
             </span>
           </div>
           <div class="champ" style="grid-column:1/-1">
@@ -235,9 +237,9 @@ const statuantes = etapes.filter((e) => e.statut).length;
     <div class="bloc__pied">
       Une étape retirée du pipeline n'est plus proposée, mais les offres qui y sont
       restent où elles sont : on ne déplace pas le portefeuille de quelqu'un dans son dos.
-      Quand deux étapes entraînent le même statut, c'est la première dans l'ordre qui
-      reçoit les offres dont on change le statut depuis la liste — les suivantes gardent
-      celles qui y sont déjà, sans les faire reculer.
+      Une offre déjà partie chez un client ne redevient pas modifiable : la ramener à une
+      étape « brouillon » la déplace, mais son état ne bouge pas, et son journal dit
+      pourquoi.
     </div>
   </section>
 
@@ -263,12 +265,11 @@ const statuantes = etapes.filter((e) => e.statut).length;
           </span>
         </div>
         <div class="champ">
-          <label for="e-statut">Statut entraîné</label>
-          <select id="e-statut" name="statut">
-            <option value="">— ne change rien —</option>
+          <label for="e-statut">État de l’offre<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <select id="e-statut" name="statut" required>
             {STATUTS_OFFRE.map((s) => <option value={s}>{s}</option>)}
           </select>
-          <span class="champ__aide">Se règle aussi après coup, ci-dessus.</span>
+          <span class="champ__aide">Modifiable en « brouillon », figée dans tous les autres.</span>
         </div>
         <div class="champ" style="grid-column:1/-1">
           <label for="e-desc">Ce que l'étape veut dire</label>

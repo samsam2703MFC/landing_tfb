@@ -936,6 +936,24 @@ export function instantanePacks(packs) {
 // Le suivi commercial : les étapes, et le journal d'une offre
 // ---------------------------------------------------------------------------
 
+/**
+ * Le statut qu'une étape entraîne — obligatoire depuis la fusion.
+ *
+ * L'étape est la seule commande : c'est elle qui dit où en est l'offre, et le
+ * statut n'en est plus que la conséquence technique — modifiable ou figée,
+ * comptée ou non dans les relances. Une étape sans statut laisserait ces
+ * questions sans réponse pour les offres qui y passent.
+ */
+function statutDEtape(valeur, quoi) {
+  const s = String(valeur || '').trim();
+  if (!STATUTS_OFFRE.includes(s)) {
+    throw new Error(
+      `L'étape « ${quoi} » doit dire dans quel état elle met l'offre : ${STATUTS_OFFRE.join(', ')}.`,
+    );
+  }
+  return s;
+}
+
 /** Les étapes du pipeline, dans leur ordre. */
 export async function listerEtapes({ activesSeulement = false } = {}) {
   const db = await connexion();
@@ -989,7 +1007,7 @@ export async function ajouterEtape(valeurs) {
       String(valeurs.description || '').trim() || null,
       Number(valeurs.ordre) || 100,
       vrai(true),
-      STATUTS_OFFRE.includes(valeurs.statut) ? valeurs.statut : null,
+      statutDEtape(valeurs.statut, valeurs.nom || cle),
       vrai(false), vrai(false), 0,
     ],
   );
@@ -1010,7 +1028,7 @@ export async function enregistrerEtape(cle, valeurs) {
       String(valeurs.nom || '').trim() || String(cle),
       String(valeurs.description || '').trim() || null,
       Number(valeurs.ordre) || 100,
-      STATUTS_OFFRE.includes(valeurs.statut) ? valeurs.statut : null,
+      statutDEtape(valeurs.statut, valeurs.nom || cle),
       vrai(valeurs.gabarit_actif === '1' || valeurs.gabarit_actif === true),
       String(valeurs.gabarit_sujet || '').trim() || null,
       String(valeurs.gabarit_corps || '').trim() || null,
@@ -1130,6 +1148,22 @@ async function ecrireStatut(db, id, statut, utilisateurId) {
     [Number(id)],
   );
   if (avant && avant.statut === statut) return false;
+
+  // Une offre partie ne redevient pas un brouillon.
+  //
+  // C'est la règle qui rend la fusion possible : puisque l'étape commande
+  // désormais le statut, ramener une offre à « À qualifier » la rouvrirait à
+  // la modification, et l'on réécrirait un document que le client a dans sa
+  // boîte. L'étape bouge, le statut reste, et le journal dit pourquoi —
+  // plutôt qu'un refus qui empêcherait de ranger son portefeuille.
+  if (statut === 'brouillon' && avant && avant.statut !== 'brouillon') {
+    await journaliser(id, {
+      type: 'statut',
+      texte: `Statut inchangé (${avant.statut}) : une offre partie chez un client ne redevient pas un brouillon.`,
+      utilisateurId,
+    });
+    return false;
+  }
   // La date d'envoi est celle du premier envoi : repasser par « envoyée »
   // après une discussion ne réécrit pas l'histoire.
   const dater = statut === 'envoyee' && !(avant && avant.envoyee_le);
@@ -1871,7 +1905,7 @@ export function calculerTotauxOffre(offre) {
  * La liste des offres, filtrable. Seule la dernière version de chaque
  * référence est montrée : les précédentes se lisent depuis la fiche.
  */
-export async function listerOffres({ prospect = '', statut = '', auteur = '' } = {}) {
+export async function listerOffres({ prospect = '', statut = '', etape = '', auteur = '' } = {}) {
   const db = await connexion();
   const offres = await db.requete(
     `SELECT o.*, p.raison_sociale, p.contact_nom, u.nom AS auteur_nom
@@ -1890,6 +1924,11 @@ export async function listerOffres({ prospect = '', statut = '', auteur = '' } =
   const cherche = String(prospect).trim().toLowerCase();
   const retenues = offres.filter((o) => {
     if (statut && o.statut !== statut) return false;
+    // « hors » n'est pas une étape mais son absence : une offre qu'on n'a pas
+    // encore rangée dans le pipeline, et c'est précisément ce qu'on cherche
+    // quand on la cherche.
+    if (etape === 'hors' && o.etape) return false;
+    if (etape && etape !== 'hors' && o.etape !== etape) return false;
     if (auteur && String(o.cree_par) !== String(auteur)) return false;
     if (cherche && !String(o.raison_sociale || '').toLowerCase().includes(cherche)) return false;
     return true;
