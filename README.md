@@ -34,7 +34,7 @@ service is MySQL too, so the schema targets MySQL.
 npm install
 cp .env.example .env        # then fill in DATABASE_URL and ADMIN_SESSION_SECRET
 npx prisma migrate deploy   # creates every tfb_ table
-npm run seed                # 8 languages, 8 sections, 6 brands, 7 modules, 3 plans, FR/EN/AR copy
+npm run seed                # 8 languages, 8 sections, 6 brands, 8 modules, 3 plans, FR/EN/AR copy
 npm run dev
 ```
 
@@ -42,6 +42,12 @@ npm run dev
 - Back office: http://localhost:3000/admin
 - Seeded account: `admin@franchisebuddy.eu` / `changeme` — **change it.** Override with
   `SEED_ADMIN_EMAIL` and `SEED_ADMIN_PASSWORD` before seeding.
+
+Pour un vrai serveur — création de la base, droits, migration, seed, sync, stockage
+des fichiers et dépannage — la marche à suivre complète est dans
+[`docs/DEPLOIEMENT-BASE.md`](docs/DEPLOIEMENT-BASE.md). La structure des 12 tables
+est aussi disponible en SQL brut dans [`docs/sql/`](docs/sql/) pour les hébergements
+où seul phpMyAdmin est accessible.
 
 Generate a session secret with:
 
@@ -69,6 +75,64 @@ Multi-value fields (feature lists, explanation bullets) are pipe-joined.
 the DB keeps the relative path (`/storage/screenshots/scan-a1b2c3.png`). They are served
 back through `GET /api/storage/[...path]`, which refuses anything escaping the storage
 root and sends uploaded SVGs under a restrictive CSP.
+
+## Rester à jour — les modules viennent des dépôts
+
+La landing n'écrit pas la fiche de ses modules : **chaque dépôt module publie la
+sienne**, dans `.tfb/module.json`, et la landing la récupère.
+
+```bash
+npm run sync:modules                              # lit les manifestes sur GitHub, écrit en base
+npm run sync:modules -- --dry-run                 # valide et rapporte, sans rien écrire
+npm run sync:modules -- --from-disk /chemin       # lit des clones locaux au lieu de GitHub
+npm run sync:modules -- --only signage,delivery   # se limite à quelques dépôts
+npm run sync:modules -- --retire-unlisted         # désactive les modules sans manifeste
+```
+
+Le manifeste décrit le module, ses **fonctions** et les **captures** qui les
+illustrent — le contrat complet est dans `src/lib/sync/manifest.ts` :
+
+```json
+{
+  "key": "signage", "slug": "signage", "group": "Marketing", "icon": "panels-top-left",
+  "name":        { "fr": "Régie d'affichage", "en": "Digital signage" },
+  "description": { "fr": "Les écrans du magasin pilotés depuis un seul back office." },
+  "overview":    { "fr": "Un magasin affiche des prix, des promos et des menus…" },
+  "metric": { "value": "0", "label": { "fr": "clé USB en magasin" } },
+  "screenshots": [{ "file": "docs/landing/signage-accueil.png", "alt": { "fr": "Accueil de la régie" } }],
+  "features": [
+    { "key": "compositeur", "icon": "layers",
+      "name": { "fr": "Compositeur de film" },
+      "description": { "fr": "La bibliothèque d'éléments et la playlist qui en fait un film…" },
+      "screenshots": [{ "file": "docs/landing/signage-compositeur.png" }] }
+  ]
+}
+```
+
+Ce que la sync écrit : `tfb_modules` (upsert sur `key`), `tfb_module_features`
+(upsert sur `module_id` + `key`), `tfb_module_screenshots` (réécrites, fichiers
+copiés sous `STORAGE_PATH`) et les `tfb_translations` correspondantes. `fr` est
+obligatoire dans chaque bloc de copie — c'est la locale de repli.
+
+Trois garde-fous : une fonction retirée d'un manifeste est **désactivée**, jamais
+supprimée, donc ses traductions survivent à un mauvais manifeste ; un module sans
+manifeste n'est touché que si vous passez `--retire-unlisted`, et seulement quand
+tous les dépôts ont répondu ; un groupe sans traduction `group.<valeur>` est
+signalé dans le rapport.
+
+Un dépôt qui n'a **pas encore** publié sa fiche est signalé et ignoré, sans faire
+échouer la commande — c'est un état connu, pas une panne. Une fiche **malformée ou
+injoignable**, elle, sort en code 1 : c'est ce qui doit réveiller quelqu'un.
+
+La liste des dépôts interrogés est `content/modules.repos.json`.
+
+**En production, la sync tourne sur le serveur**, pas dans GitHub Actions —
+`deploy/tfb-sync.timer`, toutes les 10 minutes. La CI se contente de valider les
+fiches : elle ne peut pas écrire, parce que la sync copie les captures dans
+`STORAGE_PATH` et que le disque d'un runner disparaît avec le job. Les pages étant
+en ISR (`revalidate = 60`), un `git push` dans un dépôt module est en ligne en une
+dizaine de minutes, sans redéploiement. La mise en place complète est dans
+[`docs/DEPLOIEMENT-BASE.md`](docs/DEPLOIEMENT-BASE.md) §9.
 
 ### Fallback
 
@@ -277,6 +341,10 @@ the env var and the same screens hit the real endpoints — expected shapes are 
 prisma/
   schema.prisma            every tfb_ table
   seed.ts, seed-content.ts the seed and its FR/EN/AR copy
+content/
+  modules.repos.json       the module repositories sync:modules polls
+scripts/
+  sync-modules.ts          pulls every .tfb/module.json into the database
 src/
   design-system/           the handoff, ported
     tokens/*.css           colours, type, spacing, radius, elevation, motion, fonts, base

@@ -226,18 +226,23 @@ export function Differentiators({ payload }: { payload: LandingPayload }) {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
           <span className="fb-eyebrow">{t('diff.eyebrow')}</span>
           <h2 style={{ font: 'var(--type-heading-1)' }}>{t('diff.title')}</h2>
-          <blockquote style={{ margin: 0, marginTop: 'var(--space-4)', padding: 'var(--space-5)', borderRadius: 'var(--radius-panel)', background: 'var(--surface-brand-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
-            <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.5 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>{t('quote.text')}</p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flex: 'none', borderRadius: 'var(--radius-circle)', background: 'var(--plum-500)', color: '#fff', font: 'var(--weight-semibold) var(--text-sm)/1 var(--font-sans)' }}>
-                {t('quote.initials')}
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ font: 'var(--weight-medium) var(--text-base)/1.3 var(--font-sans)' }}>{t('quote.author')}</span>
-                <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>{t('quote.role')}</span>
+          {/* Une citation ne s'affiche que si quelqu'un l'a réellement prononcée :
+              vider `quote.text` dans tfb_translations retire le bloc. Un témoignage
+              d'attente sur une page commerciale se lit comme un vrai témoignage. */}
+          {payload.strings['quote.text'] && (
+            <blockquote style={{ margin: 0, marginTop: 'var(--space-4)', padding: 'var(--space-5)', borderRadius: 'var(--radius-panel)', background: 'var(--surface-brand-subtle)', display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+              <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.5 var(--font-display)', letterSpacing: 'var(--tracking-tight)' }}>{t('quote.text')}</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flex: 'none', borderRadius: 'var(--radius-circle)', background: 'var(--plum-500)', color: '#fff', font: 'var(--weight-semibold) var(--text-sm)/1 var(--font-sans)' }}>
+                  {t('quote.initials')}
+                </span>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  <span style={{ font: 'var(--weight-medium) var(--text-base)/1.3 var(--font-sans)' }}>{t('quote.author')}</span>
+                  <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>{t('quote.role')}</span>
+                </div>
               </div>
-            </div>
-          </blockquote>
+            </blockquote>
+          )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
           {items.map((it) => (
@@ -298,6 +303,50 @@ export function Pricing({
 
 /* --------------------------------------------------------- Module detail ---- */
 
+/**
+ * Le franchiseur d'abord, l'outil ensuite. Chaque carte met sa phrase — celle
+ * qu'il dit vraiment en rendez-vous — face à ce que l'exploitation écrite en fait.
+ *
+ * Cinq paires, numérotées dans les traductions (pain.1p / pain.1a …), pour qu'on
+ * puisse en ajouter ou en retirer depuis le back-office sans toucher au code.
+ */
+export function Pains({ payload }: { payload: LandingPayload }) {
+  const t = useT(payload);
+  const pairs = [1, 2, 3, 4, 5]
+    .map((n) => ({ n, pain: payload.strings[`pain.${n}p`], answer: payload.strings[`pain.${n}a`] }))
+    .filter((p) => p.pain && p.answer);
+
+  if (pairs.length === 0) return null;
+
+  return (
+    <section style={{ background: 'var(--surface-page)', padding: 'var(--space-20) 0' }}>
+      <div style={SECTION}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: '62ch' }}>
+          <span className="fb-eyebrow">{t('pain.eyebrow')}</span>
+          <h2 style={{ font: 'var(--type-display-3)', letterSpacing: 'var(--tracking-display)' }}>{t('pain.title')}</h2>
+          <p style={{ font: 'var(--type-body-lg)', color: 'var(--text-secondary)' }}>{t('pain.lead')}</p>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 'var(--space-4)', marginTop: 'var(--space-10)' }}>
+          {pairs.map(({ n, pain, answer }) => (
+            <Card key={n} padding="lg">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)' }}>
+                <p style={{ font: 'var(--weight-semibold) var(--text-lg)/1.45 var(--font-display)', letterSpacing: 'var(--tracking-tight)', color: 'var(--text-primary)' }}>
+                  {pain}
+                </p>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-3)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)' }}>
+                  <Icon name="arrow-up-right" size={18} color="var(--plum-600)" className="fb-flip" style={{ marginTop: 3, flex: 'none' }} />
+                  <p style={{ font: 'var(--type-body)', color: 'var(--text-secondary)' }}>{answer}</p>
+                </div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** Layout C — the page tfb_modules.redirect_url opens. */
 export function ModuleDetail({
   payload,
@@ -355,6 +404,29 @@ export function ModuleDetail({
         </div>
       </section>
 
+      {m.overview && (
+        <section style={{ background: 'var(--surface-page)', padding: 'var(--space-14) 0' }}>
+          <div style={{ ...SECTION, maxWidth: 760 }}>
+            <span className="fb-eyebrow">{t('detail.overview')}</span>
+            <p style={{ marginTop: 'var(--space-4)', font: 'var(--type-body-lg)', color: 'var(--text-secondary)' }}>{m.overview}</p>
+          </div>
+        </section>
+      )}
+
+      {m.features.length > 0 && (
+        <section style={{ background: 'var(--surface-card)', padding: 'var(--space-16) 0' }}>
+          <div style={SECTION}>
+            <span className="fb-eyebrow">{t('detail.functions')}</span>
+            <h2 style={{ marginTop: 'var(--space-3)', font: 'var(--type-heading-1)', color: 'var(--text-primary)' }}>{t('detail.functions.title')}</h2>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-12)', marginTop: 'var(--space-10)' }}>
+              {m.features.map((f, i) => (
+                <FeatureRow key={f.key} payload={payload} feature={f} flipped={i % 2 === 1} />
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
       <section style={{ background: 'var(--surface-card)', padding: 'var(--space-16) 0' }}>
         <div style={{ ...SECTION, display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: 'var(--space-12)', alignItems: 'start' }}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-5)' }}>
@@ -364,6 +436,16 @@ export function ModuleDetail({
                 {m.bullets.map((b) => (
                   <li key={b} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', font: 'var(--type-body)' }}>
                     <Icon name="circle-check" size={17} color="var(--status-success)" style={{ marginTop: 2 }} />{b}
+                  </li>
+                ))}
+              </ul>
+            ) : m.features.length > 0 ? (
+              // The functions section above already carries the explanation; the
+              // bullets are the older, shorter form of the same thing.
+              <ul style={{ listStyle: 'none', margin: 0, padding: 0, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-4)' }}>
+                {m.features.map((f) => (
+                  <li key={f.key} style={{ display: 'flex', alignItems: 'flex-start', gap: 'var(--space-2)', font: 'var(--type-body)' }}>
+                    <Icon name="circle-check" size={17} color="var(--status-success)" style={{ marginTop: 2 }} />{f.name}
                   </li>
                 ))}
               </ul>
@@ -391,6 +473,64 @@ export function ModuleDetail({
         </div>
       </section>
     </>
+  );
+}
+
+/**
+ * One documented function: what it does on the left, the screens that prove it
+ * on the right. Rows alternate sides, and the alternation is written with
+ * `direction` rather than left/right so Arabic mirrors with the rest of the page.
+ */
+function FeatureRow({
+  payload,
+  feature,
+  flipped,
+}: {
+  payload: LandingPayload;
+  feature: LandingPayload['modules'][number]['features'][number];
+  flipped: boolean;
+}) {
+  const t = useT(payload);
+  const shots = feature.screenshots.map((s) => ({ src: s.src ?? undefined, alt: s.alt }));
+
+  return (
+    <div
+      style={{
+        display: 'grid',
+        gridTemplateColumns: '0.9fr 1.1fr',
+        gap: 'var(--space-10)',
+        alignItems: 'center',
+        direction: flipped ? (payload.dir === 'rtl' ? 'ltr' : 'rtl') : undefined,
+      }}
+    >
+      <div style={{ direction: payload.dir, display: 'flex', flexDirection: 'column', gap: 'var(--space-3)' }}>
+        <span
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 44, height: 44,
+            borderRadius: 'var(--radius-lg)', background: 'var(--plum-50)', color: 'var(--plum-600)',
+          }}
+        >
+          <Icon name={feature.icon} size={22} />
+        </span>
+        <h3 style={{ font: 'var(--type-heading-3)', color: 'var(--text-primary)' }}>{feature.name}</h3>
+        {feature.description ? (
+          <p style={{ font: 'var(--type-body)', color: 'var(--text-secondary)', maxWidth: '46ch' }}>{feature.description}</p>
+        ) : (
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-tertiary)' }}>
+            <span className="fb-num">tfb_translations · feature · description</span>
+          </p>
+        )}
+      </div>
+      <div style={{ direction: payload.dir }}>
+        <Carousel
+          items={shots.length > 0 ? shots : [{ src: undefined, alt: t('shot.alt') }]}
+          rtl={payload.dir === 'rtl'}
+          autoplay={shots.length > 1}
+          aspect="16 / 10"
+          placeholderPath={`/storage/screenshots/${feature.key}-…`}
+        />
+      </div>
+    </div>
   );
 }
 
