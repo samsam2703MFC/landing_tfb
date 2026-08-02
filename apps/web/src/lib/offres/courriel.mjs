@@ -23,8 +23,60 @@
  * @typedef {object} Message
  * @property {string} destinataire
  * @property {string} sujet
- * @property {string} corps
+ * @property {string} corps        La version texte, qui part toujours.
+ * @property {string} corps_html   La version mise en page.
  */
+
+/**
+ * La feuille de style de la lettre, aux couleurs de la marque.
+ *
+ * C'est la valeur de départ du paramètre `courriel_css` : elle se modifie
+ * ensuite dans la console, sans redéploiement.
+ *
+ * Le partage est net, et il est délibéré : **la mise en page est en ligne
+ * dans le document** — largeurs, marges, bordures, alignements —, **les
+ * couleurs et la typographie sont ici**. Un style en ligne l'emporterait sur
+ * cette feuille, et le paramètre ne servirait à rien : c'est pourquoi aucune
+ * couleur n'est écrite dans le document.
+ *
+ * La contrepartie est réelle : un client de messagerie qui jette les feuilles
+ * de style — Outlook pour Windows, essentiellement — affiche une lettre juste
+ * et lisible, mais sans les couleurs de la marque. C'est le prix d'une charte
+ * qui se règle sans redéploiement.
+ */
+export const CSS_COURRIEL = `/* The Franchise Buddy — la lettre d'offre.
+   Les couleurs viennent de la marque : prune #7b4488, encre marine #0c1329.
+   Les largeurs et les marges sont en ligne dans le document — ce qui est ici
+   se perd sans dommage chez les clients qui ignorent les feuilles de style. */
+
+body, td, p, span { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+.tfb-corps { background: #f5f6f9; }
+.tfb-carte { background: #ffffff; box-shadow: 0 1px 3px rgba(12, 19, 41, .08); }
+
+/* L'en-tête porte la marque, sur l'encre marine. */
+.tfb-entete { background: #0c1329; }
+.tfb-marque { color: #ffffff; }
+
+.tfb-dedans { color: #0c1329; }
+.tfb-dedans a { color: #7b4488; }
+
+/* Le titre d'un rythme de paiement — une fois, par mois, par an. */
+.tfb-rythme { color: #7b4488; font-weight: 700; }
+.tfb-ligne { color: #0c1329; }
+.tfb-note { color: #565d73; }
+.tfb-qte { color: #9aa0b4; }
+.tfb-soustotal { color: #565d73; }
+.tfb-total { color: #0c1329; font-weight: 700; }
+
+/* Le geste commercial se lit en vert : ce n'est pas une alerte. */
+.tfb-offert { background: #d7f2f0; color: #0c6a66; }
+.tfb-mention { color: #565d73; }
+.tfb-pied { background: #f5f6f9; color: #565d73; }
+
+@media (max-width: 620px) {
+  .tfb-dedans { padding: 20px !important; }
+  .tfb-entete, .tfb-pied { padding-left: 20px !important; padding-right: 20px !important; }
+}`;
 
 /**
  * @typedef {object} ServiceCourriel
@@ -176,6 +228,144 @@ export function recapTexte(offre, resultat, formater) {
 }
 
 /**
+ * Échappe ce qui part dans du HTML.
+ *
+ * Le nom d'un client, l'intitulé d'une ligne libre, une mention de TVA : tout
+ * cela est saisi dans la console et finit dans la lettre. Une esperluette
+ * dans « Dupont & Fils » casserait le document ; un chevron le casserait
+ * davantage.
+ */
+function html(valeur) {
+  return String(valeur ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Le récapitulatif chiffré, en HTML.
+ *
+ * Des tables et des styles en ligne, parce qu'un client de messagerie n'est
+ * pas un navigateur : la grille, le flex et les variables CSS n'y existent
+ * pas, et Outlook rend le tout avec le moteur de Word. Ce qui est ici doit
+ * survivre partout ; ce qui est décoratif vit dans la feuille de style, que
+ * les clients modernes honorent et que les autres ignorent sans dommage.
+ */
+export function recapHtml(offre, resultat, formater) {
+  const mots = MOTS[offre.langue] || MOTS.fr;
+  const morceaux = [];
+
+  for (const [cle, seau] of Object.entries(resultat.seaux)) {
+    if (seau.lignes.length === 0) continue;
+    const lignes = seau.lignes.map((l) => `
+        <tr>
+          <td class="tfb-ligne" style="padding:7px 0;border-bottom:1px solid #edeef3">
+            ${html(libelleLigne(l, offre.langue))}${l.quantite > 1 ? ` <span class="tfb-qte">× ${l.quantite}</span>` : ''}
+            ${l.note ? `<br><span class="tfb-note" style="font-size:12px">${html(l.note)}</span>` : ''}
+          </td>
+          <td class="tfb-montant" style="padding:7px 0;border-bottom:1px solid #edeef3;text-align:right;white-space:nowrap">
+            ${html(formater(l.total_cents))}
+          </td>
+        </tr>`).join('');
+
+    const total = (libelle, montant, fort = false) => `
+        <tr>
+          <td class="${fort ? 'tfb-total' : 'tfb-soustotal'}" style="padding:${fort ? '10px 0 0' : '5px 0 0'}">${html(libelle)}</td>
+          <td class="${fort ? 'tfb-total' : 'tfb-soustotal'}" style="padding:${fort ? '10px 0 0' : '5px 0 0'};text-align:right;white-space:nowrap">${html(montant)}</td>
+        </tr>`;
+
+    morceaux.push(`
+    <table class="tfb-seau" role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;margin:18px 0 22px">
+      <tr>
+        <td colspan="2" class="tfb-rythme" style="padding:0 0 6px;font-size:11px;letter-spacing:.08em;text-transform:uppercase">
+          ${html(mots[cle])}
+        </td>
+      </tr>${lignes}
+      ${seau.remise > 0 ? total(mots.remise, `− ${formater(seau.remise)}`) : ''}
+      ${total(mots.ht, formater(seau.ht))}
+      ${resultat.exoneree ? '' : total(mots.tva, formater(seau.tva))}
+      ${total(mots.total, formater(seau.ttc), true)}
+    </table>`);
+  }
+
+  if (resultat.offert && resultat.offert.ttc > 0) {
+    morceaux.push(`
+    <p class="tfb-offert" style="margin:0 0 18px;padding:11px 14px;border-radius:8px;font-size:14px">
+      <strong>${resultat.offert.mois} × ${html(mots.mensuel.toLowerCase())} ${html(mots.offert)} ${html(formater(resultat.offert.ttc))}.</strong>
+    </p>`);
+  }
+  if (resultat.exoneree && offre.tva_mention) {
+    morceaux.push(`
+    <p class="tfb-mention" style="margin:0 0 18px;font-size:12px">${html(offre.tva_mention)}</p>`);
+  }
+  return morceaux.join('');
+}
+
+/**
+ * La lettre entière, mise en page.
+ *
+ * Le corps rédigé dans la console reste du texte : c'est ce qu'on veut écrire
+ * à un client, et lui demander d'écrire du HTML serait le meilleur moyen
+ * d'obtenir une lettre cassée. Il est découpé en paragraphes, le
+ * récapitulatif prend sa place, et le tout est habillé.
+ */
+export function corpsHtml({ texte, recap, css, titre, langue = 'fr', rtl = false }) {
+  const paragraphes = String(texte || '')
+    .split(/\n{2,}/)
+    .map((p) => p.trim())
+    .filter(Boolean)
+    .map((p) => `<p style="margin:0 0 14px">${html(p).replace(/\n/g, '<br>')}</p>`)
+    .join('\n      ');
+
+  // Le récapitulatif est posé là où le gabarit l'appelait : le jeton a déjà
+  // été remplacé par un repère, qu'on remplace ici par le tableau. Le repère
+  // occupe en général un paragraphe à lui seul, mais rien n'oblige le gabarit
+  // à l'écrire ainsi — s'il est au milieu d'une phrase, on le remplace quand
+  // même. Le laisser passer imprimerait « {{RECAP}} » dans la lettre.
+  const corps = paragraphes
+    .replace('<p style="margin:0 0 14px">{{RECAP}}</p>', recap)
+    .replace(/\{\{RECAP\}\}/g, recap);
+
+  return `<!doctype html>
+<html lang="${html(langue)}"${rtl ? ' dir="rtl"' : ''}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>${html(titre)}</title>
+<style>
+${css}
+</style>
+</head>
+<body class="tfb-corps" style="margin:0;padding:0">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse">
+    <tr>
+      <td align="center" style="padding:28px 12px">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" class="tfb-carte" style="width:600px;max-width:100%;border-collapse:collapse;border-radius:14px;overflow:hidden">
+          <tr>
+            <td class="tfb-entete" style="padding:22px 28px">
+              <span class="tfb-marque" style="font-size:17px;font-weight:700;letter-spacing:-.01em">The Franchise Buddy</span>
+            </td>
+          </tr>
+          <tr>
+            <td class="tfb-dedans" style="padding:28px;font-size:15px;line-height:1.6">
+      ${corps}
+            </td>
+          </tr>
+          <tr>
+            <td class="tfb-pied" style="padding:16px 28px;font-size:12px">
+              ${html(titre)}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+}
+
+/**
  * Remplace les jetons `{nom}` d'un gabarit.
  *
  * Un jeton inconnu est **laissé tel quel** plutôt que remplacé par du vide :
@@ -204,10 +394,23 @@ export function construireCourriel({ offre, resultat, gabarits, formater }) {
     valide_jusqu_au: jour(offre.valide_jusqu_au, offre.langue),
     recapitulatif: recapTexte(offre, resultat, formater),
   };
+  const sujet = remplacer(gabarits.sujet, jetons);
   return {
     destinataire: offre.prospect?.contact_email || '',
-    sujet: remplacer(gabarits.sujet, jetons),
+    sujet,
     corps: remplacer(gabarits.corps, jetons),
+    // La version mise en page. Le même gabarit sert aux deux : le
+    // récapitulatif y est marqué d'un repère plutôt que recopié en texte,
+    // pour être remplacé par le tableau. Un client de messagerie qui refuse
+    // le HTML reçoit `corps`, qui dit exactement la même chose.
+    corps_html: corpsHtml({
+      texte: remplacer(gabarits.corps, { ...jetons, recapitulatif: '{{RECAP}}' }),
+      recap: recapHtml(offre, resultat, formater),
+      css: gabarits.css || CSS_COURRIEL,
+      titre: sujet,
+      langue: offre.langue,
+      rtl: Boolean(offre.rtl),
+    }),
     jetons,
   };
 }

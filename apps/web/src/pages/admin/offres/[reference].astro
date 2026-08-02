@@ -218,7 +218,7 @@ if (Astro.request.method === 'POST') {
       const message = construireCourriel({
         offre: courante,
         resultat: calculerOffre(configDe(courante)),
-        gabarits: { sujet: tarifs.courriel_sujet, corps: tarifs.courriel_corps },
+        gabarits: { sujet: tarifs.courriel_sujet, corps: tarifs.courriel_corps, css: tarifs.courriel_css },
         formater: (c) => formater(c, courante.langue, courante.devise),
       });
       if (!message.destinataire) {
@@ -331,7 +331,11 @@ const courriel = offre
   ? construireCourriel({
       offre,
       resultat,
-      gabarits: { sujet: vigueur?.courriel_sujet || '', corps: vigueur?.courriel_corps || '' },
+      gabarits: {
+        sujet: vigueur?.courriel_sujet || '',
+        corps: vigueur?.courriel_corps || '',
+        css: vigueur?.courriel_css || '',
+      },
       formater: (c) => formater(c, offre.langue, offre.devise),
     })
   : null;
@@ -873,8 +877,21 @@ const ETAT_STATUT = {
                 <span><b>À</b> {courriel.destinataire}</span>
                 <span><b>Sujet</b> {courriel.sujet}</span>
               </div>
-              <pre class="apercu__corps">{courriel.corps}</pre>
+              {/* La lettre rendue dans un cadre isolé : sans lui, la feuille
+                  de style du courriel déborderait sur la console, et celle de
+                  la console mentirait sur ce que le client verra. */}
+              <iframe
+                class="apercu__rendu"
+                title="La lettre telle qu'elle arrivera"
+                sandbox=""
+                srcdoc={courriel.corps_html}
+              ></iframe>
             </div>
+
+            <details class="apercu__brut">
+              <summary>La version texte, pour les messageries qui refusent le HTML</summary>
+              <pre class="apercu__corps">{courriel.corps}</pre>
+            </details>
 
             <div class={service.expedie ? 'bloc__pied' : 'recap__alerte'} style="margin-block-start:12px">
               {service.expedie ? (
@@ -1014,6 +1031,19 @@ const ETAT_STATUT = {
   .manques { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 2px; }
 
   .apercu { border: 1px solid var(--slate-200); border-radius: var(--radius-card); overflow: hidden; }
+  /* Le rendu occupe la largeur du bloc ; sa hauteur est fixe parce qu'une
+     iframe isolée ne peut pas dire la sienne — mieux vaut un cadre qui défile
+     qu'un script pour l'ajuster. */
+  .apercu__rendu { display: block; inline-size: 100%; block-size: 30rem; border: 0; background: #fff; }
+  .apercu__brut { margin-block-start: 10px; }
+  .apercu__brut > summary {
+    cursor: pointer; font: var(--type-label); color: var(--slate-600);
+    padding-block: 4px;
+  }
+  .apercu__brut .apercu__corps {
+    margin-block-start: 6px;
+    border: 1px solid var(--slate-200); border-radius: var(--radius-card);
+  }
   .apercu__entete {
     display: flex; flex-direction: column; gap: 4px;
     padding: 12px 14px; background: var(--slate-50);

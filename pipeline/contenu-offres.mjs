@@ -12,6 +12,8 @@
  * L'alternative — des flottants — finit par facturer 119,99999 €.
  */
 
+import { CSS_COURRIEL } from '../apps/web/src/lib/offres/courriel.mjs';
+
 export const TARIFS = [
   {
     cle: 'prix_par_vue',
@@ -109,6 +111,14 @@ The Franchise Buddy`,
     libelle: 'Corps du courriel',
     aide: 'Jetons : {contact}, {client}, {reference}, {commercial}, {valide_jusqu_au}, {recapitulatif}.',
     ordre: 13,
+  },
+  {
+    cle: 'courriel_css',
+    valeur: CSS_COURRIEL,
+    type: 'texte',
+    libelle: 'Feuille de style du courriel',
+    aide: "Habille la version HTML de l'offre. Décorative : les largeurs et les marges sont posées dans le document, parce qu'un client de messagerie sur deux jette la feuille de style. Vider ce champ rend une lettre lisible, mais sans les couleurs de la marque.",
+    ordre: 14,
   },
 ];
 

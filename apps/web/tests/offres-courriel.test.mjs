@@ -11,8 +11,11 @@ import { describe, it } from 'node:test';
 
 import { calculerOffre, formater } from '../src/lib/offres/calcul.mjs';
 import {
+  CSS_COURRIEL,
   SERVICE_JOURNAL,
   construireCourriel,
+  corpsHtml,
+  recapHtml,
   recapTexte,
   remplacer,
   serviceCourriel,
@@ -189,5 +192,84 @@ describe("le service d'envoi", () => {
     assert.match(trace, /NON EXPÉDIÉ/);
     assert.match(trace, /marie@exemple\.be/);
     assert.match(trace, /Le corps du message\./);
+  });
+});
+
+describe('la lettre mise en page', () => {
+  const offre = offreExemple({
+    prestations: [{ nom: 'Design', prix_cents: 50_000 }],
+    packs: [{ cle: 'franchise', nom: 'Pack franchisé', prix_cents: 9_900, unite: 'poste_mois', avec_caisse: true }],
+    nombre_postes: 3,
+    socle_pos: 'api',
+  });
+  const resultat = calculerOffre({ ...offre, tarifs: TARIFS });
+  const sou = (c) => formater(c, 'fr');
+
+  const message = () => construireCourriel({
+    offre,
+    resultat,
+    gabarits: {
+      sujet: 'Votre offre {reference}',
+      corps: 'Bonjour {contact},\n\n{recapitulatif}\n\nÀ bientôt.',
+      css: CSS_COURRIEL,
+    },
+    formater: sou,
+  });
+
+  it('dit les mêmes montants que la version texte', () => {
+    const m = message();
+    // Le total TTC doit figurer dans les deux, au centime près : le client
+    // lit l'un, le commercial relit l'autre.
+    const total = sou(resultat.seaux.mensuel.ttc);
+    assert.ok(m.corps.includes(total), 'absent de la version texte');
+    assert.ok(m.corps_html.includes(total), 'absent de la version HTML');
+  });
+
+  it('ne laisse aucun repère de gabarit dans la lettre', () => {
+    const m = message();
+    assert.ok(!m.corps_html.includes('{{RECAP}}'));
+    assert.ok(!m.corps_html.includes('{recapitulatif}'));
+  });
+
+  it('place le récapitulatif même au milieu d’une phrase', () => {
+    // Rien n'oblige le gabarit à réserver un paragraphe au tableau.
+    const m = construireCourriel({
+      offre,
+      resultat,
+      gabarits: { sujet: 'x', corps: 'Voici : {recapitulatif} — voilà.', css: '' },
+      formater: sou,
+    });
+    assert.ok(!m.corps_html.includes('{{RECAP}}'));
+    assert.ok(m.corps_html.includes('tfb-seau'));
+  });
+
+  it('échappe ce qui vient de la console', () => {
+    // « Dupont & Fils » ou un chevron dans une ligne libre casseraient le
+    // document s'ils partaient tels quels.
+    const html = recapHtml(
+      { langue: 'fr', tva_mention: null },
+      calculerOffre({
+        ...offre,
+        prestations: [{ nom: 'Reprise <b>& audit</b>', prix_cents: 10_000 }],
+        packs: [],
+        tarifs: TARIFS,
+      }),
+      sou,
+    );
+    assert.ok(html.includes('Reprise &lt;b&gt;&amp; audit&lt;/b&gt;'));
+    assert.ok(!html.includes('<b>& audit'));
+  });
+
+  it('embarque la feuille de style qu’on lui donne', () => {
+    const m = message();
+    assert.ok(m.corps_html.includes('.tfb-entete'));
+    // …et se passe d'elle sans casser : la mise en page tient en ligne.
+    const nu = corpsHtml({ texte: 'Bonjour.', recap: '', css: '', titre: 'x' });
+    assert.ok(nu.includes('<style>'));
+    assert.ok(nu.includes('The Franchise Buddy'));
+  });
+
+  it('dit la caisse retenue sur la ligne du pack', () => {
+    assert.ok(message().corps_html.includes('Intégration API'));
   });
 });

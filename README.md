@@ -416,6 +416,25 @@ franchiseur » (999 €) d'avant. Les offres déjà chiffrées à ces tarifs-là
 bougent pas : elles en portent une copie, et le calculateur ne cumule jamais
 un pack avec le poste qu'il remplace.
 
+### La lettre d'offre
+
+L'offre part en deux versions dans le même message : du **texte brut**, qui se
+lit partout, et une **version mise en page** aux couleurs de la marque. Les
+deux disent les mêmes montants — un test le vérifie, parce que le client lit
+l'une et le commercial relit l'autre.
+
+Le partage est net et délibéré : la **mise en page est en ligne** dans le
+document — largeurs, marges, bordures, alignements —, les **couleurs et la
+typographie vivent dans le paramètre `courriel_css`**, modifiable depuis
+l'écran Tarifs. Un style en ligne l'emporterait sur la feuille de style et le
+paramètre ne servirait à rien : c'est pourquoi aucune couleur n'est écrite
+dans le document.
+
+Contrepartie assumée : un client de messagerie qui jette les feuilles de style
+— Outlook pour Windows, essentiellement — affiche une lettre juste et lisible,
+mais sans les couleurs de la marque. C'est le prix d'une charte qui se règle
+sans redéploiement.
+
 Les **mois offerts** ne sont pas une remise : le prix mensuel ne bouge pas, on
 renonce aux N premières échéances. Les confondre ferait apparaître un
 abonnement moins cher qu'il ne l'est, et le client s'en apercevrait à la

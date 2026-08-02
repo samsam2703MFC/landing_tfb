@@ -817,6 +817,7 @@ export async function tarifsEnVigueur() {
     mention_autoliquidation: lireTarif(par.get('mention_autoliquidation')) || '',
     courriel_sujet: lireTarif(par.get('courriel_sujet')) || '',
     courriel_corps: lireTarif(par.get('courriel_corps')) || '',
+    courriel_css: lireTarif(par.get('courriel_css')) || '',
   };
 }
 
