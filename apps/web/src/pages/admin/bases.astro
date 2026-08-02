@@ -14,18 +14,34 @@ import Console from '../../components/Console.astro';
 import Icone from '../../components/Icone.astro';
 import { lien } from '../../lib/lien.mjs';
 import { compteurs, listerProspects } from '../../lib/admin/donnees.mjs';
-import { CHAMPS_BASE, enregistrerBase, listerBases, supprimerBase, testerBase } from '../../lib/donnees/bases.mjs';
+import {
+  CHAMPS_BASE, dejaPrise, enregistrerBase, listerBases, motDePasseEnregistre,
+  sonderServeur, supprimerBase, testerBase,
+} from '../../lib/donnees/bases.mjs';
 import { coffreOuvert } from '../../lib/onboarding/coffre.mjs';
 
 let message = null;
 let souci = null;
+/** Ce que le serveur a répondu quand on lui a demandé ses bases. */
+let sondage = null;
+/** Le formulaire à réafficher après un sondage, pour ne pas retaper. */
+let saisie = null;
 
 if (Astro.request.method === 'POST') {
   const f = await Astro.request.formData();
   const action = String(f.get('action') || 'enregistrer');
   const prospectId = Number(f.get('prospect_id'));
 
-  if (action === 'tester') {
+  if (action === 'sonder') {
+    saisie = Object.fromEntries(CHAMPS_BASE.map((c) => [c.nom, String(f.get(c.nom) || '')]));
+    // Le mot de passe déjà enregistré évite de le retaper pour resonder. Il
+    // reste dans cette fonction : il ne repart jamais vers l'écran.
+    const motDePasse = String(f.get('mot_de_passe') || '').trim() || await motDePasseEnregistre(prospectId);
+    sondage = await sonderServeur({ ...saisie, motDePasse });
+    if (!sondage.ok) souci = sondage.dit;
+    else if (sondage.bases.length === 0) message = 'Connexion établie, mais ce compte ne voit aucune base — vérifiez ses droits.';
+    else message = `${sondage.bases.length} base(s) visible(s) par ce compte.`;
+  } else if (action === 'tester') {
     const r = await testerBase(prospectId);
     if (r.ok) message = `Connexion établie — ${r.detail.tables} table(s) dans « ${r.detail.base} ».`;
     else souci = r.dit;
@@ -47,6 +63,23 @@ const [chiffres, prospects, bases] = await Promise.all([compteurs(), listerProsp
 const parProspect = new Map(bases.map((b) => [b.prospectId, b]));
 const coffre = coffreOuvert();
 const ouvert = Number(Astro.url.searchParams.get('client') || 0);
+
+// Après un sondage, l'écran réaffiche ce qui a été tapé ; sinon ce qui est
+// enregistré. Sans ça, choisir une base dans la liste effacerait l'hôte.
+const propose = Astro.url.searchParams.get('base');
+const courant = (nom) => (saisie ? saisie[nom] : undefined)
+  ?? (nom === 'base' && propose ? propose : undefined)
+  ?? parProspect.get(ouvert)?.[nom]
+  ?? (nom === 'port' ? 3306 : '');
+
+// Deux clients sur la même base, c'est l'isolation supprimée sans que rien ne
+// casse. Le dire au moment de choisir, pas après.
+/** Ce que le sondage a trouvé, s'il a abouti. Vide sinon. */
+const trouvees = sondage?.ok ? sondage.bases : [];
+
+const conflits = ouvert > 0 && courant('hote') && courant('base')
+  ? await dejaPrise(courant('hote'), courant('port'), courant('base'), ouvert)
+  : [];
 ---
 
 <Console titre="Bases clientes" actif="bases" compteurs={chiffres} message={message} erreur={souci}>
@@ -121,10 +154,31 @@ const ouvert = Number(Astro.url.searchParams.get('client') || 0);
         {CHAMPS_BASE.map((c) => (
           <label class="champ">
             <span>{c.libelle}</span>
-            <input type={c.nom === 'port' ? 'number' : 'text'} name={c.nom}
-                   value={parProspect.get(ouvert)?.[c.nom] ?? (c.nom === 'port' ? 3306 : '')}
-                   required={c.nom === 'hote' || c.nom === 'base'} />
-            {c.aide && <em>{c.aide}</em>}
+            {c.nom === 'base' && trouvees.length > 0 ? (
+              <>
+                {/* Une liste plutôt qu'un champ libre dès qu'on sait ce que le
+                    serveur contient : on ne devine pas un nom de base, et une
+                    faute de frappe ici lie un client à rien du tout. */}
+                <select name="base" required>
+                  {trouvees.map((b) => (
+                    <option value={b.nom} selected={b.nom === courant('base')}>
+                      {b.nom}{b.tables > 0 ? ` — ${b.tables} table(s), ~${b.lignes.toLocaleString('fr-FR')} ligne(s)` : ' — vide'}
+                    </option>
+                  ))}
+                </select>
+                <em>{trouvees.length} base(s) vues par ce compte. Le contenu dit laquelle sert vraiment.</em>
+              </>
+            ) : (
+              <>
+                <input type={c.nom === 'port' ? 'number' : 'text'} name={c.nom}
+                       value={courant(c.nom)}
+                       required={c.nom === 'hote' || c.nom === 'base'} />
+                {c.aide && <em>{c.aide}</em>}
+                {c.nom === 'base' && (
+                  <em>Ou cherchez-les sur le serveur ci-dessous pour choisir dans une liste.</em>
+                )}
+              </>
+            )}
           </label>
         ))}
         <label class="champ">
@@ -138,7 +192,21 @@ const ouvert = Number(Astro.url.searchParams.get('client') || 0);
         </label>
       </div>
 
+      {conflits.length > 0 && (
+        <p class="conflit">
+          <Icone nom="triangle-alert" taille={16} />
+          <span>
+            Cette base est déjà celle de <strong>{conflits.join(', ')}</strong>. Deux clients sur la
+            même base, c'est l'isolation supprimée sans que rien ne casse : les écrans marchent, les
+            requêtes répondent, et chacun lit les données de l'autre.
+          </span>
+        </p>
+      )}
+
       <div class="pied">
+        <button class="bouton bouton--sobre" type="submit" name="action" value="sonder" formnovalidate>
+          <Icone nom="search" taille={15} /> Chercher les bases sur ce serveur
+        </button>
         <button class="bouton bouton--marque" type="submit" disabled={!coffre && !parProspect.get(ouvert)}>
           <Icone nom="save" taille={15} /> Enregistrer
         </button>
@@ -195,4 +263,17 @@ const ouvert = Number(Astro.url.searchParams.get('client') || 0);
   .champ em { font-style: normal; font-size: var(--text-xs); color: var(--slate-500); }
   .pied { display: flex; gap: var(--space-3); align-items: center; margin-block-start: var(--space-4); }
   .mono { font-family: var(--font-mono); }
+  .aide { color: var(--slate-600); font-size: var(--text-xs); max-inline-size: 78ch; margin-block-end: 8px; }
+  .conflit { display: flex; gap: 10px; align-items: flex-start; padding: 11px 14px;
+             border-radius: var(--radius-control); margin-block-start: var(--space-4);
+             background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900);
+             font-size: var(--text-sm); max-inline-size: 82ch; }
+  .trouvees { display: flex; flex-direction: column; gap: 5px; margin-block-start: var(--space-4); }
+  .trouvee { display: flex; align-items: baseline; gap: 12px; padding: 7px 12px;
+             border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+             background: #fff; font-size: var(--text-sm); }
+  .trouvee:hover { border-color: var(--plum-500, #7b4488); text-decoration: none; }
+  .trouvee span { color: var(--slate-500); font-size: var(--text-xs); }
+  .trouvee--choisie { border-color: var(--plum-500, #7b4488);
+                      background: color-mix(in srgb, var(--plum-500, #7b4488) 7%, #fff); }
 </style>
