@@ -4,6 +4,8 @@ import { getSession } from '@/lib/auth/session';
 import { prisma } from '@/lib/prisma';
 import { getBillingSnapshot } from '@/lib/billing/client';
 import { AdminShell } from '@/components/admin/AdminShell';
+import { REGISTRY } from '@/lib/config/registry';
+import { catalogueEntries } from '@/lib/data/catalogue';
 
 /**
  * The authenticated console. Every screen under here is gated: no session, no
@@ -34,6 +36,11 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
     sync: billing.sync.length,
     modules: moduleCount,
     messages: unread,
+    // One configuration profile per live tenant; the registry and the catalogue are
+    // code, so their counts are constants rather than queries.
+    profiles: billing.tenants.filter((t) => t.archived_at === null).length,
+    variables: REGISTRY.length,
+    resources: catalogueEntries().length,
   };
 
   return (

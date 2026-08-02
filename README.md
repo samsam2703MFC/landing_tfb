@@ -160,10 +160,151 @@ and IDs carry `.fb-num`, which pins them LTR inside Arabic text.
 | `POST /api/stripe/webhook` | Keeps `tfb_subscriptions` in step. Signature verified first |
 | `GET /api/billing/portal` | Stripe customer portal link (session required) |
 | `GET /api/storage/[...path]` | Serves uploaded files |
+| `GET /api/app-config?tenant=…` | One tenant's resolved configuration + grants, with an `ETag` |
+| `GET /api/app-config/schema` | The variable registry — what drives the console's forms |
+| `GET /api/data/:resource` | One catalogue resource. Refuses an unauthenticated caller |
+| `GET /preview/:slug` | The client's whole interface in their theme — the link you send them |
 
 The admin API lives under `/api/admin/*` and is gated by `withAdmin` — brands, sections,
 modules (+ screenshots), plans, subscriptions, contact messages, translations, uploads,
-and two billing actions that delegate to the billing service.
+two billing actions that delegate to the billing service, and
+`app-config/:tenant` (+ `/publish`) for the per-tenant overlay.
+
+## The Clients tab
+
+One rail entry, first in the list, leading to everything about a customer.
+`/admin/clients/<slug>` has five tabs, and they are links rather than local state
+because a support call ends with someone pasting a URL to a colleague:
+
+| Tab | What it holds |
+| --- | --- |
+| Aperçu | Identity from the billing service, licence and invoice counts, served version |
+| Personnalisation | The theme and the 29 variables — the editor described below |
+| Facturation | That client's licences and invoices |
+| Données | Where their data lives, which catalogue resources they use, the `tfb_settings` keys they occupy |
+| Journal | Publication history, licence events and sync-queue rows for this client |
+
+Before this, a client was split across two groups of the rail — licences under
+Facturation, configuration under Personnalisation — and nothing joined them. Whoever
+answers the phone should not have to know which half a question belongs to.
+
+**Publication history** is written *with* the publication, not after it: version,
+timestamp, the admin's email taken from the session, and the keys whose published
+value changed. Twenty entries per tenant, in `tenant.<slug>.history`. An entry that
+can go missing is worse than no history, because it makes the log look complete.
+
+`/admin/profiles` and `/admin/profiles/<slug>` still resolve — they redirect into the
+new tabs, so links shared before the move keep working.
+
+## Per-tenant configuration
+
+The PWA is personalised per customer without forking an endpoint, a table or a
+schema. Customisation is **data**, stored in this app's database — never in the
+tenants' own containers.
+
+**The registry is the only hard-coded part.** `src/lib/config/registry.ts` declares
+every variable: key, type, default, validation. The console reads it and generates
+its own form, so adding a variable is one entry there — no admin screen, no
+migration. `GET /api/app-config/schema` exposes the same thing to any other client.
+
+**Resolution mirrors the locale fallback.** Registry default → `global.published` →
+`tenant.<slug>.published`, exactly as a missing `tfb_translations` row falls back to
+French. An absent entry is inheritance, and "Réinitialiser" **deletes** the override
+rather than storing a blank — the same rule, for the same reason.
+
+**Storage needs no migration.** Everything lives in `tfb_settings` (`key` /
+`value JSON`), which the init migration already created:
+
+| Key | Holds |
+| --- | --- |
+| `global.published` | house defaults, above the registry's |
+| `tenant.<slug>.published` | what the PWA is served right now |
+| `tenant.<slug>.draft` | what the console is editing |
+
+**Draft and publish are separate.** Editing changes nothing for the customer;
+`POST /api/admin/app-config/:tenant/publish` promotes the draft and increments
+`version`, which is what the service worker compares against its cached copy.
+Publishing is refused while any value fails validation.
+
+**Entitlements are derived, never edited.** What a tenant may see comes from
+`licenses` + `packages` in the billing service; the overlay only says how it looks.
+`nav.modules` is filtered against those grants at resolution time, so a module that
+stops being paid for disappears without anyone touching the profile. Ticking
+entitlements in the console would give two sources of truth about what a customer
+bought, and they diverge at the first Stripe webhook.
+
+### A client's whole theme, and the link you send them
+
+A tenant's card holds its **complete stylesheet**, not just an accent colour: brand and
+CTA colours with the ink that sits on each, surfaces, text, borders, the four status
+colours, fonts, corner radius, shadow depth and spacing density. `src/lib/config/theme.ts`
+turns those into the CSS custom properties the design system already reads, so a client
+theme is a list of property overrides — no CSS is built, shipped or duplicated per
+tenant, and changing a colour needs no deploy.
+
+**Why a token set and not a stylesheet field.** Letting the console hold raw CSS would
+be simpler and is a bad trade: CSS is not inert. Attribute selectors with
+`background-image: url(...)` exfiltrate what a user types, and one `content` rule
+rewrites what a customer reads. Tokens express every legitimate theme and none of
+that — every value emitted into a `<style>` comes from a validated enum or a
+`#RRGGBB` checked on write.
+
+**Contrast is checked as a pair.** A colour is not legible on its own, so
+`validateTheme` compares the resolved set — the chosen ink against the primary and the
+accent, the text colours against the card surface. Those checks are advisory while
+editing (you have to be able to set a light primary and *then* switch its ink) and
+**blocking at publish**.
+
+**`/preview/<slug>` is the link you hand the client.** Every component the product is
+built from, rendered with their theme: all button variants, sizes and states, the
+dropdowns, fields, checkboxes, switches and radios, tabs, cards, badges, stat tiles,
+the data table, dialogs and toasts, and all 75 icons — read from `public/icons` at
+request time so the page cannot drift from the folder. Nothing is styled for the
+preview: if a colour reads badly there, it reads badly in the app.
+
+The page needs no session — it shows branding, never customer data — and is `noindex`.
+`?draft=1` renders what the console is editing instead of what is published, and that
+one does require an admin session, so a customer is never shown something that is not
+live.
+
+### The data catalogue
+
+`src/lib/data/catalogue.ts` is the library of resources a PWA may read, served by one
+route — `GET /api/data/:resource`. Two kinds sit in the same list: `proxy` (an
+endpoint that already exists on the tenant's own service, host from
+`tenants.internal_api_url`) and `query` (generated from a declaration against a
+**view**, never a bare table — exposing a table makes its column names your public
+contract, and `CREATE VIEW` changes no table).
+
+A registry variable of type `source` *selects* a catalogue entry. It never authors a
+URL or a query: a URL typed into an admin form is an SSRF with no review and no
+history. A proxy's parameters are fed by other variables — `stock.low_items` takes
+its `threshold` from `stock.threshold`.
+
+The catalogue is code, so it is reviewed in a pull request. `/admin/catalogue` is
+read-only and shows the guarantees per resource, computed rather than asserted:
+tenant column, column allowlist, sortable columns, row ceiling, writes refused.
+
+**The import wizard proposes, it does not publish.** *Importer depuis une table* reads
+`information_schema` (scoped to `DATABASE()`, so it cannot enumerate another database
+on the same server) and writes a *proposal*: a declaration stored in `tfb_settings`,
+listed on the catalogue screen, and served by no route. Making it real means pasting
+the generated entry into `catalogue.ts` and putting it through review.
+
+Its defaults are opt-in, not opt-out. Columns matching a margin, HR, personal-data or
+secret pattern start unchecked; the tenant column is excluded from the exposed set
+(it filters, it does not leave); sorting is only offered on columns that carry an
+index; and the last step refuses to produce anything without a tenant column. When the
+source is a bare table it says so first and offers the `CREATE VIEW` — as text, to run
+yourself. This app never issues DDL.
+
+**Reading rows needs a tenant identity that this app does not have yet.**
+`/api/data/:resource` never infers a tenant from `?tenant=` for an anonymous caller —
+that is exactly how one customer reads another's rows. It currently resolves the
+tenant from a back-office session (the console's preview) and refuses everything
+else, because the billing service holds the API keys and only exposes
+`api_key_hint`. Point `resolveTenant` at that check when it exists; nothing else in
+the file changes.
 
 ## The two external services
 
@@ -213,14 +354,17 @@ src/
     i18n/                  locales + the translation resolver
     landing/               the GET /api/landing payload builder
     billing/               the billing-service client, types and fixtures
+    config/                registry (the only hard-coded part), tfb_settings store, resolver, theme
+    data/                  the catalogue of readable resources and its query executor
     auth/                  session (JWT cookie) and scrypt passwords
     storage.ts             uploads, path safety
   components/
     landing/               header, hero, brand strip, module grid, module page, steps, differentiators, pricing, contact, footer
-    admin/                 shell, billing tables, content screens, translation editor, module editor
+    admin/                 shell, billing tables, content screens, translation editor, module editor, profile editor
   app/
     (site)/[locale]/       the landing — root layout #1, lang + dir per locale
     (admin)/admin/         the back office — root layout #2, fr-only LTR
+    (preview)/preview/     the per-tenant theme page — root layout #3, noindex
     api/                   public and admin routes
   middleware.ts            bare paths → a locale
 public/
@@ -228,8 +372,8 @@ public/
   brand/                   the supplied mark, 4 variants
 ```
 
-Two root layouts in route groups, because the landing mirrors across 8 locales and the
-console does not.
+Three root layouts in route groups: the landing mirrors across 8 locales, the console
+does not, and the theme page belongs to neither — it is a link handed to one client.
 
 ## Design decisions carried over from the handoff
 
@@ -252,21 +396,27 @@ reachable from the machine it was built on, so the migration, the seed and the r
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
 
-`npm run sync:modules` **has** been run end to end, against a temporary SQLite copy of
-this schema: seed, then sync — 8 modules, 57 functions, 29 screenshots copied into
-`STORAGE_PATH`, 438 translation rows — then the pages rendered and were screenshotted in
-FR and AR. What that run does *not* prove is MySQL: native types (`VarChar`, `Text`,
-`Json`) and the migration itself still want a real `prisma migrate deploy` against
-`tfb_landing`. Run `--dry-run` first, then the real sync, and check
-`/[locale]/modules/<slug>` before pointing the workflow at production.
+The per-tenant configuration layer **was** run end to end, against a real MySQL-family
+database (MariaDB 10.11) with the migration and seed applied: registry validation, the
+three-layer resolution chain, draft/publish and version increment, override counting,
+introspection over `information_schema`, proposal validation, and executing a `query`
+resource through a view. The refusals were exercised too — undeclared column,
+disallowed operator, unindexed sort, over-large `limit`, missing tenant column,
+unauthenticated `/api/data` (401), `POST` to a generated resource (405), and an
+injection attempt through the tenant value (0 rows, bound parameter).
 
-The 27 screenshots shipped with the modules are real captures of the running apps
-(`signage`, `pwa_delivery`, `back_office_ws_franchisor`, `back_office_ws_franchisee`),
-taken with Playwright against each app's own seed data. `webshop`, `supplier_atl`,
-`pwa_kitchen` and `pwa_consultant` could not be captured: the first loads React from a
-CDN and the other three are thin clients over a remote API, neither reachable from the
-build machine. Their manifests carry no `screenshots`, so their carousels show the
-labelled placeholder until someone runs the same capture on a connected machine.
+The console was then driven in a browser against that database: logging in, editing a
+profile, publishing, and running the import wizard through to a stored proposal. Two
+things that only a live run surfaces were found and fixed this way — see the
+BIGINT note in `src/lib/data/query.ts`.
+
+Still unverified: the `proxy` half of the catalogue, which needs a reachable
+`BILLING_SERVICE_URL` (it refuses explicitly rather than guessing while unset), and the
+views the shipped catalogue names — `v_sales_daily` and `v_loyalty_members` — which do
+not exist in your schema yet. Create them, or replace those entries with your own.
+
+The check scripts are not committed: the repo has no test runner, and adding one was
+outside this change.
 
 ## Known gaps
 
