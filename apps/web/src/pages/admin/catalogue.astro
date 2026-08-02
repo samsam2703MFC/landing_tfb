@@ -60,8 +60,8 @@ const [chiffres, entrees, propositions] = await Promise.all([
         données et une erreur à qui les demande.
       </p>
       <p class="aide">
-        Passez par l'assistant : il lit votre base, propose une déclaration et l'instruction
-        <span class="mono">CREATE VIEW</span> qui va avec. Vous collez ensuite l'entrée dans
+        Passez par l'assistant : il lit votre base, propose une déclaration et l'instruction{' '}
+        <span class="mono">CREATE VIEW</span> qui va avec. Vous collez ensuite l'entrée dans{' '}
         <span class="mono">src/lib/donnees/catalogue.mjs</span>.
       </p>
     </div>
@@ -102,8 +102,8 @@ const [chiffres, entrees, propositions] = await Promise.all([
           <span class="aide">
             {p.sourceGenre === 'vue' ? 'vue' : 'table'} <span class="mono">{p.source}</span>
             {p.vue !== p.source && <> → vue <span class="mono">{p.vue}</span></>}
-            · {p.colonnes.length} colonne(s) · plafond {p.maxLignes}
-            · client sur <span class="mono">{p.colonneClient}</span>
+            {` · ${p.colonnes.length} colonne(s) · plafond ${p.maxLignes} · client sur `}
+            <span class="mono">{p.colonneClient}</span>
           </span>
           <form method="post">
             <input type="hidden" name="action" value="retirer" />
