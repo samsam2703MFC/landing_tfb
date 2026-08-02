@@ -15,8 +15,8 @@ import Icone from '../../components/Icone.astro';
 import { lien } from '../../lib/lien.mjs';
 import { compteurs, listerProspects } from '../../lib/admin/donnees.mjs';
 import {
-  CHAMPS_BASE, dejaPrise, enregistrerBase, listerBases, motDePasseEnregistre,
-  sonderServeur, supprimerBase, testerBase,
+  CHAMPS_BASE, dejaPrise, enregistrerBase, inventaireConsole, listerBases,
+  motDePasseEnregistre, sonderServeur, supprimerBase, testerBase,
 } from '../../lib/donnees/bases.mjs';
 import { coffreOuvert } from '../../lib/onboarding/coffre.mjs';
 
@@ -59,7 +59,9 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [chiffres, prospects, bases] = await Promise.all([compteurs(), listerProspects(), listerBases()]);
+const [chiffres, prospects, bases, inventaire] = await Promise.all([
+  compteurs(), listerProspects(), listerBases(), inventaireConsole(),
+]);
 const parProspect = new Map(bases.map((b) => [b.prospectId, b]));
 const coffre = coffreOuvert();
 const ouvert = Number(Astro.url.searchParams.get('client') || 0);
@@ -100,6 +102,46 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
       </span>
     </p>
   )}
+
+  <details class="cellule inventaire" open={bases.length === 0}>
+    <summary>
+      Ce qu'il y a sur le serveur — {inventaire.ok ? `${inventaire.bases.length} base(s)` : 'indisponible'}
+    </summary>
+    <p class="aide">
+      Sans rien saisir : la connexion de la console existe déjà. Deux limites — cet inventaire ne
+      montre que <strong>le serveur de la console</strong>{inventaire.ok && inventaire.hote ? ` (${inventaire.hote}:${inventaire.port})` : ''},
+      et seulement ce que son compte a le droit de voir. Une base hébergée ailleurs se trouve avec
+      la recherche par identifiants, plus bas.
+    </p>
+
+    {!inventaire.ok ? (
+      <p class="dit">{inventaire.dit}</p>
+    ) : inventaire.bases.length === 0 ? (
+      <p class="rien">Aucune base en dehors des schémas système.</p>
+    ) : (
+      <table>
+        <thead>
+          <tr><th>Base</th><th>Tables</th><th>Lignes (estimation)</th><th>Utilisée par</th></tr>
+        </thead>
+        <tbody>
+          {inventaire.bases.map((b) => (
+            <tr>
+              <td class="mono">{b.nom}</td>
+              <td class="chiffre">{b.tables}</td>
+              <td class="chiffre">{b.lignes.toLocaleString('fr-FR')}</td>
+              <td>
+                {b.console
+                  ? <span class="etat etat--console">la console — jamais un client</span>
+                  : b.prisePar
+                    ? <span class="etat etat--ok">{b.prisePar}</span>
+                    : <span class="rien">libre</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+  </details>
 
   <div class="cellule">
     <table>

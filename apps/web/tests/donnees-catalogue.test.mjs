@@ -24,7 +24,7 @@ import {
 } from '../src/lib/donnees/catalogue.mjs';
 import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/donnees/requete.mjs';
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
-import { hoteAcceptable, refusHote, sonderServeur } from '../src/lib/donnees/bases.mjs';
+import { enregistrerBase, hoteAcceptable, refusHote, sonderServeur } from '../src/lib/donnees/bases.mjs';
 import { codeProposition, controlerProposition } from '../src/lib/donnees/propositions.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
@@ -448,5 +448,30 @@ describe('refus d’un hôte de base', () => {
     const r = await sonderServeur({ hote: 'db.exemple', identifiant: '', motDePasse: 'y' });
     assert.equal(r.ok, false);
     assert.match(r.dit, /identifiant/);
+  });
+});
+
+describe('la base de la console n’est celle d’aucun client', () => {
+  // Le refus tombe avant toute requête : ce test n'a donc pas besoin de base.
+  // C'est voulu — le contrôle le plus important doit être le moins coûteux.
+  it('la refuse, en disant ce qu’elle exposerait', async () => {
+    process.env.DB_HOST = '10.0.0.9';
+    process.env.DB_NAME = 'tfb_landing';
+    const r = await enregistrerBase(1, { hote: '10.0.0.9', port: 3306, base: 'tfb_landing' }, 'x');
+    assert.equal(r.ok, false);
+    assert.match(r.erreur, /base de la console/);
+    assert.match(r.erreur, /prospects, les offres et les contrats/);
+  });
+
+  it('laisse passer une base de même nom sur un autre serveur', async () => {
+    // Deux serveurs peuvent porter une base au même nom ; seul le couple
+    // hôte + base désigne celle de la console.
+    process.env.DB_HOST = '10.0.0.9';
+    process.env.DB_NAME = 'tfb_landing';
+    const r = await enregistrerBase(1, { hote: '10.0.0.99', port: 3306, base: 'tfb_landing' }, 'x')
+      .catch((e) => ({ ok: false, erreur: e.message }));
+    // Elle ira jusqu'à la base — donc elle échouera ici faute de connexion —
+    // mais surtout pas sur le message de la console.
+    assert.ok(!/base de la console/.test(r.erreur || ''));
   });
 });
