@@ -279,10 +279,11 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
           </select>
         </div>
         <div class="champ">
+          <span class="legende">Modèle de base</span>
           <label class="case case--seule">
             <input type="checkbox" name="base" value="1" />
             <span>
-              <strong>Modèle de base</strong>
+              <strong>Compris d'office</strong>
               <span class="champ__aide">Coché d'avance sur toute offre neuve.</span>
             </span>
           </label>
@@ -492,11 +493,15 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module {
     display: grid;
     grid-template-columns:
-      minmax(9rem, 1.2fr) 10rem 9rem 8.5rem 4.5rem 7rem 7rem 3.5rem 3.5rem 5.5rem auto;
+      minmax(9rem, 1.2fr) 10rem 9rem 9.5rem 4.5rem 7rem 7rem 3.5rem 3.5rem 5.5rem auto;
     gap: 12px;
     align-items: center;
     padding: 11px 16px;
     inline-size: 100%;
+    /* Onze colonnes : sous cette largeur, elles se tassent jusqu'à ce que les
+       six pastilles de levier débordent sur le champ d'ordre. La rangée
+       défile plutôt — c'est le rôle du rouleau qui l'entoure. */
+    min-inline-size: 94rem;
   }
   .ligne-module--entete {
     padding-block: 0;

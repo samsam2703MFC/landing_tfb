@@ -244,11 +244,10 @@ const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0
 
 <style is:global>
   /* Une étape est un bloc de réglages, pas une ligne de table : elle porte un
-     gabarit de courriel de six lignes, qui n'entre dans aucune cellule. */
-  .etape {
-    border: 0; border-block-start: 1px solid var(--slate-200);
-    margin: 0; padding: 16px 0 0; min-inline-size: 0;
-  }
+     gabarit de courriel de six lignes, qui n'entre dans aucune cellule.
+     Les étapes se séparent par de l'espace, pas par un trait : un filet qui
+     flotte entre deux blocs ajoute une ligne à lire sans rien dire. */
+  .etape { border: 0; margin: 0; padding: 24px 0 0; min-inline-size: 0; }
   .etape:disabled { opacity: 0.55; }
-  .etape:first-of-type { border-block-start: 0; }
+  .etape:first-of-type { padding-block-start: 0; }
 </style>

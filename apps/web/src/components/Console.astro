@@ -385,7 +385,12 @@ const RUBRIQUES = TOUTES
       .page .actions--case { margin-block-start: 0; }
 
       /* ── Formulaires ───────────────────────────────────────────────────── */
-      .champ { display: grid; gap: 5px; }
+      /* `align-content: start` : sans lui, un champ plus court que ses voisins
+         est étiré à leur hauteur, et l'espace en trop se répartit **entre ses
+         rangées**. Une étiquette seule au-dessus d'une saisie gagnait douze
+         pixels quand sa voisine en avait trois — les saisies d'une même
+         rangée ne partaient plus du même trait. */
+      .champ { display: grid; gap: 5px; align-content: start; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
       /* Quand l'aide vit dans l'étiquette, elle doit passer à la ligne :

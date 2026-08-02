@@ -277,10 +277,11 @@ const hauteur = (champ) => champ.lignes || (champ.fr.length > 90 ? 3 : 1);
   /* Deux colonnes tant qu'elles tiennent : la comparaison se fait à l'œil,
      phrase contre phrase. En dessous, l'une sous l'autre — un français et sa
      traduction empilés restent lisibles, deux colonnes de 20 caractères non. */
+  /* Les champs se séparent par de l'espace, pas par un filet : empilés par
+     dizaines, les traits font une grille de cahier. */
   .trad__champ {
     display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
-    padding-block: 12px;
-    border-block-start: 1px solid var(--slate-100);
+    padding-block: 14px;
   }
   .trad__cote { display: flex; flex-direction: column; gap: 6px; min-inline-size: 0; }
   .trad__etiquette {
