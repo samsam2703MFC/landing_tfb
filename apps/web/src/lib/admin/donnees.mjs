@@ -10,7 +10,7 @@
  */
 
 import { connexion, estPostgres, lireJson, table, viderCache } from '../db.mjs';
-import { enCents, lireTarif, saisirTarif } from '../offres/montants.mjs';
+import { enCents, enEntier, lireTarif, saisirTarif } from '../offres/montants.mjs';
 import { calculerOffre, lignesDe } from '../offres/calcul.mjs';
 import { ROLES, empreinteValide, hacher } from './session.mjs';
 import { lireImage } from './images.mjs';
@@ -90,6 +90,7 @@ export async function compteurs() {
   );
   const [fonctions] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('fonctions')}`);
   const [captures] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('captures')}`);
+  const [etapes] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('etapes')} WHERE actif = ?`, [vrai(true)]);
   const [textes] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('textes')}`);
   const [langues] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('langues')} WHERE publiee = ?`, [vrai(true)]);
   const [leads] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('leads')} WHERE traite = ?`, [vrai(false)]);
@@ -112,6 +113,7 @@ export async function compteurs() {
     actifs: nombre(actifs),
     fonctions: nombre(fonctions),
     captures: nombre(captures),
+    etapes: nombre(etapes),
     textes: nombre(textes),
     langues: nombre(langues),
     leads: nombre(leads),
@@ -906,6 +908,173 @@ export function instantanePacks(packs) {
   }));
 }
 
+// ---------------------------------------------------------------------------
+// Le suivi commercial : les étapes, et le journal d'une offre
+// ---------------------------------------------------------------------------
+
+/** Les étapes du pipeline, dans leur ordre. */
+export async function listerEtapes({ activesSeulement = false } = {}) {
+  const db = await connexion();
+  const sql = activesSeulement
+    ? `SELECT * FROM ${table('etapes')} WHERE actif = ? ORDER BY ordre, nom`
+    : `SELECT * FROM ${table('etapes')} ORDER BY ordre, nom`;
+  const lignes = await db.requete(sql, activesSeulement ? [vrai(true)] : []);
+  return lignes.map((e) => ({
+    ...e,
+    actif: Boolean(e.actif),
+    gabarit_actif: Boolean(e.gabarit_actif),
+    relance_active: Boolean(e.relance_active),
+    relance_jours: Number(e.relance_jours) || 0,
+  }));
+}
+
+/** Une étape par sa clé, ou `null`. */
+export async function etapeParCle(cle) {
+  if (!cle) return null;
+  return (await listerEtapes()).find((e) => e.cle === String(cle)) || null;
+}
+
+export async function ajouterEtape(valeurs) {
+  const db = await connexion();
+  const cle = normaliserCle(valeurs.cle || valeurs.nom);
+  if (!cle) throw new Error('Une étape a besoin d’un nom.');
+  const dejaLa = await db.requete(`SELECT id FROM ${table('etapes')} WHERE cle = ? LIMIT 1`, [cle]);
+  if (dejaLa.length > 0) throw new Error(`L'étape « ${cle} » existe déjà.`);
+  await db.executer(
+    `INSERT INTO ${table('etapes')}
+     (cle, nom, description, ordre, actif, gabarit_actif, relance_active, relance_jours)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      cle,
+      String(valeurs.nom || '').trim() || cle,
+      String(valeurs.description || '').trim() || null,
+      Number(valeurs.ordre) || 100,
+      vrai(true), vrai(false), vrai(false), 0,
+    ],
+  );
+  viderCache();
+  return cle;
+}
+
+export async function enregistrerEtape(cle, valeurs) {
+  const db = await connexion();
+  const jours = String(valeurs.relance_jours ?? '').trim();
+  await db.executer(
+    `UPDATE ${table('etapes')}
+     SET nom = ?, description = ?, ordre = ?,
+         gabarit_actif = ?, gabarit_sujet = ?, gabarit_corps = ?,
+         relance_active = ?, relance_jours = ?
+     WHERE cle = ?`,
+    [
+      String(valeurs.nom || '').trim() || String(cle),
+      String(valeurs.description || '').trim() || null,
+      Number(valeurs.ordre) || 100,
+      vrai(valeurs.gabarit_actif === '1' || valeurs.gabarit_actif === true),
+      String(valeurs.gabarit_sujet || '').trim() || null,
+      String(valeurs.gabarit_corps || '').trim() || null,
+      vrai(valeurs.relance_active === '1' || valeurs.relance_active === true),
+      jours ? enEntier(jours, `Délai de relance de ${cle}`) : 0,
+      String(cle),
+    ],
+  );
+  viderCache();
+}
+
+export async function basculerEtape(cle, actif) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('etapes')} SET actif = ? WHERE cle = ?`, [vrai(actif), String(cle)]);
+  viderCache();
+}
+
+/**
+ * Supprime une étape. Les offres qui y étaient n'en ont plus : elles
+ * réapparaissent sans étape dans la liste, ce qui se voit — plutôt que de
+ * pointer vers une étape disparue, ce qui ne se voit pas.
+ */
+export async function supprimerEtape(cle) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('offres')} SET etape = NULL WHERE etape = ?`, [String(cle)]);
+  await db.executer(`DELETE FROM ${table('etapes')} WHERE cle = ?`, [String(cle)]);
+  viderCache();
+}
+
+/**
+ * Écrit une ligne au journal d'une offre.
+ *
+ * Jamais modifiée ensuite : c'est ce qui en fait un journal et non un champ
+ * « dernière action », lequel efface l'avant-dernière.
+ */
+export async function journaliser(offreId, { type, texte, utilisateurId = null }) {
+  const db = await connexion();
+  await db.executer(
+    `INSERT INTO ${table('suivi')} (offre_id, quand, utilisateur_id, type, texte)
+     VALUES (?, ?, ?, ?, ?)`,
+    [Number(offreId), new Date(), Number(utilisateurId) || null, String(type), String(texte || '')],
+  );
+}
+
+/** Le journal d'une offre, du plus récent au plus ancien. */
+export async function listerSuivi(offreId) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT s.*, u.nom AS auteur_nom, u.identifiant AS auteur_identifiant
+     FROM ${table('suivi')} s
+     LEFT JOIN ${table('utilisateurs')} u ON u.id = s.utilisateur_id
+     WHERE s.offre_id = ? ORDER BY s.id DESC`,
+    [Number(offreId)],
+  );
+  return lignes;
+}
+
+/**
+ * Déplace une offre dans le pipeline.
+ *
+ * Le compteur de silence repart à zéro, et la relance déjà partie est oubliée
+ * — il s'est passé quelque chose, la prochaine relance se mérite à nouveau.
+ */
+export async function changerEtapeOffre(id, cle, utilisateurId = null) {
+  const db = await connexion();
+  const etape = await etapeParCle(cle);
+  if (cle && !etape) throw new Error(`L'étape « ${cle} » n'existe pas.`);
+  await db.executer(
+    `UPDATE ${table('offres')} SET etape = ?, etape_le = ?, relance_le = NULL WHERE id = ?`,
+    [etape ? etape.cle : null, new Date(), Number(id)],
+  );
+  await journaliser(id, {
+    type: 'etape',
+    texte: etape ? `Étape : ${etape.nom}` : 'Sortie du pipeline',
+    utilisateurId,
+  });
+  viderCache();
+}
+
+/** Note la date à laquelle une relance est partie, pour ne pas la répéter. */
+export async function marquerRelancee(id) {
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('offres')} SET relance_le = ? WHERE id = ?`, [new Date(), Number(id)]);
+  viderCache();
+}
+
+/**
+ * Les offres vivantes avec leur étape et leur commercial : la matière du
+ * script de relance, et du tableau de suivi.
+ */
+export async function offresEnCours() {
+  const db = await connexion();
+  return db.requete(
+    `SELECT o.*, p.raison_sociale, p.contact_nom, p.contact_email,
+            u.nom AS auteur_nom, u.identifiant AS auteur_identifiant
+     FROM ${table('offres')} o
+     LEFT JOIN ${table('prospects')} p ON p.id = o.prospect_id
+     LEFT JOIN ${table('utilisateurs')} u ON u.id = o.cree_par
+     WHERE o.statut NOT IN ('acceptee', 'refusee')
+       AND o.version = (
+         SELECT MAX(v.version) FROM ${table('offres')} v WHERE v.reference = o.reference
+       )
+     ORDER BY o.etape_le, o.id`,
+  );
+}
+
 /** Les packs, dans l'ordre où ils se présentent. */
 export async function listerPacks({ actifsSeulement = false } = {}) {
   const db = await connexion();
@@ -1554,12 +1723,15 @@ export async function nouvelleVersion(reference) {
   return { id, reference: String(reference), version };
 }
 
-export async function changerStatutOffre(id, statut) {
+export async function changerStatutOffre(id, statut, utilisateurId = null) {
   if (!STATUTS_OFFRE.includes(statut)) throw new Error(`Statut inconnu : ${statut}.`);
   const db = await connexion();
   const champs = statut === 'envoyee' ? ', envoyee_le = ?' : '';
   const params = statut === 'envoyee' ? [statut, new Date(), Number(id)] : [statut, Number(id)];
   await db.executer(`UPDATE ${table('offres')} SET statut = ?${champs} WHERE id = ?`, params);
+  // Le journal garde la trace : « qui a marqué cette offre refusée, et
+  // quand » est exactement la question qu'on se pose trois mois plus tard.
+  await journaliser(id, { type: 'statut', texte: `Statut : ${statut}`, utilisateurId });
   viderCache();
 }
 

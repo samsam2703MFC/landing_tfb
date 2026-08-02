@@ -1,0 +1,254 @@
+---
+/**
+ * Les étapes du suivi commercial.
+ *
+ * Une équipe qui vend autrement doit pouvoir décrire sa façon de faire sans
+ * qu'on redéploie : les étapes se créent, se renomment, se réordonnent et se
+ * suppriment ici. Le **statut** d'une offre, lui, reste technique — il décide
+ * si l'offre est encore modifiable — et ne bouge pas.
+ *
+ * Chaque étape porte deux réglages indépendants :
+ *
+ *   · un **gabarit de courriel**, proposé au commercial quand l'offre entre
+ *     dans l'étape. Activable séparément : une étape peut exister sans qu'on
+ *     écrive quoi que ce soit au client ;
+ *   · une **relance**, qui prévient le commercial au bout de N jours sans
+ *     mouvement. Le zéro vaut refus, comme la case décochée — deux façons de
+ *     dire non, mais aucune ne surprend.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import {
+  ajouterEtape,
+  basculerEtape,
+  compteurs,
+  enregistrerEtape,
+  listerEtapes,
+  supprimerEtape,
+} from '../../lib/admin/donnees.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'enregistrer');
+    let dit = 'Étape enregistrée.';
+
+    if (action === 'ajout') {
+      const cle = await ajouterEtape({ nom: f.get('nom'), description: f.get('description'), ordre: f.get('ordre') });
+      dit = `Étape « ${cle} » créée. Réglez son gabarit et sa relance ci-dessus.`;
+    } else if (action === 'bascule') {
+      await basculerEtape(f.get('cle'), f.get('actif') === '1');
+      dit = 'Étape mise à jour.';
+    } else if (action === 'suppression') {
+      await supprimerEtape(f.get('cle'));
+      dit = 'Étape supprimée. Les offres qui y étaient sont sorties du pipeline.';
+    } else {
+      await enregistrerEtape(f.get('cle'), {
+        nom: f.get('nom'),
+        description: f.get('description'),
+        ordre: f.get('ordre'),
+        gabarit_actif: f.get('gabarit_actif'),
+        gabarit_sujet: f.get('gabarit_sujet'),
+        gabarit_corps: f.get('gabarit_corps'),
+        relance_active: f.get('relance_active'),
+        relance_jours: f.get('relance_jours'),
+      });
+    }
+    return Astro.redirect(`${BASE}/admin/etapes?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let etapes = [];
+let chiffres = {};
+try {
+  etapes = await listerEtapes();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const message = Astro.url.searchParams.get('ok');
+const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0).length;
+---
+
+<Console
+  titre="Étapes"
+  fil="TFB Admin · Commercial · Étapes"
+  actif="etapes"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Le pipeline</h2>
+        <p>
+          <span class="jeton">landing_etapes</span> — {etapes.length} étape(s),
+          dont {relancantes} qui relance(nt) le commercial.
+          L'ordre gouverne la liste déroulante de la liste des offres.
+        </p>
+      </div>
+    </div>
+
+    {etapes.map((e) => (
+      <fieldset class="etape" disabled={!e.actif}>
+        <legend class="invisible">{e.nom}</legend>
+        <form method="post" id={`etape-${e.cle}`}>
+          <input type="hidden" name="cle" value={e.cle} />
+        </form>
+
+        <div class="duo">
+          <div class="champ">
+            <label for={`n-${e.cle}`}>Nom</label>
+            <input id={`n-${e.cle}`} form={`etape-${e.cle}`} type="text" name="nom" value={e.nom} />
+            <code class="slug">{e.cle}</code>
+          </div>
+          <div class="champ champ--nombre">
+            <label for={`o-${e.cle}`}>Ordre</label>
+            <span class="tarif__saisie">
+              <input id={`o-${e.cle}`} form={`etape-${e.cle}`} type="number" name="ordre" min="1" value={e.ordre ?? 100} />
+            </span>
+          </div>
+          <div class="champ" style="grid-column:1/-1">
+            <label for={`d-${e.cle}`}>Ce que l'étape veut dire</label>
+            <textarea id={`d-${e.cle}`} form={`etape-${e.cle}`} name="description" rows="2">{e.description || ''}</textarea>
+          </div>
+        </div>
+
+        <div class="duo" style="margin-block-start:14px">
+          <div class="champ">
+            <span class="legende">Courriel proposé</span>
+            <label class="case case--seule">
+              <input form={`etape-${e.cle}`} type="checkbox" name="gabarit_actif" value="1" checked={e.gabarit_actif} />
+              <span>
+                <strong>Proposer un courriel</strong>
+                <span class="champ__aide">Offert au commercial quand l'offre entre dans cette étape.</span>
+              </span>
+            </label>
+          </div>
+          <div class="champ">
+            <span class="legende">Relance</span>
+            <label class="case case--seule">
+              <input form={`etape-${e.cle}`} type="checkbox" name="relance_active" value="1" checked={e.relance_active} />
+              <span>
+                <strong>Prévenir le commercial</strong>
+                <span class="champ__aide">Une seule fois par période de silence, jamais deux.</span>
+              </span>
+            </label>
+          </div>
+          <div class="champ champ--nombre">
+            <label for={`r-${e.cle}`}>Au bout de</label>
+            <span class="tarif__saisie">
+              <input
+                id={`r-${e.cle}`}
+                form={`etape-${e.cle}`}
+                type="text"
+                name="relance_jours"
+                value={e.relance_jours || 0}
+                inputmode="numeric"
+              />
+              <span class="tarif__unite">j</span>
+            </span>
+            <span class="champ__aide">Zéro : pas de relance, même case cochée.</span>
+          </div>
+        </div>
+
+        {e.gabarit_actif && (
+          <div class="duo" style="margin-block-start:14px">
+            <div class="champ" style="grid-column:1/-1">
+              <label for={`gs-${e.cle}`}>Sujet</label>
+              <input
+                id={`gs-${e.cle}`}
+                form={`etape-${e.cle}`}
+                type="text"
+                name="gabarit_sujet"
+                value={e.gabarit_sujet || ''}
+                placeholder="Votre offre {reference} — avez-vous pu la regarder ?"
+              />
+              <span class="champ__aide">
+                Jetons : {'{reference}'}, {'{client}'}, {'{contact}'}, {'{commercial}'}, {'{valide_jusqu_au}'}, {'{annexe}'}.
+              </span>
+            </div>
+            <div class="champ" style="grid-column:1/-1">
+              <label for={`gc-${e.cle}`}>Corps</label>
+              <textarea id={`gc-${e.cle}`} form={`etape-${e.cle}`} name="gabarit_corps" rows="6">{e.gabarit_corps || ''}</textarea>
+            </div>
+          </div>
+        )}
+
+        <div class="actions">
+          <button class="bouton bouton--marque bouton--sm" type="submit" form={`etape-${e.cle}`}>Enregistrer</button>
+          <form method="post">
+            <input type="hidden" name="action" value="bascule" />
+            <input type="hidden" name="cle" value={e.cle} />
+            <input type="hidden" name="actif" value={e.actif ? '0' : '1'} />
+            <button class="bouton bouton--sobre bouton--sm" type="submit">
+              {e.actif ? 'Retirer du pipeline' : 'Remettre dans le pipeline'}
+            </button>
+          </form>
+          <form method="post" onsubmit="return confirm('Supprimer cette étape ? Les offres qui y sont sortiront du pipeline.')">
+            <input type="hidden" name="action" value="suppression" />
+            <input type="hidden" name="cle" value={e.cle} />
+            <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+          </form>
+        </div>
+      </fieldset>
+    ))}
+
+    <div class="bloc__pied">
+      Une étape retirée du pipeline n'est plus proposée, mais les offres qui y sont
+      restent où elles sont : on ne déplace pas le portefeuille de quelqu'un dans son dos.
+    </div>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Ajouter une étape</h2>
+        <p>Le nom donne la clé technique : « Chez le comptable » devient <span class="jeton">chez-le-comptable</span>.</p>
+      </div>
+    </div>
+
+    <form method="post">
+      <input type="hidden" name="action" value="ajout" />
+      <div class="duo">
+        <div class="champ">
+          <label for="e-nom">Nom<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <input id="e-nom" type="text" name="nom" required placeholder="Chez le comptable" />
+        </div>
+        <div class="champ champ--nombre">
+          <label for="e-ordre">Ordre</label>
+          <span class="tarif__saisie">
+            <input id="e-ordre" type="number" name="ordre" min="1" value="100" />
+          </span>
+        </div>
+        <div class="champ" style="grid-column:1/-1">
+          <label for="e-desc">Ce que l'étape veut dire</label>
+          <textarea id="e-desc" name="description" rows="2" placeholder="Où en est la négociation, en une phrase."></textarea>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="plus" taille={16} /> Créer l'étape
+        </button>
+      </div>
+    </form>
+  </section>
+</Console>
+
+<style is:global>
+  /* Une étape est un bloc de réglages, pas une ligne de table : elle porte un
+     gabarit de courriel de six lignes, qui n'entre dans aucune cellule. */
+  .etape {
+    border: 0; border-block-start: 1px solid var(--slate-200);
+    margin: 0; padding: 16px 0 0; min-inline-size: 0;
+  }
+  .etape:disabled { opacity: 0.55; }
+  .etape:first-of-type { border-block-start: 0; }
+</style>

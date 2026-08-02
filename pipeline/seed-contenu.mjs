@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
-import { PACKS, PRESTATIONS, TARIFS } from './contenu-offres.mjs';
+import { ETAPES, PACKS, PRESTATIONS, TARIFS } from './contenu-offres.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
@@ -358,6 +358,27 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
     } catch {
       // Pas de colonne `socle` : rien à migrer.
     }
+
+    // Les étapes du suivi commercial. Jamais réécrites : une équipe qui a
+    // renommé « En discussion » en « Chez le comptable » doit garder son mot.
+    let etapesEcrites = 0;
+    for (const etape of ETAPES) {
+      const dejaLa = await db.requete(`SELECT id FROM ${table('etapes')} WHERE cle = ? LIMIT 1`, [etape.cle]);
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('etapes'), 'cle', etape.cle, {
+        nom: etape.nom,
+        description: etape.description,
+        ordre: etape.ordre,
+        actif: true,
+        gabarit_actif: Boolean(etape.gabarit_actif),
+        gabarit_sujet: etape.gabarit_sujet || null,
+        gabarit_corps: etape.gabarit_corps || null,
+        relance_active: Boolean(etape.relance_active),
+        relance_jours: etape.relance_jours || 0,
+      });
+      etapesEcrites += 1;
+    }
+    if (etapesEcrites > 0) console.log(`✓ ${etapesEcrites} étape(s) de suivi`);
 
     let prestationsEcrites = 0;
     for (const prestation of PRESTATIONS) {

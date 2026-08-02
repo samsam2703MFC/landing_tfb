@@ -180,6 +180,90 @@ export const PACKS = [
   },
 ];
 
+/**
+ * Les étapes du suivi commercial, telles qu'elles se présentent au départ.
+ *
+ * Semées une seule fois : ensuite elles se renomment, se réordonnent, se
+ * suppriment et s'inventent dans la console. Une équipe qui vend autrement
+ * doit pouvoir décrire sa façon de faire sans qu'on redéploie.
+ *
+ * `relance_jours` est le silence toléré avant qu'on prévienne le commercial.
+ * Il est court en début de cycle, où l'oubli coûte le plus cher, et long à la
+ * fin, où c'est le client qu'on attend.
+ */
+export const ETAPES = [
+  {
+    cle: 'a-qualifier',
+    nom: 'À qualifier',
+    description: "Le besoin n'est pas encore cerné : on ne sait pas ce qu'on vend, ni à qui exactement.",
+    ordre: 1,
+    relance_active: true,
+    relance_jours: 3,
+  },
+  {
+    cle: 'offre-envoyee',
+    nom: 'Offre envoyée',
+    description: 'Le client a reçu le chiffrage et son annexe. La balle est dans son camp.',
+    ordre: 2,
+    gabarit_actif: true,
+    gabarit_sujet: 'Votre offre {reference} — avez-vous pu la regarder ?',
+    gabarit_corps: `Bonjour {contact},
+
+Je reviens vers vous au sujet de l'offre {reference}, envoyée il y a quelques jours.
+
+Avez-vous eu l'occasion de la parcourir ? Je reste disponible pour en détailler
+n'importe quel poste, ou pour l'ajuster si le périmètre a bougé.
+
+{commercial}
+The Franchise Buddy`,
+    relance_active: true,
+    relance_jours: 7,
+  },
+  {
+    cle: 'en-discussion',
+    nom: 'En discussion',
+    description: 'Le client a réagi. On négocie le périmètre, le prix ou le calendrier.',
+    ordre: 3,
+    relance_active: true,
+    relance_jours: 5,
+  },
+  {
+    cle: 'en-attente-decision',
+    nom: 'En attente de décision',
+    description: "Tout est dit, le client tranche. C'est le moment où l'on relance sans insister.",
+    ordre: 4,
+    gabarit_actif: true,
+    gabarit_sujet: 'Offre {reference} — où en êtes-vous ?',
+    gabarit_corps: `Bonjour {contact},
+
+L'offre {reference} reste valable jusqu'au {valide_jusqu_au}.
+
+Un mot me suffit pour savoir où en est votre réflexion — y compris si ce n'est
+pas le bon moment.
+
+{commercial}
+The Franchise Buddy`,
+    relance_active: true,
+    relance_jours: 14,
+  },
+  {
+    cle: 'gagnee',
+    nom: 'Gagnée',
+    description: "L'offre est acceptée. La suite se joue sur le contrat et l'onboarding.",
+    ordre: 5,
+    relance_active: false,
+    relance_jours: 0,
+  },
+  {
+    cle: 'perdue',
+    nom: 'Perdue',
+    description: 'Refusée, sans suite, ou partie ailleurs. On note pourquoi dans le journal.',
+    ordre: 6,
+    relance_active: false,
+    relance_jours: 0,
+  },
+];
+
 export const PRESTATIONS = [
   {
     cle: 'design',

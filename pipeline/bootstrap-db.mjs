@@ -304,6 +304,12 @@ function modele(pg) {
         // que le réseau a déjà : c'est un choix, pas deux modules.
         ['packs', t.objet],
         ['socle_pos', `${t.chaine(10)} DEFAULT 'pos'`],
+        // Le suivi commercial : à quelle étape, depuis quand, et quand la
+        // dernière relance est partie — sans cette date, une offre oubliée
+        // relancerait le commercial tous les jours.
+        ['etape', t.chaine(60)],
+        ['etape_le', t.horodatage],
+        ['relance_le', t.horodatage],
         // Le geste commercial : les N premiers mois ne sont pas facturés. Ce
         // n'est pas une remise — le prix mensuel ne bouge pas — donc ça ne
         // passe pas par les colonnes de remise.
@@ -355,6 +361,52 @@ function modele(pg) {
         // unique · mensuel · annuel
         ['recurrence', `${t.chaine(10)} DEFAULT 'unique'`],
         ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Une étape du suivi commercial : où en est la négociation.
+      //
+      // Distincte du **statut** de l'offre, et c'est délibéré. Le statut est
+      // technique — il décide si l'offre est encore modifiable — et ne prend
+      // que cinq valeurs connues du code. L'étape est commerciale : elle
+      // s'invente, se renomme et se réordonne dans la console sans qu'une
+      // ligne change ici.
+      nom: table('etapes'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['description', t.texte],
+        ['ordre', 'INT DEFAULT 100'],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        // Le gabarit de courriel proposé à cette étape, et l'interrupteur qui
+        // décide s'il est proposé du tout : une étape peut exister sans qu'on
+        // écrive quoi que ce soit au client.
+        ['gabarit_actif', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['gabarit_sujet', t.chaine(255)],
+        ['gabarit_corps', t.texte],
+        // La relance : au bout de combien de jours sans bouger, et faut-il
+        // prévenir le commercial. Zéro jour = pas de relance, quelle que soit
+        // la case — deux façons de dire non, mais aucune ne surprend.
+        ['relance_active', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['relance_jours', 'INT DEFAULT 0'],
+      ],
+    },
+    {
+      // Le journal d'une offre : ce qui lui est arrivé, dans l'ordre.
+      //
+      // Une ligne par événement, jamais modifiée. C'est ce qui permet de
+      // répondre à « où en est-on, et depuis quand » sans reconstituer
+      // l'histoire de mémoire — et de savoir qui a fait quoi.
+      nom: table('suivi'),
+      colonnes: [
+        ['id', t.id],
+        ['offre_id', 'INT NOT NULL'],
+        ['quand', t.horodatage],
+        ['utilisateur_id', 'INT'],
+        // etape · statut · courriel · note · relance
+        ['type', `${t.chaine(20)} NOT NULL`],
+        ['texte', t.texte],
       ],
     },
     {
@@ -446,6 +498,10 @@ const INDEX = [
   // Une référence porte plusieurs versions : c'est le couple qui est unique.
   { suffixe: 'offres_reference', table: 'offres', colonnes: 'reference, version', unique: true },
   { suffixe: 'lignes_offre', table: 'offre_lignes', colonnes: 'offre_id, ordre' },
+  // Le journal se lit toujours par offre, du plus récent au plus ancien.
+  { suffixe: 'suivi_offre', table: 'suivi', colonnes: 'offre_id, id' },
+  // Le script de relance balaie les offres par étape.
+  { suffixe: 'offres_etape', table: 'offres', colonnes: 'etape' },
 ];
 
 /** Colonnes réellement présentes, en minuscules. */

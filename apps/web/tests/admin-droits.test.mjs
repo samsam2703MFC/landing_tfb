@@ -19,6 +19,15 @@ import { ROLES, cheminAutorise, creerJeton, empreinteValide, hacher, lireJeton }
 // les jetons sont refusés d'office et les tests ne prouveraient rien.
 process.env.ADMIN_PASSWORD = 'mot-de-passe-de-test-suffisamment-long';
 
+describe('le pipeline reste un réglage', () => {
+  it("n'ouvre pas les étapes au commercial", () => {
+    // Un commercial travaille dans le pipeline ; il ne le redéfinit pas, pas
+    // plus qu'il ne fixe les tarifs.
+    assert.equal(cheminAutorise('/admin/etapes', 'commercial'), false);
+    assert.equal(cheminAutorise('/admin/etapes', 'admin'), true);
+  });
+});
+
 describe("les droits de l'administrateur", () => {
   it('ouvrent tout, y compris ce qui n’existe pas encore', () => {
     for (const chemin of ['/admin', '/admin/tarifs', '/admin/utilisateurs', '/admin/ecran-de-demain']) {

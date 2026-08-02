@@ -416,6 +416,46 @@ franchiseur » (999 €) d'avant. Les offres déjà chiffrées à ces tarifs-là
 bougent pas : elles en portent une copie, et le calculateur ne cumule jamais
 un pack avec le poste qu'il remplace.
 
+### Le suivi commercial
+
+Une offre porte deux choses distinctes, et la distinction est délibérée :
+
+- son **statut** — brouillon, envoyée, acceptée, refusée, expirée. Technique :
+  il décide si l'offre est encore modifiable, et le code en connaît les cinq
+  valeurs ;
+- son **étape** — où en est la négociation. Commerciale : elle s'invente, se
+  renomme et se réordonne depuis l'écran **Étapes**, sans qu'une ligne de code
+  change. Une équipe qui vend autrement décrit sa façon de faire elle-même.
+
+Les deux se changent depuis **la liste des offres** : c'est elle qu'on ouvre le
+matin pour voir le portefeuille, pas huit fiches l'une après l'autre.
+
+Chaque étape porte deux réglages indépendants :
+
+- un **gabarit de courriel**, proposé au commercial quand l'offre y entre, avec
+  les mêmes jetons que l'offre elle-même. Activable séparément — une étape peut
+  exister sans qu'on écrive au client ;
+- une **relance**, qui prévient le commercial au bout de N jours sans mouvement.
+  Un zéro vaut refus, comme la case décochée : deux façons de dire non, mais
+  aucune ne surprend.
+
+```bash
+node pipeline/relances.mjs --a-blanc   # dit ce qui partirait, n'écrit rien
+node pipeline/relances.mjs             # envoie ce qui est dû
+```
+
+À passer en tâche planifiée : `0 7 * * 1-5`. Le script ne relance **jamais deux
+fois** pour le même silence — la date du dernier réveil est écrite sur l'offre
+et remise à zéro quand l'offre change d'étape. Sans cette règle, une offre
+oubliée écrirait tous les jours au commercial, qui cesserait de lire au bout de
+trois. Et il ne traite qu'une ligne par référence, à sa dernière version : une
+offre renégociée deux fois ne doit pas relancer trois fois.
+
+Tout ce qui arrive à une offre s'écrit dans son **journal**, visible sur sa
+fiche : changement d'étape, changement de statut, courriel parti, relance
+déclenchée, note du commercial. Il ne se réécrit pas — c'est ce qui permet de
+répondre à « qui a dit quoi, et quand » trois mois plus tard.
+
 ### La lettre d'offre
 
 L'offre part en deux versions dans le même message : du **texte brut**, qui se

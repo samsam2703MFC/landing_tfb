@@ -13,13 +13,16 @@ import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import {
   STATUTS_OFFRE,
+  changerEtapeOffre,
   changerStatutOffre,
+  listerEtapes,
   calculerTotauxOffre,
   compteurs,
   listerOffres,
   listerUtilisateurs,
 } from '../../../lib/admin/donnees.mjs';
 import { formater } from '../../../lib/offres/calcul.mjs';
+import { aRelancer, prochaineRelance } from '../../../lib/offres/relances.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -30,9 +33,16 @@ let erreur = null;
 if (Astro.request.method === 'POST') {
   try {
     const f = await Astro.request.formData();
-    await changerStatutOffre(f.get('id'), String(f.get('statut')));
+    const qui = (Astro.locals.session || {}).id || null;
+    const quoi = String(f.get('quoi') || 'statut');
+    if (quoi === 'etape') {
+      await changerEtapeOffre(f.get('id'), String(f.get('etape') || ''), qui);
+    } else {
+      await changerStatutOffre(f.get('id'), String(f.get('statut')), qui);
+    }
+    const dit = quoi === 'etape' ? 'Étape mise à jour.' : 'Statut mis à jour.';
     return Astro.redirect(
-      `${BASE}/admin/offres${Astro.url.search}${Astro.url.search ? '&' : '?'}ok=${encodeURIComponent('Statut mis à jour.')}`,
+      `${BASE}/admin/offres${Astro.url.search}${Astro.url.search ? '&' : '?'}ok=${encodeURIComponent(dit)}`,
       303,
     );
   } catch (err) {
@@ -47,10 +57,12 @@ const filtres = {
 };
 
 let offres = [];
+let etapes = [];
 let commerciaux = [];
 let chiffres = {};
 try {
   offres = await listerOffres(filtres);
+  etapes = await listerEtapes({ activesSeulement: true });
   commerciaux = await listerUtilisateurs();
   chiffres = await compteurs();
 } catch (err) {
@@ -139,11 +151,13 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       </div>
     ) : (
       <div class="roule">
-        <table>
+        <table class="offres">
           <thead>
             <tr>
               <th style="inline-size:10rem">Référence</th>
-              <th>Client</th>
+              <th style="inline-size:14rem">Client</th>
+              <th style="inline-size:13rem">Étape</th>
+              <th style="inline-size:8rem">Suivi</th>
               <th style="inline-size:11rem">Statut</th>
               <th style="inline-size:9rem">Commercial</th>
               <th style="inline-size:7rem">Valable au</th>
@@ -164,6 +178,34 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                   <td>
                     {o.raison_sociale || '—'}
                     {o.contact_nom && <code class="slug">{o.contact_nom}</code>}
+                  </td>
+                  <td>
+                    <form method="post" class="ligne-serree">
+                      <input type="hidden" name="quoi" value="etape" />
+                      <input type="hidden" name="id" value={o.id} />
+                      <select name="etape" aria-label={`Étape de ${o.reference}`}>
+                        <option value="">— hors pipeline —</option>
+                        {etapes.map((e) => (
+                          <option value={e.cle} selected={e.cle === o.etape}>{e.nom}</option>
+                        ))}
+                      </select>
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
+                    </form>
+                  </td>
+                  <td class="champ__aide">
+                    {(() => {
+                      const etape = etapes.find((e) => e.cle === o.etape) || null;
+                      const r = aRelancer(o, etape);
+                      const suivante = prochaineRelance(o, etape);
+                      return (
+                        <>
+                          <span class={r.relancer ? 'etat etat--manque' : undefined}>
+                            {r.dort} j sans bouger
+                          </span>
+                          {suivante && <code class="slug">relance le {jour(suivante)}</code>}
+                        </>
+                      );
+                    })()}
                   </td>
                   <td>
                     <form method="post" class="ligne-serree">
@@ -198,4 +240,17 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
 
 <style is:global>
   .filtres { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); align-items: end; }
+
+  /* Onze colonnes, dont deux listes déroulantes : sous cette largeur, les
+     sélecteurs s'écrasent jusqu'à ne plus montrer que leur flèche et la
+     référence se coupe en trois lignes. La table défile plutôt que de se
+     tasser — c'est le rôle du rouleau qui l'entoure. */
+  /* La somme des colonnes fait quatre-vingt-quinze rems : en deçà, le nom du
+     client — seul champ à retour à la ligne — encaisse tout le manque et se
+     coupe en trois. */
+  .offres { min-inline-size: 95rem; }
+  .offres td, .offres th { white-space: nowrap; }
+  /* …sauf le nom du client, seul champ dont la longueur est imprévisible. */
+  .offres td:nth-child(2) { white-space: normal; }
+  .offres .ligne-serree select { min-inline-size: 8rem; }
 </style>

@@ -21,7 +21,12 @@ import {
   STATUTS_OFFRE,
   changerStatutOffre,
   chargerOffre,
+  changerEtapeOffre,
   compteurs,
+  etapeParCle,
+  journaliser,
+  listerEtapes,
+  listerSuivi,
   configDe,
   enregistrerOffre,
   languesOffre,
@@ -35,6 +40,7 @@ import {
   tarifsEnVigueur,
 } from '../../../lib/admin/donnees.mjs';
 import { calculerOffre, formater, lignesIncompletes } from '../../../lib/offres/calcul.mjs';
+import { aRelancer, prochaineRelance } from '../../../lib/offres/relances.mjs';
 import { construireCourriel, serviceCourriel } from '../../../lib/offres/courriel.mjs';
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
 import { cleAnnexe } from '../../../lib/admin/session.mjs';
@@ -196,6 +202,7 @@ if (Astro.request.method === 'POST') {
   try {
     const f = await Astro.request.formData();
     const action = String(f.get('action') || 'enregistrer');
+    const session = Astro.locals.session || {};
     const courante = await chargerOffre(reference, versionDemandee);
     if (!courante) throw new Error('Offre introuvable.');
 
@@ -207,8 +214,26 @@ if (Astro.request.method === 'POST') {
       );
     }
 
+    if (action === 'note') {
+      const texte = String(f.get('texte') || '').trim();
+      if (!texte) throw new Error('Une note vide n’apprend rien à personne.');
+      await journaliser(courante.id, { type: 'note', texte, utilisateurId: session.id });
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Note ajoutée.')}`,
+        303,
+      );
+    }
+
+    if (action === 'etape') {
+      await changerEtapeOffre(courante.id, String(f.get('etape') || ''), session.id);
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Étape mise à jour.')}`,
+        303,
+      );
+    }
+
     if (action === 'statut') {
-      await changerStatutOffre(courante.id, String(f.get('statut')));
+      await changerStatutOffre(courante.id, String(f.get('statut')), session.id);
       return Astro.redirect(
         `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${encodeURIComponent('Statut mis à jour.')}`,
         303,
@@ -248,7 +273,7 @@ if (Astro.request.method === 'POST') {
       }
       const service = serviceCourriel();
       await service.envoyer(message);
-      await changerStatutOffre(courante.id, 'envoyee');
+      await changerStatutOffre(courante.id, 'envoyee', session.id);
       const dit = service.expedie
         ? `Offre envoyée à ${message.destinataire}.`
         : `Offre marquée envoyée, mais RIEN N'A ÉTÉ EXPÉDIÉ : aucun service de courriel n'est configuré. Le message est dans le journal du serveur — envoyez-le à la main à ${message.destinataire}.`;
@@ -288,6 +313,8 @@ let offre = null;
 let catalogue = [];
 let modules = [];
 let packs = [];
+let etapes = [];
+let suivi = [];
 let langues = [];
 let vigueur = null;
 let chiffres = {};
@@ -297,6 +324,7 @@ try {
   catalogue = await listerPrestations({ activesSeulement: true });
   modules = await modulesOptionnels();
   packs = await packsVendables();
+  etapes = await listerEtapes({ activesSeulement: true });
   vigueur = await tarifsEnVigueur();
   chiffres = await compteurs();
 } catch (err) {
@@ -309,6 +337,9 @@ if (!offre && !erreur) return new Response('Offre introuvable', { status: 404 })
 // portent les mêmes noms de champ, la fusion suffit à réafficher le
 // formulaire exactement comme il vient d'être rempli.
 if (offre && soumis) offre = { ...offre, ...soumis };
+
+if (offre) suivi = await listerSuivi(offre.id);
+const etapeCourante = offre ? await etapeParCle(offre.etape) : null;
 
 const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
@@ -349,6 +380,11 @@ if (!figee && libres.length === 0) libres.push({ nom: '', prix_cents: 0, reserve
 const vues = [...(offre?.vues || [])];
 if (!figee && vues.length === 0) vues.push({ nombre: '', note: '', reserve: true });
 
+/** Une date courte, et une date avec l'heure pour le journal. */
+const jourCourt = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : '—');
+const jourHeure = (v) =>
+  (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
 /** Une date au format que `<input type="date">` attend. */
 const pourChamp = (valeur) => (valeur ? new Date(valeur).toISOString().slice(0, 10) : '');
 
@@ -362,6 +398,22 @@ const courriel = offre
       gabarits: {
         sujet: vigueur?.courriel_sujet || '',
         corps: vigueur?.courriel_corps || '',
+        css: vigueur?.courriel_css || '',
+        annexe: lienAnnexe(offre, Astro.url.origin),
+      },
+      formater: (c) => formater(c, offre.langue, offre.devise),
+    })
+  : null;
+
+// Le courriel que l'étape propose, avec ses jetons déjà remplacés : le
+// commercial le copie tel quel plutôt que de chercher ce que remplace quoi.
+const courrielEtape = offre && etapeCourante?.gabarit_actif
+  ? construireCourriel({
+      offre,
+      resultat,
+      gabarits: {
+        sujet: etapeCourante.gabarit_sujet || '',
+        corps: etapeCourante.gabarit_corps || '',
         css: vigueur?.courriel_css || '',
         annexe: lienAnnexe(offre, Astro.url.origin),
       },
@@ -989,6 +1041,96 @@ const ETAT_STATUT = {
           <div class="recap__alerte">
             Ce client n'a pas d'adresse de courriel — l'offre ne peut pas lui être envoyée.
             {' '}<a href={`${BASE}/admin/prospects/${offre.prospect?.id}`}>Corriger ses coordonnées</a>.
+          </div>
+        )}
+      </section>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le suivi</h2>
+            <p>
+              Où en est la négociation, et ce qui s'est passé. Le journal ne se réécrit
+              pas : c'est ce qui permet de répondre à « qui a dit quoi, et quand »
+              trois mois plus tard.
+            </p>
+          </div>
+        </div>
+
+        <div class="duo">
+          <div class="champ">
+            <label for="o-etape">Étape</label>
+            <form method="post" class="ligne-serree">
+              <input type="hidden" name="action" value="etape" />
+              <select id="o-etape" name="etape">
+                <option value="">— hors pipeline —</option>
+                {etapes.map((e) => (
+                  <option value={e.cle} selected={e.cle === offre.etape}>{e.nom}</option>
+                ))}
+              </select>
+              <button class="bouton bouton--sobre bouton--sm" type="submit">Déplacer</button>
+            </form>
+            {etapeCourante?.description && (
+              <span class="champ__aide">{etapeCourante.description}</span>
+            )}
+          </div>
+          <div class="champ">
+            <span class="legende">Relance</span>
+            <p class="champ__aide" style="margin:0">
+              {(() => {
+                const r = aRelancer(offre, etapeCourante);
+                const suivante = prochaineRelance(offre, etapeCourante);
+                if (suivante) return `Sans mouvement, le commercial sera prévenu le ${jourCourt(suivante)} — ${r.dort} j écoulés.`;
+                if (r.relancer) return `Relance due : ${r.raison}.`;
+                return `Aucune relance prévue — ${r.raison}.`;
+              })()}
+            </p>
+          </div>
+        </div>
+
+        {etapeCourante?.gabarit_actif && (
+          <div class="champ" style="margin-block-start:14px">
+            <span class="legende">Le courriel proposé à cette étape</span>
+            <div class="apercu">
+              <div class="apercu__entete">
+                <span><b>Sujet</b> {courrielEtape.sujet}</span>
+              </div>
+              <pre class="apercu__corps">{courrielEtape.corps}</pre>
+            </div>
+            <span class="champ__aide">
+              À copier dans votre messagerie. Il se règle sur
+              {' '}<a href={`${BASE}/admin/etapes`}>l'écran Étapes</a>.
+            </span>
+          </div>
+        )}
+
+        <form method="post">
+          <input type="hidden" name="action" value="note" />
+          <div class="champ" style="margin-block-start:14px">
+            <label for="o-note">Ajouter au journal</label>
+            <textarea id="o-note" name="texte" rows="2" placeholder="Ce qui s'est dit, ce qui bloque, ce qu'on attend."></textarea>
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--sobre bouton--sm" type="submit">Noter</button>
+          </div>
+        </form>
+
+        {suivi.length === 0 ? (
+          <div class="bloc__pied">Rien au journal pour l'instant.</div>
+        ) : (
+          <div class="roule">
+            <table>
+              <tbody>
+                {suivi.map((l) => (
+                  <tr>
+                    <td style="inline-size:9rem" class="champ__aide fb-num">{jourHeure(l.quand)}</td>
+                    <td style="inline-size:6rem"><span class="etat">{l.type}</span></td>
+                    <td>{l.texte}</td>
+                    <td style="inline-size:9rem" class="champ__aide">{l.auteur_nom || l.auteur_identifiant || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
