@@ -133,7 +133,35 @@ export async function patchDraft(slug: string, patch: Record<string, ConfigValue
  * The draft is re-validated first. It was validated on write, but the registry may
  * have tightened since — publishing is the last point where refusing is still cheap.
  */
-export async function publish(slug: string): Promise<WriteResult & { version?: number }> {
+export interface PublicationEntry {
+  version: number;
+  at: string;
+  by: string;
+  /** Keys whose published value changed — what a reviewer actually needs to see. */
+  changed: string[];
+}
+
+const HISTORY_LIMIT = 20;
+
+function historyKey(slug: string) {
+  return `tenant.${slug}.history`;
+}
+
+/** Publication history, newest first. Empty until the first publish. */
+export async function publicationHistory(slug: string): Promise<PublicationEntry[]> {
+  if (!isSlug(slug)) return [];
+  const row = await prisma.setting.findUnique({ where: { key: historyKey(slug) } });
+  const value = row?.value as { items?: PublicationEntry[] } | null;
+  return Array.isArray(value?.items) ? value.items : [];
+}
+
+/** Keys that differ between two published sets, in either direction. */
+function changedKeys(before: ConfigValues, after: ConfigValues): string[] {
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)]);
+  return [...keys].filter((k) => JSON.stringify(before[k]) !== JSON.stringify(after[k])).sort();
+}
+
+export async function publish(slug: string, actor = 'inconnu'): Promise<WriteResult & { version?: number }> {
   if (!isSlug(slug)) return { ok: false, errors: { _: 'Slug de tenant invalide.' } };
 
   const [draft, global] = await Promise.all([draftOverlay(slug), globalOverlay()]);
@@ -154,8 +182,25 @@ export async function publish(slug: string): Promise<WriteResult & { version?: n
   const published = await read(publishedKey(slug));
   const version = published.version + 1;
   const now = new Date().toISOString();
+
+  // The history is written with the publication, not after it: an entry that can go
+  // missing is worse than no history at all, because it makes the log look complete.
+  const entry: PublicationEntry = {
+    version,
+    at: now,
+    by: actor,
+    changed: changedKeys(published.values, draft.values),
+  };
+  const history = [entry, ...(await publicationHistory(slug))].slice(0, HISTORY_LIMIT);
+
   await write(publishedKey(slug), { values: draft.values, version, updatedAt: now });
   await write(draftKey(slug), { values: draft.values, version, updatedAt: null });
+  await prisma.setting.upsert({
+    where: { key: historyKey(slug) },
+    create: { key: historyKey(slug), value: { items: history } as never },
+    update: { value: { items: history } as never },
+  });
+
   return { ok: true, errors: {}, version };
 }
 

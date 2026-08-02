@@ -106,6 +106,32 @@ modules (+ screenshots), plans, subscriptions, contact messages, translations, u
 two billing actions that delegate to the billing service, and
 `app-config/:tenant` (+ `/publish`) for the per-tenant overlay.
 
+## The Clients tab
+
+One rail entry, first in the list, leading to everything about a customer.
+`/admin/clients/<slug>` has five tabs, and they are links rather than local state
+because a support call ends with someone pasting a URL to a colleague:
+
+| Tab | What it holds |
+| --- | --- |
+| Aperçu | Identity from the billing service, licence and invoice counts, served version |
+| Personnalisation | The theme and the 29 variables — the editor described below |
+| Facturation | That client's licences and invoices |
+| Données | Where their data lives, which catalogue resources they use, the `tfb_settings` keys they occupy |
+| Journal | Publication history, licence events and sync-queue rows for this client |
+
+Before this, a client was split across two groups of the rail — licences under
+Facturation, configuration under Personnalisation — and nothing joined them. Whoever
+answers the phone should not have to know which half a question belongs to.
+
+**Publication history** is written *with* the publication, not after it: version,
+timestamp, the admin's email taken from the session, and the keys whose published
+value changed. Twenty entries per tenant, in `tenant.<slug>.history`. An entry that
+can go missing is worse than no history, because it makes the log look complete.
+
+`/admin/profiles` and `/admin/profiles/<slug>` still resolve — they redirect into the
+new tabs, so links shared before the move keep working.
+
 ## Per-tenant configuration
 
 The PWA is personalised per customer without forking an endpoint, a table or a

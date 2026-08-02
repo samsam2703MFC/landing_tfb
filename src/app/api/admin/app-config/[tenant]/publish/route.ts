@@ -15,11 +15,13 @@ type Ctx = { params: Promise<{ tenant: string }> };
  * to prevent.
  */
 export async function POST(request: Request, ctx: Ctx) {
-  return withAdmin<Ctx>(async (_session, c) => {
+  return withAdmin<Ctx>(async (session, c) => {
     const slug = (await c.params).tenant;
     if (!isSlug(slug)) return badRequest('Slug de tenant invalide.');
 
-    const result = await publish(slug);
+    // The actor is taken from the session, never from the body — a log an admin can
+    // sign with someone else's name is not a log.
+    const result = await publish(slug, session.email);
     if (!result.ok) {
       return NextResponse.json(
         { error: 'Publication refusée — corrigez les valeurs invalides.', errors: result.errors },
