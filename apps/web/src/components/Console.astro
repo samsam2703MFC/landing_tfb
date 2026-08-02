@@ -40,7 +40,8 @@ const TOUTES = [
       // visible qu'après défilement. Une entrée qu'il faut chercher est une
       // entrée qui n'existe pas.
       { cle: 'charte', href: '/admin/charte', libelle: 'Chartes clients', icone: 'sparkles' },
-      { cle: 'catalogue', href: '/admin/catalogue', libelle: 'Catalogue de données', icone: 'scan-line' },
+      { cle: 'endpoints', href: '/admin/endpoints', libelle: 'Endpoints', icone: 'scan-line' },
+      { cle: 'applications', href: '/admin/applications', libelle: 'Applications', icone: 'smartphone' },
       { cle: 'bases', href: '/admin/bases', libelle: 'Bases clientes', icone: 'store' },
     ],
   },
@@ -214,6 +215,11 @@ const RUBRIQUES = TOUTES
       .barre__actions { margin-inline-start: auto; display: flex; align-items: center; gap: 12px; }
 
       .page { flex: 1; min-block-size: 0; padding: 24px; display: flex; flex-direction: column; gap: 24px; }
+      /* Une colonne flex rétrécit ses enfants sous leur contenu, et le contenu
+         déborde alors par-dessus le bloc suivant. Invisible tant qu'un écran
+         n'a qu'un grand tableau ; flagrant dès qu'une barre de filtres passe à
+         la ligne, où les champs se superposaient à la carte du dessous. */
+      .page > * { flex-shrink: 0; }
 
       /* ── Retours ───────────────────────────────────────────────────────── */
       .alerte {

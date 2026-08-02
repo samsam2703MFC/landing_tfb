@@ -181,7 +181,7 @@ const feuilleProduite = [
     </form>
   </div>
 
-  <div class="cellule">
+  <div class="bloc">
     {resolutions.map((r) => {
       const v = REGISTRE.find((x) => x.cle === r.cle);
       const err = erreursCouple[r.cle];
@@ -238,7 +238,7 @@ const feuilleProduite = [
   </p>
 
   {lienClient && (
-    <div class="cellule partage">
+    <div class="bloc partage">
       <h3>Le lien à remettre au client</h3>
       <p class="note">
         Il montre la charte <strong>publiée</strong>, pas le brouillon, et reste valable après chaque
@@ -250,7 +250,7 @@ const feuilleProduite = [
   )}
 
 
-  <div class="cellule import">
+  <div class="bloc import">
     <h3>Importer une charte existante</h3>
     <p class="note">
       La feuille est <strong>lue</strong>, pas installée. On y cherche les variables qui décrivent
@@ -308,7 +308,7 @@ const feuilleProduite = [
     )}
   </div>
 
-  <details class="cellule import">
+  <details class="bloc import">
     <summary>Le CSS que produit cette charte</summary>
     <p class="aide">
       Ce que le client reçoit, à l'instant, brouillon compris. À relire, ou à reprendre dans un
@@ -318,7 +318,7 @@ const feuilleProduite = [
               onclick="this.select()">{feuilleProduite}</textarea>
   </details>
 
-  <div class="cellule import">
+  <div class="bloc import">
     <h3>Les polices du client</h3>
     <p class="note">
       Un fichier de police est un binaire inerte : il se dessine, il ne s'exécute pas. C'est
@@ -379,7 +379,7 @@ const feuilleProduite = [
   </div>
 
   {journal.length > 0 && (
-    <div class="cellule">
+    <div class="bloc">
       <h3>Publications</h3>
       {journal.map((e) => (
         <div class="journal">
@@ -389,7 +389,7 @@ const feuilleProduite = [
           <span class="journal__cles">
             {e.modifiees.length === 0
               ? 'aucune valeur modifiée'
-              : e.modifiees.map((c) => <span class="mono puce">{c}</span>)}
+              : e.modifiees.map((c) => <span class="mono cle-modifiee">{c}</span>)}
           </span>
         </div>
       ))}
@@ -432,7 +432,7 @@ const feuilleProduite = [
   .journal { display: flex; gap: var(--space-3); align-items: baseline; flex-wrap: wrap;
              padding: 10px 16px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm); }
   .journal__cles { display: flex; gap: 6px; flex-wrap: wrap; }
-  .puce { background: var(--slate-100); border-radius: 4px; padding: 1px 7px; font-size: var(--text-xs); }
+  .cle-modifiee { background: var(--slate-100); border-radius: 4px; padding: 1px 7px; font-size: var(--text-xs); }
   .mono { font-family: var(--font-mono); }
   .import { padding: 16px; margin-block-start: var(--space-4); }
   .import h3 { margin: 0 0 6px; }

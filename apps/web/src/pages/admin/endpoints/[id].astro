@@ -1,0 +1,465 @@
+---
+/**
+ * Le générateur d'endpoint, et l'éditeur d'un endpoint existant.
+ *
+ * Un seul écran pour les deux, parce que ce sont les mêmes questions : sur quoi
+ * on lit, ce qui sort, à quoi ça sert, qui le lit. Les séparer obligerait à
+ * apprendre deux écrans pour une seule idée.
+ *
+ * Le parcours est numéroté et chaque étape n'apparaît qu'une fois la
+ * précédente répondue. Ce n'est pas de la décoration : sans une base choisie on
+ * ne peut pas lister de sources, et sans source on ne peut pas cocher de
+ * colonnes. Montrer les trois d'un coup ferait remplir un formulaire dont les
+ * deux tiers sont vides et inertes.
+ *
+ * L'essai est en bas et rend **les vraies lignes**. Un endpoint qu'on déclare
+ * sans le voir tourner est un endpoint dont on découvre les défauts chez le
+ * client.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { lien } from '../../../lib/lien.mjs';
+import { compteurs } from '../../../lib/admin/donnees.mjs';
+import { OPERATEURS, OPERATEURS_DITS, garanties } from '../../../lib/donnees/catalogue.mjs';
+import {
+  STATUTS, chargerEndpoint, clesPrises, cleProposee, enregistrerEndpoint,
+  lierApplications, listerApplications,
+} from '../../../lib/donnees/endpoints.mjs';
+import { listerBases } from '../../../lib/donnees/bases.mjs';
+import { decrireSource, instructionVue, listerSources, nomVuePour } from '../../../lib/donnees/introspection.mjs';
+import { executerRessource, lireDemande, sqlDe } from '../../../lib/donnees/requete.mjs';
+
+const brut = String(Astro.params.id || '');
+const neuf = brut === 'nouveau';
+const id = neuf ? 0 : Number(brut);
+
+let message = null;
+let souci = null;
+let essai = null;
+
+const session = Astro.locals.session || {};
+const qui = session.nom || session.identifiant || (session.secours ? 'clé de secours' : null);
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = String(f.get('action') || 'enregistrer');
+
+  if (action === 'essayer') {
+    const e = await chargerEndpoint(Number(f.get('id')));
+    const surClient = Number(f.get('sur_client'));
+    try {
+      const url = new URL('https://x/y');
+      url.searchParams.set('limite', String(Math.min(Number(f.get('limite')) || 10, e.maxLignes)));
+      const demande = lireDemande(url, e);
+      const debut = Date.now();
+      const lignes = await executerRessource(e, surClient, demande);
+      essai = { ok: true, lignes, sql: sqlDe(e, demande).sql, ms: Date.now() - debut, surClient };
+    } catch (err) {
+      essai = { ok: false, dit: err.message, surClient };
+    }
+  } else {
+    const colonnes = f.getAll('colonne').map(String);
+    const filtres = {};
+    for (const c of colonnes) {
+      const ops = f.getAll(`filtre_${c}`).map(String).filter((o) => OPERATEURS.includes(o));
+      if (ops.length > 0) filtres[c] = ops;
+    }
+    const r = await enregistrerEndpoint(Number(f.get('id')) || 0, {
+      cle: f.get('cle'), nom: f.get('nom'), pourquoi: f.get('pourquoi'),
+      portee: String(f.get('portee') || 'base_client'),
+      source: f.get('source'), colonnes, filtres,
+      triables: f.getAll('triable').map(String).filter((c) => colonnes.includes(c)),
+      maxLignes: Number(f.get('max_lignes')),
+      colonneClient: f.get('colonne_client'),
+      statut: String(f.get('statut') || 'brouillon'),
+    }, qui);
+
+    if (!r.ok) souci = r.erreur;
+    else {
+      await lierApplications(r.id, f.getAll('application').map(Number));
+      // POST-redirection-GET : sans lui, recharger réenregistrerait, et un
+      // nouvel endpoint serait créé deux fois.
+      return Astro.redirect(lien(`/admin/endpoints/${r.id}?ok=1`), 303);
+    }
+  }
+}
+
+if (Astro.url.searchParams.get('ok')) message = 'Endpoint enregistré.';
+
+const existant = id > 0 ? await chargerEndpoint(id) : null;
+if (id > 0 && !existant) return new Response('Endpoint introuvable', { status: 404 });
+
+// --- Le parcours du générateur : base, puis source, puis le reste -----------
+const surClient = Number(Astro.url.searchParams.get('base') || 0) || null;
+const nomSource = Astro.url.searchParams.get('source') || existant?.source || null;
+
+const [chiffres, bases, applications, prises] = await Promise.all([
+  compteurs(),
+  listerBases().catch(() => []),
+  listerApplications().catch(() => []),
+  clesPrises().catch(() => new Set()),
+]);
+
+const sources = surClient && !existant
+  ? await listerSources(surClient).catch((e) => { souci = souci || e.message; return []; })
+  : [];
+const source = nomSource ? (sources.find((s) => s.nom === nomSource) || { nom: nomSource, genre: 'vue' }) : null;
+const colonnes = source && surClient
+  ? await decrireSource(source.nom, surClient).catch(() => null)
+  : null;
+
+// Une colonne déjà retenue reste cochée ; sinon on applique la règle des
+// défauts sains — rien de sensible, pas la colonne qui porte le client.
+const dejaRetenue = new Set(existant?.colonnes || []);
+const retenue = (c) => (existant ? dejaRetenue.has(c.nom) : !c.sensible && !c.clientProbable);
+const opDe = (c, op) => (existant ? (existant.filtres[c.nom] || []).includes(op)
+  : retenue(c) && c.filtresSuggeres.includes(op));
+const triDe = (c) => (existant ? existant.triables.includes(c.nom)
+  : retenue(c) && c.indexee && c.filtresSuggeres.length > 0);
+
+const titre = existant ? existant.nom : 'Générer un endpoint';
+const urlEtape = (p) => {
+  const q = new URLSearchParams();
+  if (surClient) q.set('base', String(surClient));
+  for (const [k, v] of Object.entries(p)) if (v) q.set(k, String(v));
+  const s = q.toString();
+  return lien(`/admin/endpoints/nouveau${s ? `?${s}` : ''}`);
+};
+---
+
+<Console titre={titre} actif="endpoints" compteurs={chiffres} message={message} erreur={souci}>
+  <p class="fil"><a href={lien('/admin/endpoints')}>← La bibliothèque</a></p>
+
+  {/* ÉTAPE 1 — sur quelle base lire. Sans elle il n'y a rien à lister. */}
+  {!existant && (
+    <div class="bloc etape">
+      <h3><span class="etape-num">1</span> Sur quelle base lire la structure ?</h3>
+      <p class="aide">
+        Les bases clientes ont toutes la même structure : en lire une suffit à décrire les autres.
+        L'endpoint, lui, s'exécutera chez chacun.
+      </p>
+      {bases.length === 0 ? (
+        <p class="rien">
+          Aucune base cliente déclarée. <a href={lien('/admin/bases')}>Commencez par en déclarer une</a>.
+        </p>
+      ) : (
+        <div class="sources-choix">
+          {bases.map((b) => (
+            <a class:list={['source-choix', surClient === b.prospectId && 'source-choix--actif']}
+               href={lien(`/admin/endpoints/nouveau?base=${b.prospectId}`)}>
+              {b.client} <span class="mono">{b.base}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </div>
+  )}
+
+  {/* ÉTAPE 2 — quelle table ou quelle vue. */}
+  {!existant && surClient && !source && (
+    <div class="bloc etape">
+      <h3><span class="etape-num">2</span> Quelle table ou quelle vue exposer ?</h3>
+      <p class="aide">
+        Une <strong>vue</strong> s'expose telle quelle ; une <strong>table</strong> passera d'abord
+        par un <span class="mono">CREATE VIEW</span> — exposer une table fait de ses noms de
+        colonnes votre contrat public, que vous ne pourrez plus renommer sans casser l'application
+        installée chez chaque client.
+      </p>
+      <table>
+        <thead><tr><th>Source</th><th>Type</th><th>Lignes</th><th>Colonnes</th><th></th></tr></thead>
+        <tbody>
+          {sources.map((s) => (
+            <tr>
+              <td class="mono">{s.nom}</td>
+              <td>{s.genre === 'vue'
+                ? <span class="jeton jeton--vue">vue</span>
+                : <span class="jeton">table</span>}</td>
+              <td class="chiffre">{s.lignes.toLocaleString('fr-FR')}</td>
+              <td class="chiffre">{s.colonnes}</td>
+              <td class="fin">
+                <a class="bouton bouton--sobre bouton--sm" href={urlEtape({ source: s.nom })}>Choisir</a>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  {/* ÉTAPE 3 — la déclaration. */}
+  {(existant || (source && colonnes)) && (
+    <form method="post">
+      <input type="hidden" name="id" value={existant?.id || 0} />
+      <input type="hidden" name="source" value={existant?.source || (source.genre === 'vue' ? source.nom : nomVuePour(source.nom))} />
+      <input type="hidden" name="portee" value={existant?.portee || 'base_client'} />
+      {existant?.portee === 'colonne' && (
+        <input type="hidden" name="colonne_client" value={existant.colonneClient} />
+      )}
+
+      <div class="bloc etape">
+        <h3>{!existant && <span class="etape-num">3</span>} À quoi sert cet endpoint ?</h3>
+        <div class="grille">
+          <label class="champ">
+            <span>Clé</span>
+            <input type="text" name="cle" required pattern="[a-z][a-z0-9_]*\.[a-z][a-z0-9_]*"
+                   value={existant?.cle || cleProposee(source?.nom, prises)} />
+            <em>« groupe.ressource », en minuscules — elle part dans un chemin d'URL.</em>
+          </label>
+          <label class="champ">
+            <span>Nom lisible</span>
+            <input type="text" name="nom" required value={existant?.nom || ''}
+                   placeholder="Chiffre d'affaires par jour" />
+          </label>
+          <label class="champ champ--large">
+            <span>Pourquoi il existe</span>
+            <textarea name="pourquoi" rows="2" required
+                      placeholder="Alimente le graphe d'accueil de la caisse. Sans lui, l'écran du matin est vide.">{existant?.pourquoi || ''}</textarea>
+            <em>
+              Exigé, et pas par formalisme : un endpoint dont personne ne sait à quoi il sert ne se
+              supprime jamais — on le garde « au cas où ».
+            </em>
+          </label>
+        </div>
+
+        <div class="apps">
+          <span class="etiquette">Applications qui le lisent</span>
+          {applications.length === 0 ? (
+            <p class="rien">
+              Aucune application déclarée. <a href={lien('/admin/applications')}>En déclarer une</a> —
+              sans cela, « qui casse si je change cet endpoint » restera sans réponse.
+            </p>
+          ) : (
+            <div class="apps-cases">
+              {applications.map((a) => (
+                <label class="case">
+                  <input type="checkbox" name="application" value={a.id}
+                         checked={existant?.applications.some((x) => x.id === a.id)} />
+                  {a.nom}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div class="bloc etape">
+        <h3>{!existant && <span class="etape-num">4</span>} Ce qui sort, et comment on le filtre</h3>
+        {colonnes ? (
+          <>
+            <p class="aide">
+              Rien n'est coché quand le nom évoque une marge, une donnée personnelle ou un secret.
+              Les filtres exacts ne sont proposés que sur les colonnes indexées — sans index, c'est
+              un balayage complet de table à chaque appel de chaque client.
+            </p>
+            {colonnes.map((c) => (
+              <div class:list={['colonne', c.sensible && 'colonne--sensible']}>
+                <label class="colonne__nom">
+                  <input type="checkbox" name="colonne" value={c.nom} checked={retenue(c)} />
+                  <span class="mono">{c.nom}</span>
+                  <span class="type">{c.typeComplet}</span>
+                  {c.indexee && <span class="jeton jeton--index">indexée</span>}
+                  {c.sensible && (
+                    <span class="jeton jeton--sensible">
+                      <Icone nom="triangle-alert" taille={11} /> {c.sensible}
+                    </span>
+                  )}
+                </label>
+                <div class="ops">
+                  {OPERATEURS.map((op) => (
+                    <label class:list={['op', !c.filtresSuggeres.includes(op) && 'op--pale']}>
+                      <input type="checkbox" name={`filtre_${c.nom}`} value={op} checked={opDe(c, op)} />
+                      {OPERATEURS_DITS[op]}
+                    </label>
+                  ))}
+                  <label class="op">
+                    <input type="checkbox" name="triable" value={c.nom} checked={triDe(c)} /> triable
+                  </label>
+                </div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <p class="rien">
+            Les colonnes se relisent depuis une base cliente. <span class="mono">{existant.colonnes.join(', ')}</span>
+            {' '}sont exposées ; filtres : <span class="mono">{Object.keys(existant.filtres).join(', ') || 'aucun'}</span>.
+            {' '}<a href={lien(`/admin/endpoints/${existant.id}?base=${bases[0]?.prospectId || ''}`)}>Relire la structure</a> pour les modifier.
+          </p>
+        )}
+
+        {colonnes && existant && existant.colonnes.map((c) => (
+          !colonnes.some((x) => x.nom === c) && <input type="hidden" name="colonne" value={c} />
+        ))}
+
+        <div class="grille">
+          <label class="champ">
+            <span>Plafond de lignes</span>
+            <input type="number" name="max_lignes" min="1" max="1000" required
+                   value={existant?.maxLignes || 500} />
+            <em>Entre 1 et 1000. Jamais illimité.</em>
+          </label>
+          <label class="champ">
+            <span>État</span>
+            <select name="statut">
+              {STATUTS.map((s) => (
+                <option value={s.valeur} selected={s.valeur === (existant?.statut || 'brouillon')}>
+                  {s.libelle} — {s.quoi}
+                </option>
+              ))}
+            </select>
+            <em>Un brouillon ne se sert pas. Le passer en « actif » est le geste qui l'ouvre.</em>
+          </label>
+        </div>
+      </div>
+
+      <div class="pied">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="save" taille={15} /> Enregistrer
+        </button>
+        <a class="bouton bouton--sobre" href={lien('/admin/endpoints')}>Annuler</a>
+      </div>
+    </form>
+  )}
+
+  {/* ÉTAPE 5 — l'essai, sur de vraies données. */}
+  {existant && (
+    <div class="bloc etape">
+      <h3>Essayer</h3>
+      <p class="aide">
+        Sur les vraies données d'un client. Un endpoint qu'on déclare sans le voir tourner est un
+        endpoint dont on découvre les défauts chez le client.
+      </p>
+      {bases.length === 0 ? (
+        <p class="rien">Aucune base cliente déclarée — rien sur quoi l'essayer.</p>
+      ) : (
+        <form method="post" class="enligne">
+          <input type="hidden" name="action" value="essayer" />
+          <input type="hidden" name="id" value={existant.id} />
+          <select name="sur_client">
+            {bases.map((b) => <option value={b.prospectId}>{b.client} — {b.base}</option>)}
+          </select>
+          <label class="mini">lignes
+            <input type="number" name="limite" value="10" min="1" max={existant.maxLignes} />
+          </label>
+          <button class="bouton bouton--sobre" type="submit"><Icone nom="play" taille={15} /> Exécuter</button>
+        </form>
+      )}
+
+      {essai && (
+        essai.ok ? (
+          <div class="resultat">
+            <p class="aide">
+              {essai.lignes.length} ligne(s) en {essai.ms} ms —
+              chez {bases.find((b) => b.prospectId === essai.surClient)?.client}.
+            </p>
+            <pre class="sql">{essai.sql}</pre>
+            {essai.lignes.length === 0 ? (
+              <p class="rien">Aucune ligne. La requête a abouti — cette base est vide sur cette vue.</p>
+            ) : (
+              <div class="roule">
+                <table>
+                  <thead>
+                    <tr>{Object.keys(essai.lignes[0]).map((k) => <th class="mono">{k}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {essai.lignes.map((l) => (
+                      <tr>{Object.values(l).map((v) => <td class="mono">{v === null ? '—' : String(v)}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        ) : (
+          <p class="echec"><Icone nom="circle-alert" taille={16} /> {essai.dit}</p>
+        )
+      )}
+
+      <div class="garanties">
+        {garanties(existant).map((g) => (
+          <span class:list={['jeton', !g.ok && 'jeton--ko']}>
+            <Icone nom={g.ok ? 'circle-check' : 'circle-alert'} taille={12} />
+            {g.libelle} <b class="mono">{g.valeur}</b>
+          </span>
+        ))}
+      </div>
+
+      {existant.source.startsWith('v_') && (
+        <details class="vue">
+          <summary>La vue attendue sur chaque base cliente</summary>
+          <pre class="sql">{instructionVue(
+            existant.source.replace(/^v_/, ''), existant.source, existant.colonnes,
+            existant.portee === 'colonne' ? existant.colonneClient : null,
+          ) || '—'}</pre>
+          <p class="aide">
+            À exécuter sur la base de chaque client : cette application n'émet aucun DDL. Le nom de
+            la table d'origine est deviné depuis celui de la vue — ajustez-le si besoin.
+          </p>
+        </details>
+      )}
+    </div>
+  )}
+</Console>
+
+<style>
+  .fil { font-size: var(--text-sm); }
+  .etape { padding: 16px; margin-block-end: var(--space-4); }
+  .etape h3 { margin: 0 0 6px; display: flex; align-items: center; gap: 9px; }
+  .etape-num { inline-size: 24px; block-size: 24px; border-radius: 999px; flex: none;
+         background: var(--plum-500, #7b4488); color: #fff; display: grid; place-items: center;
+         font: 700 var(--text-xs) / 1 var(--font-sans); }
+  .aide { color: var(--slate-600); font-size: var(--text-sm); max-inline-size: 82ch; margin-block-end: var(--space-3); }
+  .rien { color: var(--slate-500); font-size: var(--text-sm); }
+  .sources-choix { display: flex; flex-wrap: wrap; gap: 8px; }
+  .source-choix { display: inline-flex; gap: 8px; align-items: baseline; padding: 6px 13px; border-radius: 999px;
+          background: var(--slate-100); color: var(--slate-600); font-size: var(--text-sm); }
+  .source-choix .mono { font-size: var(--text-xs); opacity: .75; }
+  .source-choix--actif { background: var(--plum-500, #7b4488); color: #fff; }
+  .source-choix:hover { text-decoration: none; }
+  .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: var(--space-4); }
+  .champ { display: flex; flex-direction: column; gap: 4px; }
+  .champ--large { grid-column: 1 / -1; }
+  .champ > span { font: 500 var(--text-sm) / 1.3 var(--font-sans); }
+  .champ input, .champ select, .champ textarea { inline-size: 100%; }
+  .champ em { font-style: normal; font-size: var(--text-xs); color: var(--slate-500); }
+  .apps { margin-block-start: var(--space-4); }
+  .etiquette { font: 500 var(--text-sm) / 1.3 var(--font-sans); display: block; margin-block-end: 6px; }
+  .apps-cases { display: flex; flex-wrap: wrap; gap: 12px; }
+  .case { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); }
+  .colonne { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap;
+             padding: 8px 4px; border-block-start: 1px solid var(--slate-200); }
+  .colonne--sensible { background: color-mix(in srgb, var(--amber-100, #fceed6) 55%, transparent); }
+  .colonne__nom { display: flex; align-items: center; gap: 9px; flex: 1 1 320px; font-size: var(--text-sm); }
+  .ops { display: flex; gap: 12px; flex-wrap: wrap; margin-inline-start: auto; }
+  .op { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs); color: var(--slate-600); }
+  .op--pale { opacity: .55; }
+  .type { color: var(--slate-500); font-size: var(--text-xs); font-family: var(--font-mono); }
+  .jeton { display: inline-flex; align-items: center; gap: 5px; font: 600 11px / 1.5 var(--font-sans);
+           padding: 2px 9px; border-radius: 999px; background: var(--slate-100); color: var(--slate-600); }
+  .jeton b { font-weight: 600; color: var(--navy-900); }
+  .jeton--vue { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
+  .jeton--index { background: var(--teal-100, #d7efe9); color: var(--teal-700, #0d6861); }
+  .jeton--sensible { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  .jeton--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
+  .jeton--ko b { color: inherit; }
+  .pied { display: flex; gap: var(--space-3); align-items: center; margin-block-end: var(--space-4); }
+  .enligne { display: flex; gap: var(--space-3); align-items: flex-end; flex-wrap: wrap; }
+  .mini { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-xs); color: var(--slate-600); }
+  .mini input { inline-size: 90px; }
+  .resultat { margin-block-start: var(--space-4); }
+  .sql { background: var(--navy-900); color: #e7eaf3; border-radius: var(--radius-control);
+         padding: 10px 13px; overflow-x: auto; font: 12px / 1.6 var(--font-mono); }
+  .roule { overflow-x: auto; margin-block-start: var(--space-3); }
+  .echec { display: flex; gap: 9px; align-items: flex-start; margin-block-start: var(--space-3);
+           padding: 11px 14px; border-radius: var(--radius-control);
+           background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); font-size: var(--text-sm); }
+  .garanties { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: var(--space-4); }
+  .vue { margin-block-start: var(--space-4); }
+  .vue summary { cursor: pointer; font-size: var(--text-sm); color: var(--slate-600); margin-block-end: 8px; }
+  table { inline-size: 100%; border-collapse: collapse; }
+  th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
+       letter-spacing: .08em; color: var(--slate-500); padding: 8px 10px; white-space: nowrap; }
+  td { padding: 7px 10px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm); }
+  .chiffre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .fin { text-align: end; }
+  .mono { font-family: var(--font-mono); }
+</style>
