@@ -1,0 +1,160 @@
+---
+/**
+ * Le catalogue de données — ce qu'une application cliente a le droit de lire.
+ *
+ * L'écran ne permet pas d'éditer une ressource, et ce n'est pas un oubli : une
+ * URL ou une requête saisie dans un formulaire d'administration est une faille
+ * sans relecture et sans historique. On déclare dans le code, on relit dans une
+ * diff. L'assistant, lui, produit cette déclaration.
+ *
+ * Les garanties affichées sont **calculées** depuis chaque déclaration, jamais
+ * affirmées : une entrée mal formée s'affiche en rouge au lieu de passer pour
+ * sûre.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { lien } from '../../lib/lien.mjs';
+import { compteurs } from '../../lib/admin/donnees.mjs';
+import { COLONNE_CLIENT, entreesCatalogue, garanties } from '../../lib/donnees/catalogue.mjs';
+import { codeProposition, listerPropositions, retirerProposition } from '../../lib/donnees/propositions.mjs';
+
+let message = null;
+let souci = null;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (String(f.get('action')) === 'retirer') {
+    await retirerProposition(String(f.get('cle')));
+    message = 'Proposition écartée.';
+  }
+}
+
+const [chiffres, entrees, propositions] = await Promise.all([
+  compteurs(),
+  Promise.resolve(entreesCatalogue()),
+  listerPropositions().catch((e) => { souci = e.message; return []; }),
+]);
+---
+
+<Console titre="Catalogue de données" actif="catalogue" compteurs={chiffres} message={message} erreur={souci}>
+  <p class="intro">
+    Une ressource est une <strong>déclaration</strong>, pas une URL : elle nomme une vue, les colonnes
+    qui peuvent sortir, les filtres acceptés et un plafond de lignes. Le SQL est fabriqué à partir de
+    ça et de rien d'autre — une requête ne peut nommer qu'un filtre déjà déclaré, et sa valeur part
+    toujours en paramètre lié.
+  </p>
+
+  <div class="actions">
+    <a class="bouton bouton--marque debut" href={lien('/admin/catalogue/import')}>
+      <Icone nom="download" taille={15} />
+      Assistant d'import — lire la base et proposer
+    </a>
+  </div>
+
+  <h3>Ressources servies</h3>
+  {entrees.length === 0 ? (
+    <div class="cellule vide">
+      <p>
+        <strong>Aucune ressource déclarée.</strong> C'est l'état de départ, pas une erreur : une
+        entrée d'exemple pointant vers une vue inexistante donnerait une console qui promet des
+        données et une erreur à qui les demande.
+      </p>
+      <p class="aide">
+        Passez par l'assistant : il lit votre base, propose une déclaration et l'instruction
+        <span class="mono">CREATE VIEW</span> qui va avec. Vous collez ensuite l'entrée dans
+        <span class="mono">src/lib/donnees/catalogue.mjs</span>.
+      </p>
+    </div>
+  ) : (
+    entrees.map(({ cle, ressource: r }) => (
+      <div class="cellule ressource">
+        <div class="ressource__tete">
+          <span class="mono cle">{cle}</span>
+          <span class="libelle">{r.libelle}</span>
+          <span class="mono version">v{r.version}</span>
+        </div>
+        <div class="garanties">
+          {garanties(r).map((g) => (
+            <span class:list={['garantie', !g.ok && 'garantie--ko']}>
+              <Icone nom={g.ok ? 'circle-check' : 'circle-alert'} taille={13} />
+              {g.libelle} <b class="mono">{g.valeur}</b>
+            </span>
+          ))}
+        </div>
+      </div>
+    ))
+  )}
+
+  <h3>Propositions en attente de relecture</h3>
+  <p class="aide">
+    Une proposition est <strong>inerte</strong> : elle est stockée et relue, aucune route ne la sert.
+    Elle devient réelle quand quelqu'un colle l'entrée dans <span class="mono">catalogue.mjs</span>.
+    Cet écart est délibéré — il empêche « généré » de vouloir dire « en production ».
+  </p>
+
+  {propositions.length === 0 ? (
+    <p class="vide-ligne">Aucune proposition.</p>
+  ) : (
+    propositions.map((p) => (
+      <div class="cellule proposition">
+        <div class="proposition__tete">
+          <span class="mono cle">{p.cle}</span>
+          <span class="aide">
+            {p.sourceGenre === 'vue' ? 'vue' : 'table'} <span class="mono">{p.source}</span>
+            {p.vue !== p.source && <> → vue <span class="mono">{p.vue}</span></>}
+            · {p.colonnes.length} colonne(s) · plafond {p.maxLignes}
+            · client sur <span class="mono">{p.colonneClient}</span>
+          </span>
+          <form method="post">
+            <input type="hidden" name="action" value="retirer" />
+            <input type="hidden" name="cle" value={p.cle} />
+            <button class="bouton bouton--sobre bouton--sm" type="submit">Écarter</button>
+          </form>
+        </div>
+        <pre class="code">{codeProposition(p)}</pre>
+      </div>
+    ))
+  )}
+
+  <p class="note">
+    Les appels vers l'API d'un client ne passent pas par ici. Cette application a déjà les
+    <a href={lien('/admin/connexions')}>connexions</a>, les manifests de connecteurs, le coffre à
+    secrets et le contrôle d'adresse avec sa protection contre le réattachement DNS. Redéclarer un
+    hôte dans le catalogue créerait un second chemin pour joindre la caisse d'un client, avec ses
+    propres garde-fous à maintenir.
+  </p>
+
+  <p class="note">
+    La colonne portant le client est <span class="mono">{COLONNE_CLIENT}</span> par défaut. Elle est
+    injectée côté serveur et jamais lue dans la requête : un paramètre de client pris au mot est
+    exactement la façon dont un client finit par lire les lignes d'un autre.
+  </p>
+</Console>
+
+<style>
+  .intro, .note { max-inline-size: 78ch; color: var(--slate-600); }
+  .note { font-size: var(--text-sm); margin-block-start: var(--space-3); }
+  .aide { color: var(--slate-600); font-size: var(--text-sm); max-inline-size: 78ch; }
+  h3 { margin-block: var(--space-4) 0; }
+  .actions { display: flex; }
+  .debut { align-self: flex-start; }
+  .vide { padding: 16px; }
+  .vide p { margin-block-end: 8px; }
+  .vide-ligne { color: var(--slate-500); font-size: var(--text-sm); }
+  .ressource, .proposition { padding: 14px 16px; }
+  .ressource__tete, .proposition__tete { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+  .proposition__tete form { margin-inline-start: auto; }
+  .cle { font-weight: 600; }
+  .libelle { color: var(--slate-600); }
+  .version { color: var(--slate-500); font-size: var(--text-xs); }
+  .garanties { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: 10px; }
+  .garantie { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs);
+              background: var(--slate-100); color: var(--slate-600); border-radius: 999px; padding: 3px 10px; }
+  .garantie b { color: var(--navy-900); font-weight: 600; }
+  .garantie--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
+  .garantie--ko b { color: inherit; }
+  .code { background: var(--navy-900); color: #e7eaf3; border-radius: var(--radius-control);
+          padding: 12px 14px; overflow-x: auto; font: 12px / 1.6 var(--font-mono);
+          margin-block-start: 10px; }
+  .mono { font-family: var(--font-mono); }
+</style>

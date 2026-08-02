@@ -1179,6 +1179,27 @@ function modele(pg) {
       ],
     },
     {
+      // Les propositions de l'assistant d'import du catalogue. Inertes : aucune
+      // route ne les sert. Une proposition devient réelle quand quelqu'un colle
+      // l'entrée générée dans catalogue.mjs et qu'elle passe en revue — c'est
+      // cet écart qui empêche « généré » de vouloir dire « en production ».
+      nom: table('catalogue_propositions'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(120)} NOT NULL`],
+        ['source', `${t.chaine(120)} NOT NULL`],
+        ['source_genre', t.chaine(10)],
+        ['vue', t.chaine(120)],
+        ['colonnes', t.objet],
+        ['filtres', t.objet],
+        ['triables', t.objet],
+        ['max_lignes', 'INT DEFAULT 500'],
+        ['colonne_client', t.chaine(120)],
+        ['cree_le', t.chaine(40)],
+        ['cree_par', t.chaine(200)],
+      ],
+    },
+    {
       nom: table('site'),
       colonnes: [
         ['id', t.id],
