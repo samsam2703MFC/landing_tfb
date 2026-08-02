@@ -922,10 +922,25 @@ export async function listerEtapes({ activesSeulement = false } = {}) {
   return lignes.map((e) => ({
     ...e,
     actif: Boolean(e.actif),
+    statut: STATUTS_OFFRE.includes(e.statut) ? e.statut : '',
     gabarit_actif: Boolean(e.gabarit_actif),
     relance_active: Boolean(e.relance_active),
     relance_jours: Number(e.relance_jours) || 0,
   }));
+}
+
+/**
+ * L'étape qui va avec un statut : la première active qui l'entraîne.
+ *
+ * « La première » parce que plusieurs étapes peuvent mener au même statut —
+ * discussion et attente de décision supposent l'une comme l'autre une offre
+ * envoyée. C'est l'ordre du pipeline qui tranche, et c'est le réglage de la
+ * console qui fixe cet ordre.
+ */
+export async function etapePourStatut(statut) {
+  if (!statut) return null;
+  const etapes = await listerEtapes({ activesSeulement: true });
+  return etapes.find((e) => e.statut === statut) || null;
 }
 
 /** Une étape par sa clé, ou `null`. */
@@ -942,14 +957,16 @@ export async function ajouterEtape(valeurs) {
   if (dejaLa.length > 0) throw new Error(`L'étape « ${cle} » existe déjà.`);
   await db.executer(
     `INSERT INTO ${table('etapes')}
-     (cle, nom, description, ordre, actif, gabarit_actif, relance_active, relance_jours)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+     (cle, nom, description, ordre, actif, statut, gabarit_actif, relance_active, relance_jours)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       cle,
       String(valeurs.nom || '').trim() || cle,
       String(valeurs.description || '').trim() || null,
       Number(valeurs.ordre) || 100,
-      vrai(true), vrai(false), vrai(false), 0,
+      vrai(true),
+      STATUTS_OFFRE.includes(valeurs.statut) ? valeurs.statut : null,
+      vrai(false), vrai(false), 0,
     ],
   );
   viderCache();
@@ -961,7 +978,7 @@ export async function enregistrerEtape(cle, valeurs) {
   const jours = String(valeurs.relance_jours ?? '').trim();
   await db.executer(
     `UPDATE ${table('etapes')}
-     SET nom = ?, description = ?, ordre = ?,
+     SET nom = ?, description = ?, ordre = ?, statut = ?,
          gabarit_actif = ?, gabarit_sujet = ?, gabarit_corps = ?,
          relance_active = ?, relance_jours = ?
      WHERE cle = ?`,
@@ -969,6 +986,7 @@ export async function enregistrerEtape(cle, valeurs) {
       String(valeurs.nom || '').trim() || String(cle),
       String(valeurs.description || '').trim() || null,
       Number(valeurs.ordre) || 100,
+      STATUTS_OFFRE.includes(valeurs.statut) ? valeurs.statut : null,
       vrai(valeurs.gabarit_actif === '1' || valeurs.gabarit_actif === true),
       String(valeurs.gabarit_sujet || '').trim() || null,
       String(valeurs.gabarit_corps || '').trim() || null,
@@ -1045,7 +1063,36 @@ export async function changerEtapeOffre(id, cle, utilisateurId = null) {
     texte: etape ? `Étape : ${etape.nom}` : 'Sortie du pipeline',
     utilisateurId,
   });
+  // Le statut suit l'étape. Déplacer une offre dans « Gagnée » sans qu'elle
+  // devienne acceptée laisserait la console dire deux choses à la fois.
+  if (etape && etape.statut) await ecrireStatut(db, id, etape.statut, utilisateurId);
   viderCache();
+}
+
+/**
+ * Écrit le statut d'une offre, et lui seul.
+ *
+ * Le cœur commun des deux mouvements — l'étape qui entraîne le statut, le
+ * statut qui entraîne l'étape. Les faire s'appeler l'un l'autre tournerait en
+ * rond ; ils appellent tous deux ceci, qui n'appelle rien.
+ */
+async function ecrireStatut(db, id, statut, utilisateurId) {
+  const [avant] = await db.requete(
+    `SELECT statut, envoyee_le FROM ${table('offres')} WHERE id = ? LIMIT 1`,
+    [Number(id)],
+  );
+  if (avant && avant.statut === statut) return false;
+  // La date d'envoi est celle du premier envoi : repasser par « envoyée »
+  // après une discussion ne réécrit pas l'histoire.
+  const dater = statut === 'envoyee' && !(avant && avant.envoyee_le);
+  await db.executer(
+    `UPDATE ${table('offres')} SET statut = ?${dater ? ', envoyee_le = ?' : ''} WHERE id = ?`,
+    dater ? [statut, new Date(), Number(id)] : [statut, Number(id)],
+  );
+  // Le journal garde la trace : « qui a marqué cette offre refusée, et
+  // quand » est exactement la question qu'on se pose trois mois plus tard.
+  await journaliser(id, { type: 'statut', texte: `Statut : ${statut}`, utilisateurId });
+  return true;
 }
 
 /** Note la date à laquelle une relance est partie, pour ne pas la répéter. */
@@ -1726,12 +1773,26 @@ export async function nouvelleVersion(reference) {
 export async function changerStatutOffre(id, statut, utilisateurId = null) {
   if (!STATUTS_OFFRE.includes(statut)) throw new Error(`Statut inconnu : ${statut}.`);
   const db = await connexion();
-  const champs = statut === 'envoyee' ? ', envoyee_le = ?' : '';
-  const params = statut === 'envoyee' ? [statut, new Date(), Number(id)] : [statut, Number(id)];
-  await db.executer(`UPDATE ${table('offres')} SET statut = ?${champs} WHERE id = ?`, params);
-  // Le journal garde la trace : « qui a marqué cette offre refusée, et
-  // quand » est exactement la question qu'on se pose trois mois plus tard.
-  await journaliser(id, { type: 'statut', texte: `Statut : ${statut}`, utilisateurId });
+  await ecrireStatut(db, id, statut, utilisateurId);
+
+  // Et l'étape suit le statut, en sens inverse.
+  //
+  // Sauf si l'offre est déjà dans une étape qui entraîne ce statut : sans
+  // cette réserve, marquer « envoyée » une offre en attente de décision la
+  // ramènerait à « Offre envoyée », c'est-à-dire la ferait reculer dans le
+  // pipeline pour avoir confirmé ce qu'on savait déjà.
+  const [offre] = await db.requete(`SELECT etape FROM ${table('offres')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  const actuelle = offre ? await etapeParCle(offre.etape) : null;
+  if (!actuelle || actuelle.statut !== statut) {
+    const cible = await etapePourStatut(statut);
+    if (cible && (!actuelle || cible.cle !== actuelle.cle)) {
+      await db.executer(
+        `UPDATE ${table('offres')} SET etape = ?, etape_le = ?, relance_le = NULL WHERE id = ?`,
+        [cible.cle, new Date(), Number(id)],
+      );
+      await journaliser(id, { type: 'etape', texte: `Étape : ${cible.nom}`, utilisateurId });
+    }
+  }
   viderCache();
 }
 

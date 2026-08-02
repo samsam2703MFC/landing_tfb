@@ -251,6 +251,31 @@ function modele(pg) {
         ['contact_role', t.chaine(120)],
         ['contact_email', t.chaine(200)],
         ['contact_tel', t.chaine(40)],
+        // ── Le dossier, au-delà du contact ────────────────────────────────
+        //
+        // Ce qu'il faut pour signer et facturer, et qu'on ne demande pas au
+        // premier rendez-vous. Tout est facultatif en base : c'est au moment
+        // d'éditer un contrat qu'on refuse d'avancer sans, et l'écran dit
+        // alors précisément ce qui manque. Bloquer plus tôt ferait fuir un
+        // prospect qu'on n'a pas encore convaincu.
+        ['forme_juridique', t.chaine(80)],
+        ['numero_registre', t.chaine(60)],
+        ['adresse_siege', t.texte],
+        // Qui signe, et de quel droit. « Gérant » ou « administrateur
+        // délégué » ne se devine pas d'un prénom, et un contrat signé par
+        // quelqu'un sans pouvoir n'engage personne.
+        ['signataire_nom', t.chaine(160)],
+        ['signataire_role', t.chaine(120)],
+        ['signataire_email', t.chaine(200)],
+        ['signataire_pouvoir', t.chaine(200)],
+        // La facturation, qui n'est pas toujours à la même adresse que le
+        // siège — franchiseur au centre, comptabilité ailleurs.
+        ['facturation_adresse', t.texte],
+        ['facturation_email', t.chaine(200)],
+        ['iban', t.chaine(40)],
+        ['bic', t.chaine(20)],
+        ['delai_paiement_jours', 'INT DEFAULT 30'],
+        ['mandat_sepa', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
         // La demande de démonstration d'où vient le prospect, s'il en vient
         // une : de quoi éviter la ressaisie et garder le fil.
         ['lead_id', 'INT'],
@@ -364,6 +389,64 @@ function modele(pg) {
       ],
     },
     {
+      // Le contrat né d'une offre acceptée.
+      //
+      // Son corps est **figé à la génération**, comme les lignes d'une offre :
+      // un gabarit réécrit le mois prochain ne doit pas changer le texte de ce
+      // qu'un client a signé. Rouvrir le contrat le régénère seulement tant
+      // qu'il n'est pas parti.
+      nom: table('contrats'),
+      colonnes: [
+        ['id', t.id],
+        ['reference', `${t.chaine(40)} NOT NULL UNIQUE`],
+        ['offre_id', 'INT NOT NULL'],
+        ['prospect_id', 'INT NOT NULL'],
+        // brouillon · envoye · signe · refuse · expire
+        ['statut', `${t.chaine(20)} DEFAULT 'brouillon'`],
+        ['corps', t.texte],
+        ['genere_le', t.horodatage],
+        ['envoye_le', t.horodatage],
+        ['signe_le', t.horodatage],
+        // Les conditions, recopiées des réglages du jour.
+        ['date_effet', t.horodatage],
+        ['duree_mois', 'INT DEFAULT 0'],
+        ['preavis_jours', 'INT DEFAULT 0'],
+        ['reconduction', t.chaine(120)],
+        // La signature électronique : l'enveloppe chez le prestataire, son
+        // état, et la dernière fois qu'on l'a demandé. Sans ces trois-là, on
+        // ne saurait pas répondre à « où en est la signature ».
+        ['signature_service', t.chaine(40)],
+        ['signature_enveloppe', t.chaine(120)],
+        ['signature_statut', t.chaine(40)],
+        ['signature_maj_le', t.horodatage],
+        ['cree_par', 'INT'],
+      ],
+    },
+    {
+      // Une pièce du dossier : ce qui se téléverse et qu'on doit pouvoir
+      // ressortir. Stockée en base, comme les logos des réseaux clients :
+      // elle survit ainsi au déploiement et part avec la sauvegarde.
+      nom: table('pieces'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['contrat_id', 'INT'],
+        // contrat_signe · annexe · cgv · grille · identite · registre ·
+        // assurance · licence · autre
+        ['type', `${t.chaine(30)} NOT NULL`],
+        ['nom', `${t.chaine(255)} NOT NULL`],
+        ['type_mime', t.chaine(120)],
+        ['taille', 'INT DEFAULT 0'],
+        // En base64, comme les logos des réseaux : un seul type de colonne à
+        // porter dans les deux dialectes, et un contenu qui se relit sans
+        // pilote binaire. Le tiers de poids en plus est le prix de la
+        // simplicité.
+        ['contenu', t.texte],
+        ['depose_le', t.horodatage],
+        ['depose_par', 'INT'],
+      ],
+    },
+    {
       // Une étape du suivi commercial : où en est la négociation.
       //
       // Distincte du **statut** de l'offre, et c'est délibéré. Le statut est
@@ -379,6 +462,15 @@ function modele(pg) {
         ['description', t.texte],
         ['ordre', 'INT DEFAULT 100'],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        // Le statut que l'étape entraîne.
+        //
+        // Étape et statut disent la même chose vue de deux endroits : l'étape
+        // raconte où en est la négociation, le statut décide si l'offre se
+        // modifie encore. Les tenir séparés obligeait à faire deux fois le
+        // même geste, et à vivre avec les moments où ils se contredisent —
+        // une offre « Gagnée » restée « brouillon ». Vide : l'étape ne touche
+        // pas au statut, pour celles qui n'en impliquent aucun.
+        ['statut', t.chaine(20)],
         // Le gabarit de courriel proposé à cette étape, et l'interrupteur qui
         // décide s'il est proposé du tout : une étape peut exister sans qu'on
         // écrive quoi que ce soit au client.
@@ -500,6 +592,9 @@ const INDEX = [
   { suffixe: 'lignes_offre', table: 'offre_lignes', colonnes: 'offre_id, ordre' },
   // Le journal se lit toujours par offre, du plus récent au plus ancien.
   { suffixe: 'suivi_offre', table: 'suivi', colonnes: 'offre_id, id' },
+  { suffixe: 'contrats_offre', table: 'contrats', colonnes: 'offre_id' },
+  { suffixe: 'contrats_statut', table: 'contrats', colonnes: 'statut' },
+  { suffixe: 'pieces_prospect', table: 'pieces', colonnes: 'prospect_id, type' },
   // Le script de relance balaie les offres par étape.
   { suffixe: 'offres_etape', table: 'offres', colonnes: 'etape' },
 ];

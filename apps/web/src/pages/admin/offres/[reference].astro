@@ -1065,7 +1065,9 @@ const ETAT_STATUT = {
               <select id="o-etape" name="etape">
                 <option value="">— hors pipeline —</option>
                 {etapes.map((e) => (
-                  <option value={e.cle} selected={e.cle === offre.etape}>{e.nom}</option>
+                  <option value={e.cle} selected={e.cle === offre.etape}>
+                    {e.statut ? `${e.nom} → ${e.statut}` : e.nom}
+                  </option>
                 ))}
               </select>
               <button class="bouton bouton--sobre bouton--sm" type="submit">Déplacer</button>
@@ -1073,6 +1075,12 @@ const ETAT_STATUT = {
             {etapeCourante?.description && (
               <span class="champ__aide">{etapeCourante.description}</span>
             )}
+            <span class="champ__aide">
+              La flèche dit le statut que l'étape entraîne : déplacer l'offre le change
+              aussi{etapeCourante?.statut && etapeCourante.statut !== 'brouillon'
+                ? ", et un statut autre que « brouillon » fige l'offre"
+                : ''}.
+            </span>
           </div>
           <div class="champ">
             <span class="legende">Relance</span>

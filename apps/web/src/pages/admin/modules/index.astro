@@ -493,7 +493,11 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module {
     display: grid;
     grid-template-columns:
-      minmax(9rem, 1.2fr) 10rem 9rem 9.5rem 4.5rem 7rem 7rem 3.5rem 3.5rem 5.5rem auto;
+      /* La colonne d'ordre fait six rems et non quatre et demi : un champ
+         numérique porte ses flèches, et Chromium refuse de le rendre sous
+         quatre-vingt-douze pixels — il débordait de huit sur le pack d'à
+         côté, sans jamais rétrécir. */
+      minmax(9rem, 1.2fr) 10rem 9rem 9.5rem 6rem 7rem 7rem 3.5rem 3.5rem 5.5rem auto;
     gap: 12px;
     align-items: center;
     padding: 11px 16px;
@@ -501,7 +505,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
     /* Onze colonnes : sous cette largeur, elles se tassent jusqu'à ce que les
        six pastilles de levier débordent sur le champ d'ordre. La rangée
        défile plutôt — c'est le rôle du rouleau qui l'entoure. */
-    min-inline-size: 94rem;
+    min-inline-size: 96rem;
   }
   .ligne-module--entete {
     padding-block: 0;

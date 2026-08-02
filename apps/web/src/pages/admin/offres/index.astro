@@ -40,7 +40,11 @@ if (Astro.request.method === 'POST') {
     } else {
       await changerStatutOffre(f.get('id'), String(f.get('statut')), qui);
     }
-    const dit = quoi === 'etape' ? 'Étape mise à jour.' : 'Statut mis à jour.';
+    // Un seul geste en a fait deux : le dire, sinon la colonne d'à côté a
+    // changé toute seule et l'on croit à un bogue.
+    const dit = quoi === 'etape'
+      ? 'Étape mise à jour — le statut a suivi si l’étape en entraîne un.'
+      : 'Statut mis à jour — l’offre a rejoint l’étape correspondante.';
     return Astro.redirect(
       `${BASE}/admin/offres${Astro.url.search}${Astro.url.search ? '&' : '?'}ok=${encodeURIComponent(dit)}`,
       303,
@@ -186,7 +190,9 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                       <select name="etape" aria-label={`Étape de ${o.reference}`}>
                         <option value="">— hors pipeline —</option>
                         {etapes.map((e) => (
-                          <option value={e.cle} selected={e.cle === o.etape}>{e.nom}</option>
+                          <option value={e.cle} selected={e.cle === o.etape}>
+                            {e.statut ? `${e.nom} → ${e.statut}` : e.nom}
+                          </option>
                         ))}
                       </select>
                       <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
@@ -211,9 +217,21 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                     <form method="post" class="ligne-serree">
                       <input type="hidden" name="id" value={o.id} />
                       <select name="statut" aria-label={`Statut de ${o.reference}`}>
-                        {STATUTS_OFFRE.map((s) => (
-                          <option value={s} selected={s === o.statut}>{s}</option>
-                        ))}
+                        {STATUTS_OFFRE.map((s) => {
+                          // La flèche ne s'affiche que si l'offre bougerait
+                          // vraiment. Une offre déjà dans une étape qui porte
+                          // ce statut n'est pas déplacée — promettre le
+                          // contraire ferait douter du reste.
+                          const ici = etapes.find((e) => e.cle === o.etape) || null;
+                          const vers = ici && ici.statut === s
+                            ? null
+                            : etapes.find((e) => e.statut === s && e.cle !== o.etape);
+                          return (
+                            <option value={s} selected={s === o.statut}>
+                              {vers ? `${s} → ${vers.nom}` : s}
+                            </option>
+                          );
+                        })}
                       </select>
                       <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
                     </form>
@@ -234,6 +252,9 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
     <div class="bloc__pied">
       Montants TTC. Une seule ligne par référence, à sa dernière version — les précédentes
       se lisent depuis la fiche.
+      Étape et statut sont liés : la flèche d'une option dit ce que l'autre colonne
+      deviendra. Les étapes qui n'en portent pas laissent le statut tranquille, et le
+      lien se règle sur l'écran Étapes.
     </div>
   </section>
 </Console>
@@ -245,12 +266,18 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
      sélecteurs s'écrasent jusqu'à ne plus montrer que leur flèche et la
      référence se coupe en trois lignes. La table défile plutôt que de se
      tasser — c'est le rôle du rouleau qui l'entoure. */
-  /* La somme des colonnes fait quatre-vingt-quinze rems : en deçà, le nom du
-     client — seul champ à retour à la ligne — encaisse tout le manque et se
-     coupe en trois. */
-  .offres { min-inline-size: 95rem; }
+  /* La somme des colonnes fait cent-sept rems : en deçà, le nom du client —
+     seul champ à retour à la ligne — encaisse tout le manque et se coupe en
+     trois. */
+  .offres { min-inline-size: 110rem; }
   .offres td, .offres th { white-space: nowrap; }
-  /* …sauf le nom du client, seul champ dont la longueur est imprévisible. */
+  /* …sauf le nom du client, seul champ dont la longueur est imprévisible.
+     Une largeur plancher lui évite de tomber en trois lignes quand les deux
+     sélecteurs s'élargissent à côté de lui. */
   .offres td:nth-child(2) { white-space: normal; }
-  .offres .ligne-serree select { min-inline-size: 8rem; }
+  .offres th:nth-child(2), .offres td:nth-child(2) { min-inline-size: 14rem; }
+  /* Assez large pour « En attente de décision → envoyee » : les deux
+     sélecteurs annoncent ce qu'ils feront à la colonne d'en face, et une
+     promesse coupée au milieu ne se lit pas. */
+  .offres .ligne-serree select { min-inline-size: 17rem; }
 </style>

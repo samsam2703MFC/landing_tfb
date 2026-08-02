@@ -363,13 +363,29 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
     // renommé « En discussion » en « Chez le comptable » doit garder son mot.
     let etapesEcrites = 0;
     for (const etape of ETAPES) {
-      const dejaLa = await db.requete(`SELECT id FROM ${table('etapes')} WHERE cle = ? LIMIT 1`, [etape.cle]);
-      if (dejaLa.length > 0) continue;
+      const dejaLa = await db.requete(
+        `SELECT id, statut FROM ${table('etapes')} WHERE cle = ? LIMIT 1`,
+        [etape.cle],
+      );
+      if (dejaLa.length > 0) {
+        // L'étape est là mais le lien avec le statut est neuf : on le pose
+        // une seule fois, et seulement s'il est vide. Un réglage fait à la
+        // main dans la console ne se fait pas écraser par un déploiement.
+        if (etape.statut && !dejaLa[0].statut) {
+          await db.executer(
+            `UPDATE ${table('etapes')} SET statut = ? WHERE id = ?`,
+            [etape.statut, dejaLa[0].id],
+          );
+          console.log(`  · ${etape.cle} entraîne désormais le statut « ${etape.statut} »`);
+        }
+        continue;
+      }
       await upsert(db, table('etapes'), 'cle', etape.cle, {
         nom: etape.nom,
         description: etape.description,
         ordre: etape.ordre,
         actif: true,
+        statut: etape.statut || null,
         gabarit_actif: Boolean(etape.gabarit_actif),
         gabarit_sujet: etape.gabarit_sujet || null,
         gabarit_corps: etape.gabarit_corps || null,

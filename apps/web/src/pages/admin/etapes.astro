@@ -4,10 +4,17 @@
  *
  * Une équipe qui vend autrement doit pouvoir décrire sa façon de faire sans
  * qu'on redéploie : les étapes se créent, se renomment, se réordonnent et se
- * suppriment ici. Le **statut** d'une offre, lui, reste technique — il décide
- * si l'offre est encore modifiable — et ne bouge pas.
+ * suppriment ici.
  *
- * Chaque étape porte deux réglages indépendants :
+ * **L'étape et le statut sont liés.** Ils disent la même chose vue de deux
+ * endroits : l'étape raconte où en est la négociation, le statut décide si
+ * l'offre se modifie encore. Chaque étape déclare donc le statut qu'elle
+ * entraîne, et le lien joue dans les deux sens — déplacer une offre dans
+ * « Gagnée » l'accepte, l'accepter la déplace dans « Gagnée ». Une étape sans
+ * statut laisse celui-ci tranquille, pour les étapes qui n'en impliquent
+ * aucun.
+ *
+ * Chaque étape porte deux autres réglages, indépendants :
  *
  *   · un **gabarit de courriel**, proposé au commercial quand l'offre entre
  *     dans l'étape. Activable séparément : une étape peut exister sans qu'on
@@ -24,6 +31,7 @@ import {
   compteurs,
   enregistrerEtape,
   listerEtapes,
+  STATUTS_OFFRE,
   supprimerEtape,
 } from '../../lib/admin/donnees.mjs';
 
@@ -37,7 +45,12 @@ if (Astro.request.method === 'POST') {
     let dit = 'Étape enregistrée.';
 
     if (action === 'ajout') {
-      const cle = await ajouterEtape({ nom: f.get('nom'), description: f.get('description'), ordre: f.get('ordre') });
+      const cle = await ajouterEtape({
+        nom: f.get('nom'),
+        description: f.get('description'),
+        ordre: f.get('ordre'),
+        statut: f.get('statut'),
+      });
       dit = `Étape « ${cle} » créée. Réglez son gabarit et sa relance ci-dessus.`;
     } else if (action === 'bascule') {
       await basculerEtape(f.get('cle'), f.get('actif') === '1');
@@ -50,6 +63,7 @@ if (Astro.request.method === 'POST') {
         nom: f.get('nom'),
         description: f.get('description'),
         ordre: f.get('ordre'),
+        statut: f.get('statut'),
         gabarit_actif: f.get('gabarit_actif'),
         gabarit_sujet: f.get('gabarit_sujet'),
         gabarit_corps: f.get('gabarit_corps'),
@@ -74,6 +88,7 @@ try {
 
 const message = Astro.url.searchParams.get('ok');
 const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0).length;
+const statuantes = etapes.filter((e) => e.statut).length;
 ---
 
 <Console
@@ -90,8 +105,10 @@ const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0
         <h2>Le pipeline</h2>
         <p>
           <span class="jeton">landing_etapes</span> — {etapes.length} étape(s),
-          dont {relancantes} qui relance(nt) le commercial.
-          L'ordre gouverne la liste déroulante de la liste des offres.
+          dont {relancantes} qui relance(nt) le commercial et {statuantes} qui
+          change(nt) le statut de l'offre.
+          L'ordre gouverne la liste déroulante de la liste des offres, et décide
+          quelle étape reçoit une offre dont on change le statut à la main.
         </p>
       </div>
     </div>
@@ -113,6 +130,20 @@ const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0
             <label for={`o-${e.cle}`}>Ordre</label>
             <span class="tarif__saisie">
               <input id={`o-${e.cle}`} form={`etape-${e.cle}`} type="number" name="ordre" min="1" value={e.ordre ?? 100} />
+            </span>
+          </div>
+          <div class="champ">
+            <label for={`s-${e.cle}`}>Statut entraîné</label>
+            <select id={`s-${e.cle}`} form={`etape-${e.cle}`} name="statut">
+              <option value="">— ne change rien —</option>
+              {STATUTS_OFFRE.map((s) => <option value={s} selected={s === e.statut}>{s}</option>)}
+            </select>
+            <span class="champ__aide">
+              {e.statut === 'brouillon'
+                ? 'Entrer ici rouvre l’offre à la modification.'
+                : e.statut
+                  ? `Entrer ici passe l’offre en « ${e.statut} »${e.statut === 'brouillon' ? '' : ' et la fige'}.`
+                  : 'L’offre garde le statut qu’elle avait.'}
             </span>
           </div>
           <div class="champ" style="grid-column:1/-1">
@@ -204,6 +235,9 @@ const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0
     <div class="bloc__pied">
       Une étape retirée du pipeline n'est plus proposée, mais les offres qui y sont
       restent où elles sont : on ne déplace pas le portefeuille de quelqu'un dans son dos.
+      Quand deux étapes entraînent le même statut, c'est la première dans l'ordre qui
+      reçoit les offres dont on change le statut depuis la liste — les suivantes gardent
+      celles qui y sont déjà, sans les faire reculer.
     </div>
   </section>
 
@@ -227,6 +261,14 @@ const relancantes = etapes.filter((e) => e.relance_active && e.relance_jours > 0
           <span class="tarif__saisie">
             <input id="e-ordre" type="number" name="ordre" min="1" value="100" />
           </span>
+        </div>
+        <div class="champ">
+          <label for="e-statut">Statut entraîné</label>
+          <select id="e-statut" name="statut">
+            <option value="">— ne change rien —</option>
+            {STATUTS_OFFRE.map((s) => <option value={s}>{s}</option>)}
+          </select>
+          <span class="champ__aide">Se règle aussi après coup, ci-dessus.</span>
         </div>
         <div class="champ" style="grid-column:1/-1">
           <label for="e-desc">Ce que l'étape veut dire</label>
