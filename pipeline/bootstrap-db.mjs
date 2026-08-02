@@ -25,6 +25,15 @@ function types(pg) {
     booleen: pg ? 'BOOLEAN' : 'TINYINT(1)',
     horodatage: pg ? 'TIMESTAMPTZ' : 'DATETIME',
     vrai: pg ? 'TRUE' : '1',
+    // Un secret chiffré. Jamais du texte : on ne veut pas qu'un dump
+    // s'ouvre dans un éditeur et montre quelque chose qui ressemble à
+    // du base64 qu'on aurait envie de décoder.
+    binaire: pg ? 'BYTEA' : 'VARBINARY(512)',
+    // Un montant, jamais un flottant. Quatre décimales parce qu'un prix
+    // unitaire hors taxes peut en demander trois, et qu'arrondir avant le
+    // total fait perdre des centimes à l'échelle d'un réseau.
+    montant: 'DECIMAL(14,4)',
+    quantite: 'DECIMAL(12,3)',
   };
 }
 
@@ -275,6 +284,14 @@ function modele(pg) {
         ['iban', t.chaine(40)],
         ['bic', t.chaine(20)],
         ['delai_paiement_jours', 'INT DEFAULT 30'],
+        // Ce que l'ingestion des ventes a besoin de savoir du réseau.
+        //
+        // La devise sert de garde-fou : une caisse qui renvoie des ventes
+        // dans une autre devise que celle du réseau est refusée plutôt que
+        // silencieusement additionnée. Le fuseau et la coupure de journée se
+        // reprennent sur chaque boutique, qui peut les redéfinir.
+        ['devise', `${t.chaine(3)} DEFAULT 'EUR'`],
+        ['fuseau', `${t.chaine(60)} DEFAULT 'Europe/Brussels'`],
         ['mandat_sepa', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
         // La demande de démonstration d'où vient le prospect, s'il en vient
         // une : de quoi éviter la ressaisie et garder le fil.
@@ -446,6 +463,437 @@ function modele(pg) {
         ['depose_par', 'INT'],
       ],
     },
+
+    // ══════════════════════════════════════════════════════════════════════
+    // Onboarding : brancher la caisse d'un client et lire ses ventes
+    // ══════════════════════════════════════════════════════════════════════
+    //
+    // Le flux est **unidirectionnel et en lecture seule**. On lit des ventes
+    // et le référentiel qui permet de les lire ; on n'écrit jamais rien dans
+    // la caisse d'un client, et l'on n'ingère aucune donnée de son client
+    // final. Tout le reste — indicateurs, leviers, food cost, objectifs — se
+    // calcule chez nous à partir de ces seules lignes.
+    {
+      // Une capacité : une brique de donnée dont un module a besoin.
+      //
+      // C'est le pivot du moteur. Quatre modules qui demandent tous les
+      // ventes ne font qu'une seule connexion à faire — c'est l'union
+      // dédupliquée des capacités qui décide des étapes, pas le nombre de
+      // modules cochés.
+      nom: table('capacites'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(40)} NOT NULL UNIQUE`],
+        ['libelle', t.chaine(160)],
+        ['description', t.texte],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Ce dont un module a besoin pour fonctionner.
+      //
+      // `requis` faux veut dire « la fonctionnalité marche sans, en moins
+      // bien » : `note_degradee` dit alors ce qu'on perd, et l'écran de
+      // prérequis le montre au client plutôt que de le découvrir après coup.
+      nom: table('module_capacites'),
+      colonnes: [
+        ['id', t.id],
+        ['module_id', 'INT NOT NULL'],
+        ['capacite_id', 'INT NOT NULL'],
+        ['requis', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['note_degradee', t.texte],
+      ],
+    },
+    {
+      // Une source de données, décrite par son manifest.
+      //
+      // Le manifest porte tout : les champs du formulaire, les adresses
+      // interrogées, la pagination, l'authentification, le mapping par
+      // défaut. C'est ce qui permet d'ajouter une caisse **sans
+      // redéploiement** — on insère une ligne, l'assistant sait afficher le
+      // bon formulaire et tester la connexion.
+      //
+      // Le code n'est nécessaire que pour une API vraiment exotique : on
+      // écrit alors un adaptateur qui implémente la même interface.
+      nom: table('connecteurs'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['type', `${t.chaine(20)} DEFAULT 'api'`],
+        ['manifest', `${t.objet} NOT NULL`],
+        ['version_manifest', 'INT DEFAULT 1'],
+        ['logo', t.texte],
+        ['logo_type', t.chaine(40)],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['beta', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // L'historique des manifests : un connecteur se corrige, et l'on veut
+      // pouvoir dire avec quelle version une connexion a été configurée.
+      nom: table('connecteur_versions'),
+      colonnes: [
+        ['id', t.id],
+        ['connecteur_id', 'INT NOT NULL'],
+        ['version', 'INT NOT NULL'],
+        ['manifest', `${t.objet} NOT NULL`],
+        ['note', t.texte],
+        ['ecrit_le', t.horodatage],
+        ['ecrit_par', 'INT'],
+      ],
+    },
+    {
+      nom: table('connecteur_capacites'),
+      colonnes: [
+        ['id', t.id],
+        ['connecteur_id', 'INT NOT NULL'],
+        ['capacite_id', 'INT NOT NULL'],
+      ],
+    },
+    {
+      // Une boutique du réseau, telle que le client la connaît.
+      //
+      // `coupure_jour` est le petit réglage qui évite le plus gros malentendu :
+      // une vente à 01h30 appartient à la journée d'exploitation de la veille.
+      // Réglable par boutique parce qu'un glacier ferme à 23h et un bar à 4h.
+      nom: table('boutiques'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['nom', `${t.chaine(200)} NOT NULL`],
+        ['adresse', t.texte],
+        ['fuseau', `${t.chaine(60)} DEFAULT 'Europe/Brussels'`],
+        ['coupure_jour', 'INT DEFAULT 4'],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Une connexion : ce client, cette caisse, ces boutiques-là.
+      //
+      // Il y en a **plusieurs par client**. Un réseau qui a grandi par
+      // rachats n'a pas la même caisse partout : quarante boutiques sur
+      // quatre caisses font quatre connexions, pas quarante. Le groupement se
+      // fait une fois, et ajouter une boutique ensuite, c'est la ranger dans
+      // un groupe existant.
+      //
+      // `config` ne contient **que du non-secret**. Les clés vivent dans la
+      // table d'à côté, chiffrées.
+      nom: table('connexions'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['connecteur_id', 'INT NOT NULL'],
+        ['libelle', t.chaine(200)],
+        // brouillon · test · active · erreur · pause
+        ['statut', `${t.chaine(20)} DEFAULT 'brouillon'`],
+        ['config', t.objet],
+        ['version_manifest', 'INT DEFAULT 1'],
+        ['dernier_test_le', t.horodatage],
+        ['dernier_test', t.objet],
+        ['derniere_sync_le', t.horodatage],
+        ['dernier_curseur', t.chaine(255)],
+        ['cree_par', 'INT'],
+        ['cree_le', t.horodatage],
+        ['maj_le', t.horodatage],
+      ],
+    },
+    {
+      // Un secret, et rien d'autre.
+      //
+      // Chiffré en AES-256-GCM, clé maître en variable d'environnement et
+      // jamais en base. `version_cle` permet la rotation sans interruption :
+      // on déchiffre avec l'ancienne, on rechiffre avec la nouvelle, ligne
+      // par ligne. `quatre` sert au seul affichage autorisé — « ••••4f2a ».
+      //
+      // Aucune route ne relit un secret. Même un administrateur ne le revoit
+      // pas : il le remplace.
+      nom: table('connexion_secrets'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        ['champ', `${t.chaine(60)} NOT NULL`],
+        ['chiffre', `${t.binaire} NOT NULL`],
+        ['iv', `${t.binaire} NOT NULL`],
+        ['sceau', `${t.binaire} NOT NULL`],
+        ['version_cle', 'INT DEFAULT 1'],
+        ['quatre', t.chaine(8)],
+        ['cree_le', t.horodatage],
+        ['tourne_le', t.horodatage],
+      ],
+    },
+    {
+      // Les adresses réellement interrogées pour CE client.
+      //
+      // Recopiées du manifest à la création, puis modifiables par lui — c'est
+      // le cas « une adresse pour les ventes, une autre pour le catalogue ».
+      // Faire évoluer un manifest ne doit jamais écraser une connexion déjà
+      // active : c'est pourquoi ces valeurs vivent ici et non dans le JSON du
+      // connecteur.
+      nom: table('connexion_points'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        // ventes · produits · categories · boutiques
+        ['genre', `${t.chaine(20)} NOT NULL`],
+        ['methode', `${t.chaine(10)} DEFAULT 'GET'`],
+        ['gabarit', `${t.chaine(500)} NOT NULL`],
+        ['entetes', t.objet],
+        ['pagination', t.objet],
+        ['verifie', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+      ],
+    },
+    {
+      // Le mapping : quel champ de la caisse alimente quel champ canonique.
+      //
+      // `confiance` dit d'où vient la proposition — trouvée par alias,
+      // devinée, ou posée à la main. C'est ce qui permet à l'écran de
+      // demander confirmation seulement là où il y a un doute.
+      nom: table('connexion_correspondances'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        ['cible', `${t.chaine(60)} NOT NULL`],
+        ['source', t.chaine(255)],
+        ['transform', t.objet],
+        // auto · suggeree · manuelle
+        ['confiance', `${t.chaine(20)} DEFAULT 'auto'`],
+      ],
+    },
+    {
+      // Le rapprochement des boutiques : celle de la caisse, la nôtre.
+      //
+      // `ignoree` est un choix explicite, pas un oubli. Un entrepôt qui
+      // enregistre des sorties de stock fausserait le chiffre — mieux vaut
+      // l'écarter sciemment que le découvrir dans trois mois.
+      nom: table('boutique_correspondances'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        ['externe_id', `${t.chaine(120)} NOT NULL`],
+        ['externe_libelle', t.chaine(200)],
+        ['boutique_id', 'INT'],
+        ['ignoree', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+      ],
+    },
+    {
+      // Le parcours de mise en route d'un client, reprenable.
+      //
+      // L'état vit en base et non dans le navigateur : fermer l'onglet à
+      // l'étape 6 et revenir par le lien de reprise rend le même écran.
+      nom: table('parcours'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        // en_cours · termine · abandonne
+        ['statut', `${t.chaine(20)} DEFAULT 'en_cours'`],
+        ['etape_courante', t.chaine(60)],
+        ['etat', t.objet],
+        ['jeton_reprise', `${t.chaine(64)} UNIQUE`],
+        ['debut_le', t.horodatage],
+        ['fin_le', t.horodatage],
+        ['activite_le', t.horodatage],
+      ],
+    },
+    {
+      // Une étape du parcours.
+      //
+      // `connexion_id` est vide pour les étapes du client (entreprise,
+      // modules, prérequis) et renseigné pour celles qui se répètent par
+      // caisse (configuration, test, mapping, boutiques, import, cohérence,
+      // synchro). C'est ce qui fait du parcours une colonne par caisse plutôt
+      // qu'une seule ligne.
+      nom: table('parcours_etapes'),
+      colonnes: [
+        ['id', t.id],
+        ['parcours_id', 'INT NOT NULL'],
+        ['connexion_id', 'INT'],
+        ['cle', `${t.chaine(60)} NOT NULL`],
+        ['ordre', 'INT DEFAULT 100'],
+        // attente · courante · faite · sautee · bloquee
+        ['statut', `${t.chaine(20)} DEFAULT 'attente'`],
+        ['charge', t.objet],
+        ['fait_le', t.horodatage],
+        ['fait_par', 'INT'],
+      ],
+    },
+    {
+      // Le journal du parcours : qui a fait quoi, et quand.
+      //
+      // C'est la première question qu'on se pose quand un chiffre change sans
+      // raison — et la seule façon d'y répondre trois mois plus tard.
+      nom: table('parcours_journal'),
+      colonnes: [
+        ['id', t.id],
+        ['parcours_id', 'INT NOT NULL'],
+        ['connexion_id', 'INT'],
+        ['type', `${t.chaine(40)} NOT NULL`],
+        ['texte', t.texte],
+        ['detail', t.objet],
+        ['quand', t.horodatage],
+        ['utilisateur_id', 'INT'],
+      ],
+    },
+    {
+      // Une tâche de synchronisation, et son verrou.
+      //
+      // Pas de file d'attente : une table et un verrou en base. Le verrou est
+      // une date d'expiration plutôt qu'un drapeau — un processus tué au
+      // milieu ne laisse pas une tâche bloquée pour toujours.
+      nom: table('sync_taches'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        // reprise · incrementale · catalogue · reparation
+        ['genre', `${t.chaine(20)} NOT NULL`],
+        ['active', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['frequence_heures', 'INT DEFAULT 24'],
+        ['heure_locale', 'INT DEFAULT 5'],
+        // La fenêtre glissante relue à chaque passage : les caisses corrigent
+        // et annulent des tickets après coup, et une synchro qui ne lirait que
+        // le delta ne verrait jamais ces corrections.
+        ['rattrapage_jours', 'INT DEFAULT 7'],
+        ['plage_de', t.horodatage],
+        ['plage_a', t.horodatage],
+        ['prochain_le', t.horodatage],
+        ['verrou_jusqu_a', t.horodatage],
+        ['verrou_par', t.chaine(80)],
+      ],
+    },
+    {
+      // Un passage : ce qu'une exécution a lu, écrit, ignoré et rejeté.
+      //
+      // Les quatre compteurs sont le minimum pour répondre à « pourquoi
+      // manque-t-il des ventes ». Une ligne rejetée n'est jamais perdue en
+      // silence : elle part au rebut avec sa raison.
+      nom: table('sync_passages'),
+      colonnes: [
+        ['id', t.id],
+        ['tache_id', 'INT'],
+        ['connexion_id', 'INT NOT NULL'],
+        // file · en_cours · succes · partiel · echec
+        ['statut', `${t.chaine(20)} DEFAULT 'file'`],
+        ['debut_le', t.horodatage],
+        ['fin_le', t.horodatage],
+        ['plage_de', t.horodatage],
+        ['plage_a', t.horodatage],
+        ['curseur_de', t.chaine(255)],
+        ['curseur_a', t.chaine(255)],
+        ['lues', 'INT DEFAULT 0'],
+        ['inserees', 'INT DEFAULT 0'],
+        ['doublons', 'INT DEFAULT 0'],
+        ['rejetees', 'INT DEFAULT 0'],
+        ['code_erreur', t.chaine(40)],
+        ['detail_erreur', t.objet],
+      ],
+    },
+    {
+      // Le rebut : ce qu'on n'a pas su lire, avec la raison.
+      nom: table('sync_rebut'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        ['passage_id', 'INT'],
+        ['charge', t.objet],
+        ['code_erreur', t.chaine(40)],
+        ['detail', t.texte],
+        ['essais', 'INT DEFAULT 0'],
+        ['cree_le', t.horodatage],
+      ],
+    },
+    {
+      // La ligne telle que la caisse l'a rendue, sans retouche.
+      //
+      // On la garde pour pouvoir renormaliser sans réinterroger le POS le
+      // jour où l'on corrige un mapping. `empreinte` est l'empreinte du
+      // contenu canonicalisé : c'est elle qui rend un rejeu idempotent.
+      //
+      // Ce qui n'y entre jamais : les données personnelles du client final.
+      // L'adaptateur les retire **avant** l'écriture, pas après.
+      nom: table('ventes_brutes'),
+      colonnes: [
+        ['id', t.id],
+        ['connexion_id', 'INT NOT NULL'],
+        ['passage_id', 'INT'],
+        ['charge', `${t.objet} NOT NULL`],
+        ['empreinte', `${t.chaine(64)} NOT NULL`],
+        ['recue_le', t.horodatage],
+      ],
+    },
+    {
+      // Le seul contrat que les modules du SaaS consomment.
+      //
+      // Tout adaptateur, quelle que soit la caisse, produit exactement ces
+      // colonnes. C'est ce qui permet à un réseau de mélanger trois caisses
+      // et de n'avoir qu'un seul tableau de bord.
+      //
+      // Pas de partitionnement en v1, et c'est un choix : MySQL exige que
+      // toute clé unique contienne la colonne de partitionnement, ce qui
+      // ferait entrer deux fois une vente dont la caisse corrige la date
+      // après coup. L'idempotence vaut mieux que la partition tant que le
+      // volume ne l'impose pas.
+      nom: table('ventes'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['connexion_id', 'INT NOT NULL'],
+        ['boutique_id', 'INT'],
+        ['externe_id', `${t.chaine(191)} NOT NULL`],
+        ['commande_externe_id', t.chaine(191)],
+        ['boutique_externe_id', t.chaine(120)],
+        ['vendu_le', t.horodatage],
+        // La journée d'exploitation, et non la date calendaire : une vente à
+        // 01h30 compte pour la veille. C'est cette colonne que lisent tous
+        // les indicateurs, jamais `vendu_le`.
+        ['jour_exploitation', 'DATE'],
+        ['heure', 'SMALLINT'],
+        ['produit_externe_id', t.chaine(191)],
+        ['produit_libelle', t.chaine(255)],
+        ['categorie_externe_id', t.chaine(191)],
+        ['categorie_libelle', t.chaine(255)],
+        ['quantite', t.quantite],
+        ['prix_unitaire_ht', t.montant],
+        ['prix_unitaire_ttc', t.montant],
+        ['taux_tva', 'DECIMAL(5,2)'],
+        ['remise', t.montant],
+        ['total_ht', t.montant],
+        ['total_ttc', t.montant],
+        ['devise', t.chaine(3)],
+        ['moyen_paiement', t.chaine(60)],
+        // sur_place · emporter · livraison · autre
+        ['canal', t.chaine(20)],
+        ['connecteur', t.chaine(60)],
+        ['brute_id', 'INT'],
+        ['recue_le', t.horodatage],
+      ],
+    },
+    {
+      nom: table('produits_ref'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['connexion_id', 'INT NOT NULL'],
+        ['externe_id', `${t.chaine(191)} NOT NULL`],
+        ['libelle', t.chaine(255)],
+        ['categorie_externe_id', t.chaine(191)],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['maj_le', t.horodatage],
+      ],
+    },
+    {
+      nom: table('categories_ref'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['connexion_id', 'INT NOT NULL'],
+        ['externe_id', `${t.chaine(191)} NOT NULL`],
+        ['libelle', t.chaine(255)],
+        ['parent_externe_id', t.chaine(191)],
+        ['maj_le', t.horodatage],
+      ],
+    },
     {
       // Une étape du suivi commercial : où en est la négociation.
       //
@@ -595,6 +1043,37 @@ const INDEX = [
   { suffixe: 'contrats_offre', table: 'contrats', colonnes: 'offre_id' },
   { suffixe: 'contrats_statut', table: 'contrats', colonnes: 'statut' },
   { suffixe: 'pieces_prospect', table: 'pieces', colonnes: 'prospect_id, type' },
+  // ── Onboarding ────────────────────────────────────────────────────────
+  //
+  // Les deux clés uniques qui portent toute l'idempotence : rejouer un import
+  // deux fois ne doit jamais dupliquer une vente. Sans elles, une coupure
+  // réseau au milieu d'une reprise d'historique double douze mois de chiffre.
+  { suffixe: 'brutes_empreinte', table: 'ventes_brutes', colonnes: 'connexion_id, empreinte', unique: true },
+  { suffixe: 'ventes_externe', table: 'ventes', colonnes: 'connexion_id, externe_id', unique: true },
+  // Les trois lectures que font tous les indicateurs, toujours par journée
+  // d'exploitation — jamais par date calendaire.
+  { suffixe: 'ventes_jour', table: 'ventes', colonnes: 'prospect_id, jour_exploitation' },
+  { suffixe: 'ventes_boutique', table: 'ventes', colonnes: 'prospect_id, boutique_id, jour_exploitation' },
+  { suffixe: 'ventes_categorie', table: 'ventes', colonnes: 'prospect_id, categorie_externe_id, jour_exploitation' },
+  { suffixe: 'ventes_connexion', table: 'ventes', colonnes: 'connexion_id, vendu_le' },
+  { suffixe: 'produits_externe', table: 'produits_ref', colonnes: 'connexion_id, externe_id', unique: true },
+  { suffixe: 'categories_externe', table: 'categories_ref', colonnes: 'connexion_id, externe_id', unique: true },
+  { suffixe: 'connexions_prospect', table: 'connexions', colonnes: 'prospect_id' },
+  { suffixe: 'connexions_statut', table: 'connexions', colonnes: 'statut' },
+  { suffixe: 'secrets_connexion', table: 'connexion_secrets', colonnes: 'connexion_id, champ', unique: true },
+  { suffixe: 'points_connexion', table: 'connexion_points', colonnes: 'connexion_id, genre', unique: true },
+  { suffixe: 'corresp_connexion', table: 'connexion_correspondances', colonnes: 'connexion_id, cible', unique: true },
+  { suffixe: 'boutiq_corresp', table: 'boutique_correspondances', colonnes: 'connexion_id, externe_id', unique: true },
+  { suffixe: 'boutiques_prospect', table: 'boutiques', colonnes: 'prospect_id, ordre' },
+  { suffixe: 'mod_capacites', table: 'module_capacites', colonnes: 'module_id, capacite_id', unique: true },
+  { suffixe: 'conn_capacites', table: 'connecteur_capacites', colonnes: 'connecteur_id, capacite_id', unique: true },
+  { suffixe: 'parcours_prospect', table: 'parcours', colonnes: 'prospect_id' },
+  { suffixe: 'parcours_pas', table: 'parcours_etapes', colonnes: 'parcours_id, ordre' },
+  { suffixe: 'parcours_jrn', table: 'parcours_journal', colonnes: 'parcours_id, id' },
+  // Le cron réveille les tâches dues : c'est la seule requête qu'il fait.
+  { suffixe: 'taches_dues', table: 'sync_taches', colonnes: 'active, prochain_le' },
+  { suffixe: 'passages_conn', table: 'sync_passages', colonnes: 'connexion_id, id' },
+  { suffixe: 'rebut_conn', table: 'sync_rebut', colonnes: 'connexion_id, id' },
   // Le script de relance balaie les offres par étape.
   { suffixe: 'offres_etape', table: 'offres', colonnes: 'etape' },
 ];
