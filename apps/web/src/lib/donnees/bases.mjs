@@ -111,6 +111,23 @@ export async function enregistrerBase(prospectId, valeurs, motDePasse = null) {
   const port = Number(valeurs.port || 3306);
   if (!Number.isInteger(port) || port < 1 || port > 65535) return { ok: false, erreur: 'Port invalide.' };
 
+  // Refusé, pas seulement signalé. Deux clients sur la même base, c'est
+  // l'isolation supprimée sans que rien ne casse : les écrans marchent, les
+  // requêtes répondent, et chacun lit les données de l'autre. Ce n'est pas le
+  // genre d'erreur qu'on laisse passer derrière un bandeau qu'on peut ignorer.
+  //
+  // Déplacer une base d'un client à un autre reste possible : on la retire du
+  // premier, puis on la déclare sur le second. Un clic de plus pour un cas rare,
+  // contre une fuite silencieuse pour un cas fréquent.
+  const autres = await dejaPrise(hote, port, base, prospectId);
+  if (autres.length > 0) {
+    return {
+      ok: false,
+      erreur: `Cette base est déjà celle de ${autres.join(', ')}. Retirez-la de ce client d’abord — `
+        + 'deux clients sur une même base lisent les données l’un de l’autre sans que rien ne le signale.',
+    };
+  }
+
   let secret = null;
   if (motDePasse) {
     if (!coffreOuvert()) {
@@ -280,4 +297,110 @@ export async function testerBase(prospectId) {
     } catch { /* la console dira l'erreur de connexion elle-même */ }
     return { ok: false, dit };
   }
+}
+
+// ---------------------------------------------------------------------------
+// La découverte
+// ---------------------------------------------------------------------------
+
+/**
+ * Les schémas que MySQL tient pour lui. Les proposer serait proposer une
+ * erreur : `mysql` contient les comptes du serveur, `information_schema` son
+ * catalogue. Ils sont écartés de la liste plutôt que grisés — une entrée qu'on
+ * ne doit jamais choisir n'a rien à faire dans un choix.
+ */
+const SCHEMAS_SYSTEME = new Set(['information_schema', 'mysql', 'performance_schema', 'sys']);
+
+/**
+ * Les bases visibles sur un serveur, avec de quoi reconnaître la bonne.
+ *
+ * Le compte de tables et l'estimation de lignes sont là pour ça : entre
+ * `belleville`, `belleville_test` et `belleville_old`, seul le contenu dit
+ * laquelle sert vraiment. Un nom ne le dit jamais.
+ *
+ * La liste est **déjà bornée par les droits du compte MySQL** qu'on utilise :
+ * `information_schema.SCHEMATA` ne montre à un utilisateur que ce sur quoi il a
+ * un privilège. Un compte correctement restreint à la base de son client ne
+ * verra donc que celle-là, et cet écran n'y change rien.
+ *
+ * Ne lève jamais : rend de quoi écrire l'écran, succès comme échec.
+ */
+export async function sonderServeur({ hote, port, identifiant, motDePasse }) {
+  if (!hoteAcceptable(hote)) {
+    return { ok: false, dit: 'Hôte refusé — une base de données n’est pas sur le lien-local.' };
+  }
+  if (!motDePasse) return { ok: false, dit: 'Mot de passe nécessaire pour interroger le serveur.' };
+
+  let pool = null;
+  try {
+    const { default: mysql } = await import('mysql2/promise');
+    // Sans `database` : on se connecte au serveur, pas à une base. C'est tout
+    // l'intérêt — on ne sait pas encore laquelle choisir.
+    pool = mysql.createPool({
+      host: String(hote), port: Number(port) || 3306,
+      user: String(identifiant || ''), password: String(motDePasse),
+      connectionLimit: 1, waitForConnections: true, connectTimeout: 8000,
+      multipleStatements: false,
+    });
+    const [lignes] = await pool.query(
+      `SELECT s.SCHEMA_NAME AS nom,
+              (SELECT COUNT(*) FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = s.SCHEMA_NAME) AS tables_,
+              (SELECT COALESCE(SUM(t.TABLE_ROWS), 0) FROM information_schema.TABLES t
+                WHERE t.TABLE_SCHEMA = s.SCHEMA_NAME) AS lignes_
+         FROM information_schema.SCHEMATA s
+        ORDER BY s.SCHEMA_NAME ASC`,
+    );
+    const bases = lignes
+      .filter((l) => !SCHEMAS_SYSTEME.has(String(l.nom).toLowerCase()))
+      .map((l) => ({ nom: l.nom, tables: Number(l.tables_ || 0), lignes: Number(l.lignes_ || 0) }));
+    return { ok: true, bases };
+  } catch (err) {
+    // Le message du pilote peut porter l'hôte et l'identifiant ; il reste dans
+    // la console, jamais dans un journal partagé.
+    return { ok: false, dit: `Connexion refusée : ${err.code || err.message}` };
+  } finally {
+    await pool?.end?.().catch(() => {});
+  }
+}
+
+/**
+ * Le mot de passe enregistré d'un client, pour resonder son serveur sans le
+ * retaper. Rendu à l'appelant immédiat et jamais à un écran.
+ */
+export async function motDePasseEnregistre(prospectId) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT chiffre, iv, sceau, version_cle FROM ${table('bases')} WHERE prospect_id = ? LIMIT 1`,
+    [Number(prospectId)],
+  );
+  if (!lignes[0]?.chiffre) return null;
+  try {
+    return dechiffrer({
+      chiffre: lignes[0].chiffre, iv: lignes[0].iv, sceau: lignes[0].sceau, version: lignes[0].version_cle,
+    });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Quels autres clients pointent déjà sur cette base.
+ *
+ * Deux clients sur la même base, c'est l'isolation supprimée sans que rien ne
+ * casse : les écrans marchent, les requêtes répondent, et chacun lit les
+ * données de l'autre. C'est précisément l'erreur que la portée « base client »
+ * rend invisible, puisque le SQL ne nomme jamais personne. D'où cette
+ * vérification, faite au moment de choisir.
+ */
+export async function dejaPrise(hote, port, base, saufProspectId = 0) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT b.prospect_id, p.raison_sociale
+       FROM ${table('bases')} b
+       LEFT JOIN ${table('prospects')} p ON p.id = b.prospect_id
+      WHERE b.hote = ? AND b.port = ? AND b.base = ? AND b.prospect_id <> ?`,
+    [String(hote), Number(port) || 3306, String(base), Number(saufProspectId) || 0],
+  );
+  return lignes.map((l) => l.raison_sociale || `Prospect ${l.prospect_id}`);
 }

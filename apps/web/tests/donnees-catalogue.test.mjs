@@ -24,7 +24,7 @@ import {
 } from '../src/lib/donnees/catalogue.mjs';
 import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/donnees/requete.mjs';
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
-import { hoteAcceptable } from '../src/lib/donnees/bases.mjs';
+import { hoteAcceptable, sonderServeur } from '../src/lib/donnees/bases.mjs';
 import { codeProposition, controlerProposition } from '../src/lib/donnees/propositions.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
@@ -387,5 +387,28 @@ describe('base propre à chaque client', () => {
     assert.equal(hoteAcceptable(''), false);
     assert.equal(hoteAcceptable('db.belleville.example'), true);
     assert.equal(hoteAcceptable('10.0.0.4'), true);
+  });
+});
+
+describe('découverte des bases d’un serveur', () => {
+  // Les deux refus qui doivent tomber AVANT toute tentative de connexion :
+  // sonder un hôte, c'est déjà ouvrir une socket depuis le serveur.
+  it('refuse le lien-local sans même essayer', async () => {
+    const r = await sonderServeur({ hote: '169.254.169.254', port: 3306, identifiant: 'x', motDePasse: 'y' });
+    assert.equal(r.ok, false);
+    assert.match(r.dit, /lien-local/);
+  });
+
+  it('refuse une sonde sans mot de passe', async () => {
+    const r = await sonderServeur({ hote: 'db.exemple', port: 3306, identifiant: 'x', motDePasse: '' });
+    assert.equal(r.ok, false);
+    assert.match(r.dit, /Mot de passe/);
+  });
+
+  it('ne lève jamais — l’écran doit pouvoir s’écrire', async () => {
+    // Port fermé : l'appel doit rendre un échec décrit, pas une exception.
+    const r = await sonderServeur({ hote: '127.0.0.1', port: 1, identifiant: 'x', motDePasse: 'y' });
+    assert.equal(r.ok, false);
+    assert.equal(typeof r.dit, 'string');
   });
 });
