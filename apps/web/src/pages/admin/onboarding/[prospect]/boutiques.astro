@@ -86,7 +86,10 @@ try {
   }
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
@@ -168,7 +171,8 @@ const message = Astro.url.searchParams.get('ok');
                       </td>
                       <td style="text-align:center;color:var(--slate-300)">→</td>
                       <td>
-                        <select name={`r_${r.id}`}>
+                        <select name={`r_${r.id}`}
+                                aria-label={`À quoi correspond « ${r.externe_libelle || r.externe_id} »`}>
                           <option value="" selected={!r.boutique_id && !r.ignoree}>— à choisir —</option>
                           {boutiques.map((b) => (
                             <option value={b.id} selected={String(r.boutique_id) === String(b.id)}>{b.nom}</option>

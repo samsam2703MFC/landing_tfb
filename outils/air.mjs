@@ -12,7 +12,7 @@ const MINIMUM = 12;
 const PAGES = [
   '/admin', '/admin/modules', '/admin/composants', '/admin/leviers', '/admin/captures',
   '/admin/textes', '/admin/site', '/admin/questions', '/admin/langues',
-  '/admin/traductions?langue=en&entite=site', '/admin/etapes', '/admin/contrats', '/admin/contrats/TFB-2026-0001-C', '/admin/prospects/1', '/admin/tarifs', '/admin/prestations',
+  '/admin/traductions?langue=en&entite=site', '/admin/etapes', '/admin/onboarding', '/admin/onboarding/1', '/admin/onboarding/1/modules', '/admin/onboarding/1/prerequis', '/admin/onboarding/1/parc', '/admin/onboarding/1/configuration?connexion=4', '/admin/onboarding/1/mapping?connexion=4', '/admin/onboarding/1/boutiques?connexion=4', '/admin/onboarding/1/historique?connexion=4', '/admin/onboarding/1/coherence?connexion=4', '/admin/onboarding/1/synchro?connexion=4', '/admin/connexions', '/admin/connecteurs?editer=gopos', '/admin/contrats', '/admin/contrats/TFB-2026-0001-C', '/admin/prospects/1', '/admin/tarifs', '/admin/prestations',
   '/admin/offres', '/admin/offres/nouvelle', '/admin/utilisateurs', '/admin/clients',
   '/admin/leads', '/admin/sync', '/admin/reglages', '/admin/prospects',
 ];

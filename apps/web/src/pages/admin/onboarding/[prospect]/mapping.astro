@@ -105,7 +105,10 @@ try {
   }
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
@@ -195,7 +198,7 @@ const euros = (n) => (n === null || n === undefined ? '—'
                             {champ.libelle}
                             {champ.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
                           </span>
-                          <select name={`s_${champ.cle}`}>
+                          <select name={`s_${champ.cle}`} aria-label={`Champ source de « ${champ.libelle} »`}>
                             <option value="">— non fourni —</option>
                             {champsDisponibles.map((d) => (
                               <option value={d} selected={c.source === d}>{d}</option>
@@ -204,7 +207,8 @@ const euros = (n) => (n === null || n === undefined ? '—'
                           <span class="tarif__saisie ligne-map__div">
                             <input type="number" name={`d_${champ.cle}`} min="1" step="1"
                                    value={c.transform?.type === 'diviser' ? c.transform.par : ''}
-                                   placeholder="÷" title="Diviser par — pour les prix en centimes" />
+                                   placeholder="÷" title="Diviser par — pour les prix en centimes"
+                                   aria-label={`Diviser « ${champ.libelle} » par`} />
                           </span>
                           <span class={`conf conf--${etat}`}>
                             {etat === 'auto' ? 'trouvé' : etat === 'suggeree' ? 'à confirmer'

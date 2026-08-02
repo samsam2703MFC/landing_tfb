@@ -1,0 +1,199 @@
+---
+/**
+ * Étapes 10 et 11 — la synchronisation quotidienne, et la fin.
+ *
+ * La fenêtre de rattrapage est le réglage qui compte, et le seul qu'on ne
+ * devine pas : les caisses corrigent et annulent des tickets après coup. Une
+ * synchro qui ne lirait que le delta ne verrait jamais ces corrections, et le
+ * chiffre du mois dernier ne bougerait plus jamais — même quand il a changé.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { connexion, table } from '../../../../lib/db.mjs';
+import {
+  chargerConnexion,
+  etatParcours,
+  journaliserParcours,
+  listerConnexions,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { listerTaches, poserTache } from '../../../../lib/admin/sync.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+
+    await poserTache(connexionId, {
+      frequenceHeures: Number(f.get('frequence')) || 24,
+      heureLocale: Number(f.get('heure')) || 5,
+      rattrapageJours: Number(f.get('rattrapage')) || 7,
+    });
+    const db = await connexion();
+    await db.executer(`UPDATE ${table('connexions')} SET statut = ? WHERE id = ?`, ['active', Number(connexionId)]);
+
+    await marquerEtape(parcours.id, 'synchro', { connexionId, utilisateurId: qui });
+    await journaliserParcours(parcours.id, {
+      type: 'synchro', connexionId, utilisateurId: qui,
+      texte: `Synchronisation activée — toutes les ${f.get('frequence')} h, rattrapage de ${f.get('rattrapage')} j`,
+    });
+
+    // Le parcours entier est-il fini ? Toutes les caisses actives, et plus
+    // rien en attente.
+    const toutes = await listerConnexions({ prospectId });
+    if (toutes.every((c) => c.statut === 'active')) {
+      await marquerEtape(parcours.id, 'fin', { utilisateurId: qui });
+      await db.executer(
+        `UPDATE ${table('parcours')} SET statut = ?, fin_le = ? WHERE id = ?`,
+        ['termine', new Date(), parcours.id],
+      );
+    }
+    return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}?ok=${encodeURIComponent('Synchronisation activée.')}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let tache = null;
+let etat = null;
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (cx) [tache] = await listerTaches(cx.id);
+  if (prospect) etat = await etatParcours(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const restantes = (etat?.connexions || []).filter((c) => c.statut !== 'active' && c.id !== cx?.id);
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Synchronisation"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && (
+    <form method="post">
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm"
+           href={`${BASE}/admin/onboarding/${prospect.id}/coherence?connexion=${cx.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Le contrôle
+        </a>
+        <button class="bouton bouton--marque" type="submit">Activer la synchronisation</button>
+      </div>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Étape 10 — La synchronisation de {cx.libelle}</h2>
+            <p>
+              Un cron passe toutes les cinq minutes et réveille ce qui est dû. Rien ne tourne en
+              permanence, et une exécution interrompue reprend là où elle s'est arrêtée.
+            </p>
+          </div>
+          {tache && <span class="etat etat--on">déjà réglée</span>}
+        </div>
+
+        <div class="bloc__corps">
+          <div class="duo">
+            <div class="champ">
+              <label for="s-frequence">Fréquence</label>
+              <select id="s-frequence" name="frequence">
+                <option value="24" selected={!tache || tache.frequence_heures == 24}>Une fois par jour</option>
+                <option value="4" selected={tache?.frequence_heures == 4}>Toutes les 4 heures</option>
+                <option value="1" selected={tache?.frequence_heures == 1}>Toutes les heures</option>
+              </select>
+              <span class="champ__aide">
+                Une fois par jour suffit à presque tout : les indicateurs se lisent le matin,
+                pas à la minute.
+              </span>
+            </div>
+
+            <div class="champ champ--nombre">
+              <label for="s-heure">À quelle heure</label>
+              <span class="tarif__saisie">
+                <input id="s-heure" type="number" name="heure" min="0" max="23"
+                       value={tache?.heure_locale ?? 5} />
+                <span class="tarif__unite">h</span>
+              </span>
+              <span class="champ__aide">Heure de la boutique. Cinq heures : après la fermeture, avant l'ouverture.</span>
+            </div>
+
+            <div class="champ champ--nombre">
+              <label for="s-rattrapage">Fenêtre de rattrapage</label>
+              <span class="tarif__saisie">
+                <input id="s-rattrapage" type="number" name="rattrapage" min="0" max="30"
+                       value={tache?.rattrapage_jours ?? 7} />
+                <span class="tarif__unite">j</span>
+              </span>
+              <span class="champ__aide">Relus à chaque passage, en plus du delta.</span>
+            </div>
+          </div>
+
+          <div class="promesse promesse--oui" style="margin-block-start:16px">
+            <h3>Pourquoi relire sept jours à chaque fois</h3>
+            <p>
+              Les caisses corrigent et annulent des tickets après coup. Une synchro qui ne lirait
+              que depuis la dernière fois ne verrait jamais ces corrections : le chiffre du mois
+              dernier ne bougerait plus jamais, même quand il a changé. Les lignes déjà connues
+              sont reconnues et ignorées — relire ne coûte que des appels, jamais un doublon.
+            </p>
+          </div>
+        </div>
+
+        <div class="bloc__pied">
+          Si une synchronisation échoue deux fois de suite, la connexion passe en erreur et
+          l'écran Connexions le dit. Un import silencieusement arrêté serait pire qu'une erreur
+          visible : le tableau de bord continuerait d'afficher des chiffres, simplement figés.
+        </div>
+      </section>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>{restantes.length === 0 ? 'Et c’est tout' : 'Il reste des caisses à brancher'}</h2>
+            <p>
+              {restantes.length === 0
+                ? "Cette caisse était la dernière. En activant la synchronisation, la mise en route est terminée et le tableau de bord est déjà rempli."
+                : `${restantes.length} caisse(s) attendent encore : ${restantes.map((c) => c.libelle).join(', ')}. Le tableau de bord se remplit au fur et à mesure — il n'y a pas à attendre que tout soit prêt.`}
+            </p>
+          </div>
+        </div>
+        <div class="bloc__corps">
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="check" taille={16} /> Activer la synchronisation
+            </button>
+            {restantes.length > 0 && (
+              <a class="bouton bouton--sobre" href={`${BASE}/admin/onboarding/${prospect.id}/parc`}>
+                Brancher la caisse suivante
+              </a>
+            )}
+          </div>
+        </div>
+      </section>
+    </form>
+  )}
+</Console>

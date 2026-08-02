@@ -1,0 +1,250 @@
+---
+/**
+ * Étape 8 — l'import de l'historique.
+ *
+ * Découpé en fenêtres d'une semaine, et c'est la seule chose à retenir : un
+ * import de douze mois en un seul appel ne se reprend pas, ne montre aucune
+ * progression, et la moindre coupure fait tout recommencer. En semaines,
+ * chaque morceau réussi est acquis.
+ *
+ * L'import se lance depuis cet écran mais **ne s'y déroule pas** : la page
+ * rend la main, le travail continue, et l'on revient voir. Une page qui
+ * attendrait huit minutes se ferait fermer.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  chargerConnexion,
+  journaliserParcours,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { fenetres, listerPassages, listerRebut, reprendreHistorique } from '../../../../lib/admin/sync.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+
+    if (action === 'importer') {
+      const mois = Number(f.get('mois')) || 12;
+      const r = await reprendreHistorique(connexionId, { mois });
+      await journaliserParcours(parcours.id, {
+        type: 'import', connexionId, utilisateurId: qui,
+        texte: r.ok
+          ? `Historique importé sur ${mois} mois : ${r.total.inserees} ligne(s), ${r.total.rejetees} rejetée(s)`
+          : `Import interrompu : ${r.code || 'erreur'} après ${r.total.faites}/${r.total.fenetres} semaines`,
+        detail: r.total,
+      });
+      if (r.ok) await marquerEtape(parcours.id, 'historique', { connexionId, charge: r.total, utilisateurId: qui });
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/historique?connexion=${connexionId}&ok=${encodeURIComponent(
+          r.ok ? `${r.total.inserees} ligne(s) importée(s).` : `Import interrompu : ${r.message || r.code}.`)}`,
+        303,
+      );
+    }
+
+    if (action === 'suite') {
+      await marquerEtape(parcours.id, 'historique', { connexionId, utilisateurId: qui });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/coherence?connexion=${connexionId}`, 303);
+    }
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let passages = [];
+let rebut = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (cx) {
+    passages = await listerPassages(cx.id, 12);
+    rebut = await listerRebut(cx.id, 20);
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const total = passages.reduce((s, p) => ({
+  lues: s.lues + Number(p.lues || 0),
+  inserees: s.inserees + Number(p.inserees || 0),
+  doublons: s.doublons + Number(p.doublons || 0),
+  rejetees: s.rejetees + Number(p.rejetees || 0),
+}), { lues: 0, inserees: 0, doublons: 0, rejetees: 0 });
+
+// Ce que coûterait l'import : pour que le client sache s'il a le temps.
+const estimation = (mois) => {
+  const semaines = fenetres(new Date(Date.now() - mois * 30 * 86400000), new Date()).length;
+  return { semaines, minutes: Math.max(1, Math.round(semaines * 8 / 60)) };
+};
+const message = Astro.url.searchParams.get('ok');
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+---
+
+<Console
+  titre="Import de l'historique"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm"
+           href={`${BASE}/admin/onboarding/${prospect.id}/boutiques?connexion=${cx.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Les boutiques
+        </a>
+        {total.inserees > 0 && (
+          <form method="post">
+            <input type="hidden" name="action" value="suite" />
+            <button class="bouton bouton--marque bouton--sm" type="submit">Passer au contrôle</button>
+          </form>
+        )}
+        <span class="barre-actions__note">{total.inserees} ligne(s) déjà en base pour cette caisse.</span>
+      </div>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Étape 8 — Import de l'historique</h2>
+            <p>
+              Découpé en semaines. Chaque semaine réussie est acquise : une coupure au bout de
+              onze mois ne fait pas recommencer les onze.
+            </p>
+          </div>
+        </div>
+
+        <form method="post">
+          <input type="hidden" name="action" value="importer" />
+          <div class="duo">
+            <div class="champ">
+              <label for="i-mois">Profondeur</label>
+              <select id="i-mois" name="mois">
+                {[3, 6, 12, 24].map((m) => {
+                  const e = estimation(m);
+                  return (
+                    <option value={m} selected={m === 12}>
+                      {m} mois — {e.semaines} semaines, environ {e.minutes} min
+                    </option>
+                  );
+                })}
+              </select>
+              <span class="champ__aide">
+                Douze mois permettent de comparer une saison à la même l'an dernier. En deçà,
+                les chiffres n'ont pas de point de comparaison.
+              </span>
+            </div>
+            <div class="champ">
+              <span class="legende">Ce qui se passe</span>
+              <p class="champ__aide" style="margin:0">
+                L'import lit la caisse semaine par semaine et écrit au fur et à mesure. Relancer
+                ne duplique rien : les lignes déjà connues sont reconnues et ignorées.
+              </p>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="download" taille={16} /> Lancer l'import
+            </button>
+          </div>
+        </form>
+
+        <div class="bloc__pied">
+          Cet écran attend la fin de l'import avant de rendre la main : sur douze mois, comptez
+          quelques minutes. La reprise après coupure existe — relancer ne refait que ce qui manque.
+        </div>
+      </section>
+
+      {passages.length > 0 && (
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div><h2>Ce qui a été importé</h2><p>Un passage par semaine importée.</p></div>
+            <span class="etat etat--on">{total.inserees} ligne(s)</span>
+          </div>
+          <div class="bloc__corps">
+            <div class="chiffres">
+              <div class="chiffre"><b>{total.lues}</b><span>lues chez la caisse</span></div>
+              <div class="chiffre"><b>{total.inserees}</b><span>écrites</span></div>
+              <div class="chiffre"><b>{total.doublons}</b><span>déjà connues</span></div>
+              <div class="chiffre"><b>{total.rejetees}</b><span>rejetées</span></div>
+            </div>
+          </div>
+          <div class="roule">
+            <table>
+              <thead>
+                <tr><th>Passage</th><th>Période</th><th>État</th>
+                  <th class="nombre">Lues</th><th class="nombre">Écrites</th>
+                  <th class="nombre">Rejetées</th><th>Souci</th></tr>
+              </thead>
+              <tbody>
+                {passages.map((p) => (
+                  <tr>
+                    <td class="champ__aide fb-num">{jourHeure(p.debut_le)}</td>
+                    <td class="champ__aide fb-num">
+                      {String(p.plage_de).slice(0, 10)} → {String(p.plage_a).slice(0, 10)}
+                    </td>
+                    <td>
+                      <span class={p.statut === 'succes' ? 'etat etat--on'
+                        : p.statut === 'echec' ? 'etat etat--manque' : 'etat'}>{p.statut}</span>
+                    </td>
+                    <td class="nombre fb-num">{p.lues}</td>
+                    <td class="nombre fb-num">{p.inserees}</td>
+                    <td class="nombre fb-num">{p.rejetees}</td>
+                    <td class="champ__aide">{p.code_erreur || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      {rebut.length > 0 && (
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>Ce que nous n'avons pas su lire</h2>
+              <p>
+                {rebut.length} ligne(s), gardées avec leur raison. Aucune n'est perdue en
+                silence — c'est la différence entre un chiffre incomplet et un chiffre faux.
+              </p>
+            </div>
+          </div>
+          <div class="roule">
+            <table>
+              <thead><tr><th>Raison</th><th>Ce que la caisse a renvoyé</th></tr></thead>
+              <tbody>
+                {rebut.slice(0, 10).map((r) => (
+                  <tr>
+                    <td><span class="etat etat--manque">{r.code_erreur}</span><span class="champ__aide">{r.detail}</span></td>
+                    <td><code class="slug">{String(r.charge).slice(0, 200)}</code></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+    </>
+  )}
+</Console>

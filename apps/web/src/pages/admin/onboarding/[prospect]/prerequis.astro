@@ -36,7 +36,10 @@ try {
   if (prospect) etat = await etatParcours(prospect.id);
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
@@ -134,15 +137,3 @@ const message = Astro.url.searchParams.get('ok');
   )}
 </Console>
 
-<style is:global>
-  .promesse { border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px 16px; }
-  .promesse h3 {
-    display: flex; align-items: center; gap: 7px;
-    margin: 0 0 8px; font: 700 var(--text-sm) / 1.3 var(--font-sans);
-  }
-  .promesse ul { margin: 0; padding-inline-start: 20px; display: grid; gap: 6px; font-size: var(--text-sm); }
-  .promesse--oui { border-color: var(--green-500); background: var(--green-100); }
-  .promesse--oui h3 { color: var(--green-700); }
-  .promesse--non { border-color: var(--red-500); background: var(--red-100); }
-  .promesse--non h3 { color: var(--red-700); }
-</style>

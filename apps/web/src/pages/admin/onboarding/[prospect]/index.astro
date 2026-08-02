@@ -45,7 +45,10 @@ try {
   }
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });

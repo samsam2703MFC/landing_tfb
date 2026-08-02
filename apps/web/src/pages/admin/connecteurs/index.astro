@@ -1,0 +1,185 @@
+---
+/**
+ * Les connecteurs, et l'éditeur de manifest.
+ *
+ * L'écran qui tient la promesse : **ajouter une caisse ne demande pas de
+ * déploiement.** On colle un manifest, il est validé, il est publié, et
+ * l'assistant sait afficher son formulaire.
+ *
+ * Une version publiée ne touche pas aux connexions existantes : elles portent
+ * leurs propres adresses, recopiées à leur création. Corriger un manifest ne
+ * doit jamais changer sous ses pieds une connexion qui tourne.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { compteurs } from '../../../lib/admin/donnees.mjs';
+import {
+  enregistrerManifest,
+  listerConnecteurs,
+  listerConnexions,
+  manifestFautif,
+} from '../../../lib/admin/onboarding.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+let brouillon = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const cle = String(f.get('cle'));
+    const brut = String(f.get('manifest') || '');
+    brouillon = { cle, texte: brut };
+
+    let manifest;
+    try {
+      manifest = JSON.parse(brut);
+    } catch (err) {
+      throw new Error(`Ce n'est pas du JSON valide : ${err.message}`);
+    }
+    const griefs = manifestFautif(manifest);
+    if (griefs.length > 0) {
+      throw new Error(`Ce manifest ne peut pas être publié — ${griefs.join(' ')}`);
+    }
+    const version = await enregistrerManifest(cle, manifest, {
+      note: String(f.get('note') || '').trim() || null,
+      utilisateurId: (Astro.locals.session || {}).id || null,
+    });
+    return Astro.redirect(
+      `${BASE}/admin/connecteurs?ok=${encodeURIComponent(`« ${cle} » publié en version ${version}.`)}`,
+      303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let connecteurs = [];
+let connexions = [];
+let chiffres = {};
+try {
+  connecteurs = await listerConnecteurs({ tousMemeInactifs: true });
+  connexions = await listerConnexions({});
+  chiffres = await compteurs();
+} catch (err) {
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
+}
+
+const usages = new Map();
+for (const c of connexions) usages.set(c.connecteur_cle, (usages.get(c.connecteur_cle) || 0) + 1);
+const ouvert = brouillon?.cle || Astro.url.searchParams.get('editer') || null;
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Connecteurs"
+  fil="TFB Admin · Onboarding · Connecteurs"
+  actif="connecteurs"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les caisses que nous savons brancher</h2>
+        <p>
+          <span class="jeton">landing_connecteurs</span> — {connecteurs.length} connecteur(s).
+          Ajouter une caisse, c'est insérer un manifest : ni déploiement, ni code, tant que son
+          API est un REST ordinaire.
+        </p>
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr><th>Caisse</th><th>Version</th><th>Fournit</th>
+            <th class="nombre">Connexions</th><th>État</th><th></th></tr>
+        </thead>
+        <tbody>
+          {connecteurs.map((c) => (
+            <tr>
+              <td><strong>{c.nom}</strong><code class="slug">{c.cle}</code></td>
+              <td class="nombre fb-num">v{c.version_manifest}</td>
+              <td class="champ__aide">{c.capacites.join(' · ') || '—'}</td>
+              <td class="nombre fb-num">{usages.get(c.cle) || 0}</td>
+              <td>
+                {c.actif ? <span class="etat etat--on">actif</span> : <span class="etat">retiré</span>}
+                {c.beta && <span class="etat">bêta</span>}
+              </td>
+              <td>
+                <div class="actions">
+                  <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/connecteurs?editer=${c.cle}`}>
+                    Modifier le manifest
+                  </a>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="bloc__pied">
+      Publier une nouvelle version ne touche <strong>aucune connexion existante</strong> : chacune
+      porte ses propres adresses, recopiées à sa création. Un manifest corrigé ne change jamais
+      sous les pieds d'un client dont la synchronisation tourne.
+    </div>
+  </section>
+
+  {ouvert && (() => {
+    const c = connecteurs.find((x) => x.cle === ouvert);
+    if (!c) return null;
+    return (
+      <form method="post">
+        <input type="hidden" name="cle" value={c.cle} />
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>Le manifest de {c.nom}</h2>
+              <p>
+                Version {c.version_manifest} en ligne, {usages.get(c.cle) || 0} connexion(s) posée(s).
+                Publier crée la version {Number(c.version_manifest) + 1} et garde l'ancienne à l'historique.
+              </p>
+            </div>
+            <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/connecteurs`}>Fermer</a>
+          </div>
+
+          <div class="champ">
+            <label for="m-json">Le manifest, en JSON</label>
+            <textarea id="m-json" name="manifest" rows="26" spellcheck="false"
+                      class="fb-num">{brouillon?.texte ?? JSON.stringify(c.manifest, null, 2)}</textarea>
+            <span class="champ__aide">
+              Ce qui est vérifié avant publication : c'est du JSON, il a un <code>code</code>,
+              au moins un champ, une adresse de ventes, et aucun champ secret avec une valeur
+              par défaut. Un manifest cassé ne casse pas la console — il casse l'écran de
+              connexion d'un client, en silence, le jour où quelqu'un s'en sert.
+            </span>
+          </div>
+
+          <div class="champ">
+            <label for="m-note">Ce qui change</label>
+            <input id="m-note" type="text" name="note"
+                   placeholder="Adresse des ventes corrigée : la caisse a changé de chemin en juin." />
+            <span class="champ__aide">Gardé à l'historique. C'est ce qu'on relira dans six mois.</span>
+          </div>
+
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="save" taille={16} /> Publier la version {Number(c.version_manifest) + 1}
+            </button>
+          </div>
+        </section>
+      </form>
+    );
+  })()}
+</Console>
+
+<style is:global>
+  /* Un manifest est du code : la chasse fixe, et de la place pour respirer. */
+  #m-json { font: 12.5px / 1.6 var(--font-mono); tab-size: 2; }
+</style>

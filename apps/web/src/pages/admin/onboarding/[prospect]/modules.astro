@@ -58,7 +58,10 @@ try {
   if (prospect) etat = await etatParcours(prospect.id);
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
@@ -170,10 +173,4 @@ const message = Astro.url.searchParams.get('ok');
   /* Une vignette cochée se voit du premier coup d'œil : sans cela, l'écran
      des modules ne dit pas ce qui est retenu tant qu'on ne lit pas les cases. */
   .case--prise { border-color: var(--plum-400); background: var(--plum-50); }
-  .puces { display: flex; gap: 6px; flex-wrap: wrap; margin-block-start: 6px; }
-  .puce {
-    font: 600 10.5px var(--font-sans); border-radius: 20px; padding: 2px 8px;
-    background: var(--slate-100); color: var(--slate-600);
-  }
-  .puce--cap { background: var(--plum-100); color: var(--plum-700); }
 </style>

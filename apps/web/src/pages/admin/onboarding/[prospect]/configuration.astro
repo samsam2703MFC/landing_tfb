@@ -108,7 +108,10 @@ try {
   }
   chiffres = await compteurs();
 } catch (err) {
-  erreur = erreur || `Base injoignable : ${err.message}`;
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
 }
 
 if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
@@ -127,10 +130,10 @@ const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: '
 /** Ce que l'écran propose de faire après un échec, selon le code. */
 const SUITES = {
   cle: { mot: 'Corriger la clé', ancre: '#config' },
-  adresses: { mot: 'Revoir les adresses', ancre: '#avance' },
+  adresses: { mot: 'Revoir les adresses', ancre: '#adresses' },
   reessayer: { mot: 'Réessayer', ancre: '#test' },
   mapping: { mot: 'Passer au mapping manuel', ancre: null },
-  periode: { mot: 'Élargir la période', ancre: '#avance' },
+  periode: { mot: 'Élargir la période', ancre: '#adresses' },
 };
 ---
 
@@ -218,7 +221,7 @@ const SUITES = {
             );
           })}
 
-          <div class="groupe" id="avance">
+          <div class="groupe" id="adresses">
             <span class="groupe__titre">Les adresses interrogées</span>
             <p class="champ__aide">
               Pré-remplies depuis le manifest, modifiables. C'est ici qu'on met une adresse
@@ -306,10 +309,6 @@ const SUITES = {
 </Console>
 
 <style is:global>
-  .groupe { margin-block-start: 24px; }
-  .groupe:first-of-type { margin-block-start: 0; }
-  .groupe__titre { display: block; font: 600 var(--text-sm) / 1.3 var(--font-sans); color: var(--slate-700); }
-  .groupe > .champ__aide { margin: 4px 0 12px; }
   /* Les traces sont du texte de machine : la chasse fixe s'impose, et le fond
      encré évite de les confondre avec ce que le client doit lire. */
   .trace {

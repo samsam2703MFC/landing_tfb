@@ -111,6 +111,16 @@ export async function compteurs() {
   const [contrats] = await db.requete(
     `SELECT COUNT(*) AS total FROM ${table('contrats')} WHERE statut IN ('brouillon', 'envoye')`,
   );
+  // L'onboarding : ce qui attend, et ce qui est branché.
+  const [parcours] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('parcours')} WHERE statut = 'en_cours'`,
+  );
+  const [connexions] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('connexions')} WHERE statut = 'active'`,
+  );
+  const [connecteurs] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table('connecteurs')} WHERE actif = ?`, [vrai(true)],
+  );
   const [aValider] = await db.requete(
     `SELECT (SELECT COUNT(*) FROM ${table('modules')} WHERE statut = 'nouveau')
           + (SELECT COUNT(*) FROM ${table('fonctions')} WHERE statut = 'nouveau') AS total`,
@@ -130,6 +140,9 @@ export async function compteurs() {
     prestations: nombre(prestations),
     offres: nombre(offres),
     contrats: nombre(contrats),
+    parcours: nombre(parcours),
+    connexions: nombre(connexions),
+    connecteurs: nombre(connecteurs),
     aValider: nombre(aValider),
   };
 }

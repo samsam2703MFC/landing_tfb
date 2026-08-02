@@ -1,0 +1,253 @@
+---
+/**
+ * Étape 9 — le contrôle de cohérence.
+ *
+ * La question la plus utile du parcours : « quel était votre chiffre du mois
+ * dernier ? ». Elle attrape un mauvais mapping avant qu'il ne devienne un
+ * ticket dans six semaines, et elle coûte trente secondes au client.
+ *
+ * L'écart est **réparti par caisse**, et c'est ce qui fait toute la valeur de
+ * l'écran sur un réseau à trois POS : un écart de cinquante pour cent sur
+ * l'une se dilue en six pour cent sur l'ensemble — assez petit pour passer
+ * inaperçu, assez gros pour fausser les primes d'un franchisé pendant un an.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  chargerConnexion,
+  journaliserParcours,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { chiffreImporte } from '../../../../lib/admin/sync.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+let declare = null;
+
+/** Le mois écoulé : celui que le client a sous les yeux chez son comptable. */
+function moisPrecedent() {
+  const a = new Date();
+  const fin = new Date(a.getFullYear(), a.getMonth(), 0);
+  const debut = new Date(a.getFullYear(), a.getMonth() - 1, 1);
+  const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  return {
+    de: iso(debut), a: iso(fin),
+    nom: debut.toLocaleDateString('fr-BE', { month: 'long', year: 'numeric' }),
+  };
+}
+const mois = moisPrecedent();
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'comparer');
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+
+    if (action === 'valider') {
+      await marquerEtape(parcours.id, 'coherence', {
+        connexionId, charge: { ecart: f.get('ecart') }, utilisateurId: qui,
+      });
+      await journaliserParcours(parcours.id, {
+        type: 'coherence', connexionId, utilisateurId: qui,
+        texte: `Cohérence validée — écart de ${f.get('ecart')} %`,
+      });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/synchro?connexion=${connexionId}`, 303);
+    }
+    declare = Number(String(f.get('declare') || '').replace(/[^\d.,-]/g, '').replace(',', '.'));
+    if (!Number.isFinite(declare) || declare <= 0) {
+      throw new Error('Donnez le chiffre d’affaires TTC du mois, tel qu’il figure chez votre comptable.');
+    }
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let parCaisse = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (prospect) parCaisse = await chiffreImporte(prospect.id, { de: mois.de, a: mois.a });
+  chiffres = await compteurs();
+} catch (err) {
+  // Pas de « base injoignable » systématique : ces écrans échouent pour
+  // beaucoup de raisons — une clé qui ne se déchiffre plus, une caisse qui ne
+  // répond pas — et coller la mauvaise cause fait chercher au mauvais endroit.
+  erreur = erreur || err.message;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const importe = parCaisse.reduce((s, c) => s + Number(c.total || 0), 0);
+const ecart = declare && importe > 0 ? Math.abs(declare - importe) / declare * 100 : null;
+const niveau = ecart === null ? null : ecart < 2 ? 'bon' : ecart <= 10 ? 'tiede' : 'mauvais';
+
+const euros = (n) => new Intl.NumberFormat('fr-BE', {
+  style: 'currency', currency: prospect?.devise || 'EUR', maximumFractionDigits: 0,
+}).format(Number(n) || 0);
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Contrôle de cohérence"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm"
+           href={`${BASE}/admin/onboarding/${prospect.id}/historique?connexion=${cx.id}`}>
+          <Icone nom="arrow-left" taille={16} /> L'import
+        </a>
+        <span class="barre-actions__note">
+          {euros(importe)} importé(s) sur {mois.nom}, {parCaisse.length} caisse(s).
+        </span>
+      </div>
+
+      <form method="post">
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Étape 9 — On vérifie ensemble</h2>
+              <p>
+                La question la plus utile du parcours. Elle attrape un mauvais mapping maintenant,
+                plutôt que dans six semaines quand vos primes seront calculées dessus.
+              </p>
+            </div>
+          </div>
+
+          <div class="bloc__corps">
+            <div class="duo">
+              <div class="champ">
+                <label for="c-declare">
+                  Votre chiffre d'affaires TTC de {mois.nom}<span class="champ__requis" aria-hidden="true"> *</span>
+                </label>
+                <input id="c-declare" type="text" name="declare" inputmode="decimal"
+                       value={declare || ''} placeholder="86 400" required />
+                <span class="champ__aide">Celui de votre comptable, pas celui de la caisse.</span>
+              </div>
+              <div class="champ">
+                <span class="legende">Ce que nous avons importé</span>
+                <div class="chiffre" style="margin-block-start:2px">
+                  <b>{euros(importe)}</b>
+                  <span>{mois.nom} · {parCaisse.length} caisse(s)</span>
+                </div>
+              </div>
+            </div>
+            <div class="actions">
+              <button class="bouton bouton--marque" type="submit">Comparer</button>
+            </div>
+          </div>
+
+          {ecart !== null && (
+            <div class="bloc__corps">
+              <div class={`promesse ${niveau === 'bon' ? 'promesse--oui' : niveau === 'tiede' ? 'promesse--tiede' : 'promesse--non'}`}>
+                <h3>
+                  {niveau === 'bon' && <>✓ Écart de {ecart.toFixed(1)} % — c'est bon</>}
+                  {niveau === 'tiede' && <>Écart de {ecart.toFixed(1)} % — explicable, mais regardons</>}
+                  {niveau === 'mauvais' && <>Écart de {ecart.toFixed(1)} % — on ne vous laisse pas partir comme ça</>}
+                </h3>
+                {niveau === 'bon' && (
+                  <p>
+                    Les {euros(Math.abs(declare - importe))} de différence viennent des arrondis de
+                    TVA et de quelques tickets annulés. Rien qui mérite qu'on s'arrête.
+                  </p>
+                )}
+                {niveau !== 'bon' && (
+                  <>
+                    <p>Un écart de cette taille vient presque toujours de l'une de ces quatre choses :</p>
+                    <ul>
+                      <li>des prix en <strong>centimes</strong> lus comme des euros, ou l'inverse ;</li>
+                      <li>une <strong>boutique oubliée</strong> au rapprochement, ou ignorée à tort ;</li>
+                      <li>un <strong>canal exclu</strong> — les ventes en livraison passent parfois par une autre adresse ;</li>
+                      <li>
+                        la <strong>journée d'exploitation</strong> : vos ventes après minuit
+                        comptent-elles pour la veille ?
+                      </li>
+                    </ul>
+                    <div class="actions" style="margin-block-start:12px">
+                      <a class="bouton bouton--marque bouton--sm"
+                         href={`${BASE}/admin/onboarding/${prospect.id}/mapping?connexion=${cx.id}`}>
+                        Revoir le mapping
+                      </a>
+                      <a class="bouton bouton--sm"
+                         href={`${BASE}/admin/onboarding/${prospect.id}/boutiques?connexion=${cx.id}`}>
+                        Revoir les boutiques
+                      </a>
+                      <a class="bouton bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/parc`}>
+                        Revoir les journées d'exploitation
+                      </a>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <div class="actions" style="margin-block-start:14px">
+                <button class="bouton bouton--marque" type="submit" name="action" value="valider">
+                  {niveau === 'bon' ? 'Valider et activer la synchro' : 'Continuer en connaissance de cause'}
+                </button>
+                <input type="hidden" name="ecart" value={ecart.toFixed(1)} />
+                {niveau === 'mauvais' && (
+                  <span class="champ__aide">
+                    Le choix reste au client — mais il est noté au journal, avec l'écart.
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </section>
+      </form>
+
+      {parCaisse.length > 0 && (
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>L'écart, réparti par caisse</h2>
+              <p>
+                C'est ce tableau qui désigne la caisse fautive. Sur un réseau à trois POS, un
+                écart de cinquante pour cent sur l'une se dilue en six sur l'ensemble : assez
+                petit pour passer inaperçu, assez gros pour fausser des primes un an durant.
+              </p>
+            </div>
+          </div>
+          <div class="roule">
+            <table>
+              <thead>
+                <tr><th>Caisse</th><th class="nombre">Importé — {mois.nom}</th>
+                  <th class="nombre">Part</th><th class="nombre">Lignes</th></tr>
+              </thead>
+              <tbody>
+                {parCaisse.map((c) => (
+                  <tr>
+                    <td><strong>{c.libelle}</strong></td>
+                    <td class="nombre fb-num">{euros(c.total)}</td>
+                    <td class="nombre fb-num champ__aide">
+                      {importe > 0 ? `${(Number(c.total) / importe * 100).toFixed(0)} %` : '—'}
+                    </td>
+                    <td class="nombre fb-num champ__aide">{c.lignes}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div class="bloc__pied">
+            Si une seule caisse est en écart, c'est elle qu'il faut reprendre — pas le mapping
+            des autres, qui sont justes.
+          </div>
+        </section>
+      )}
+    </>
+  )}
+</Console>
+
