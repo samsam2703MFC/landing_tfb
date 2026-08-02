@@ -311,6 +311,10 @@ const retenus = new Set((offre?.packs || []).map((p) => p.cle));
 // une offre d'avant les packs n'en a aucune, et le champ le plus important de
 // l'écran disparaissait alors sans un mot. Le catalogue, lui, l'a toujours.
 const packsAuPoste = packs.filter((p) => retenus.has(p.cle) && p.unite === 'poste_mois');
+// Le choix de la caisse ne se pose que si un pack retenu en contient une, et
+// alors il est obligatoire : livrer une offre sans dire laquelle des deux
+// c'est laisserait la question ouverte jusqu'à l'installation.
+const packCaisse = packs.find((p) => retenus.has(p.cle) && p.avec_caisse) || null;
 const pointsDeVente = Number(offre?.nombre_postes) || 0;
 
 // Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
@@ -465,9 +469,9 @@ const ETAT_STATUT = {
                 Aucun pack au catalogue. Un administrateur en crée depuis l'écran Modules.
               </div>
             ) : (
-              <div class="socles">
-                {packs.map((p) => (
-                  <div class="socle">
+              <>
+                <div class="socles">
+                  {packs.map((p) => (
                     <label class="case case--seule">
                       <input type="checkbox" name="pack" value={p.cle} checked={retenus.has(p.cle)} />
                       <span>
@@ -483,31 +487,48 @@ const ETAT_STATUT = {
                         {p.base && <span class="case__apporte">→ Modèle de base</span>}
                       </span>
                     </label>
+                  ))}
+                </div>
 
-                    {p.avec_caisse && (
-                      <div class="socle__reglages">
-                        <div class="champ">
-                          <span class="legende">La caisse</span>
-                          <label class="case case--seule">
-                            <input type="radio" name="socle_pos" value="pos" checked={offre.socle_pos !== 'api'} />
-                            <span>
-                              <strong>Caisse POS</strong>
-                              <span class="champ__aide">La nôtre, installée dans le point de vente.</span>
-                            </span>
-                          </label>
-                          <label class="case case--seule">
-                            <input type="radio" name="socle_pos" value="api" checked={offre.socle_pos === 'api'} />
-                            <span>
-                              <strong>Intégration API</strong>
-                              <span class="champ__aide">Le réseau garde sa caisse ; on s'y branche.</span>
-                            </span>
-                          </label>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
+                {packCaisse && (
+                  <fieldset class="caisse">
+                    <legend class="legende">
+                      La caisse<span class="champ__requis" aria-hidden="true"> *</span>
+                      <span class="champ__aide">
+                        Comprise dans {packCaisse.nom}. L'une ou l'autre, jamais les deux ni aucune.
+                      </span>
+                    </legend>
+                    <div class="caisse__choix">
+                      <label class="case case--seule">
+                        <input
+                          type="radio"
+                          name="socle_pos"
+                          value="pos"
+                          required
+                          checked={offre.socle_pos !== 'api'}
+                        />
+                        <span>
+                          <strong>Caisse POS</strong>
+                          <span class="champ__aide">La nôtre, installée dans le point de vente.</span>
+                        </span>
+                      </label>
+                      <label class="case case--seule">
+                        <input
+                          type="radio"
+                          name="socle_pos"
+                          value="api"
+                          required
+                          checked={offre.socle_pos === 'api'}
+                        />
+                        <span>
+                          <strong>Intégration API</strong>
+                          <span class="champ__aide">Le réseau garde sa caisse ; on s'y branche.</span>
+                        </span>
+                      </label>
+                    </div>
+                  </fieldset>
+                )}
+              </>
             )}
 
           </section>
@@ -792,6 +813,7 @@ const ETAT_STATUT = {
                 </span>
               </div>
               <div class="champ">
+                <span class="legende">Exonération</span>
                 <label class="case case--seule">
                   <input type="checkbox" name="tva_exoneree" value="1" checked={offre.tva_exoneree} />
                   <span>
@@ -993,10 +1015,10 @@ const ETAT_STATUT = {
   .nu { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
   .nu:disabled { opacity: 0.75; }
 
-  .cases { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(min(18rem, 100%), 1fr)); }
+  .cases { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr)); }
   .case, .formule {
     display: flex; align-items: start; gap: 10px;
-    padding: 10px 12px; min-block-size: 44px;
+    padding: 13px 15px; min-block-size: 52px;
     border: 1px solid var(--slate-200); border-radius: var(--radius-control);
     cursor: pointer; transition: var(--transition-control);
   }
@@ -1012,14 +1034,17 @@ const ETAT_STATUT = {
   .case--module { align-items: start; }
   .case--seule { inline-size: 100%; }
 
-  /* Le modèle de base : deux colonnes qui se replient, chacune avec sa case
-     et ses réglages. Le socle franchisé en a deux — combien de points de
-     vente, et quelle caisse — le franchiseur aucun. */
+  /* Les packs, en cartes de même hauteur. Elles le sont parce qu'elles sont
+     seules dans la grille : le choix de la caisse vivait dans la colonne du
+     pack franchisé, qui devenait deux fois plus haute que ses voisines. Il a
+     désormais son propre bloc, sous la grille, où il se lit mieux. */
   .socles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); }
-  .socle { display: flex; flex-direction: column; gap: 10px; }
-  /* Les réglages d'un pack sont en retrait, et gardent de l'air sous eux :
-     sans quoi la dernière case touchait la bordure du bloc. */
-  .socle__reglages { display: grid; gap: 12px; padding-inline-start: 12px; padding-block-end: 4px; }
+  /* Le choix de la caisse, sous la grille des packs : dans la colonne de son
+     pack, il la rendait deux fois plus haute que ses voisines. */
+  .caisse { margin: 12px 0 0; padding: 0; border: 0; min-inline-size: 0; }
+  .caisse > .legende { padding: 0 0 8px; }
+  .caisse > .legende .champ__aide { display: block; margin-block-start: 2px; font-weight: 400; }
+  .caisse__choix { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); }
 
   /* Le nombre de points de vente multiplie la plus grosse ligne de l'offre :
      ce n'est pas un champ parmi d'autres, et il ne se lit pas en bas de bloc.
@@ -1048,11 +1073,10 @@ const ETAT_STATUT = {
      d'un coup d'œil que la case au-dessus commande. La règle vise la case du
      pack lui-même : nommée autrement, elle grisait tout, y compris le choix
      de caisse d'un pack bel et bien retenu. */
-  .socle:not(:has(input[name='pack']:checked)) .socle__reglages { opacity: 0.45; }
   /* Dans une carte de pack, le prix suit le nom au lieu d'être poussé au
      bout : renvoyé à la ligne, il se retrouvait seul et aligné à droite,
      détaché de ce qu'il chiffre. */
-  .socle .case__tete .case__prix { margin-inline-start: 0; white-space: normal; }
+  .socles .case__tete .case__prix { margin-inline-start: 0; white-space: normal; }
 
   .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
 
@@ -1081,11 +1105,22 @@ const ETAT_STATUT = {
   }
   .manques { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 2px; }
 
-  .apercu { border: 1px solid var(--slate-200); border-radius: var(--radius-card); overflow: hidden; }
-  /* Le rendu occupe la largeur du bloc ; sa hauteur est fixe parce qu'une
-     iframe isolée ne peut pas dire la sienne — mieux vaut un cadre qui défile
-     qu'un script pour l'ajuster. */
-  .apercu__rendu { display: block; inline-size: 100%; block-size: 30rem; border: 0; background: #fff; }
+  /* Le fond du cadre est celui d'une messagerie, pas celui d'une page : la
+     lettre y flotte comme elle flottera dans la boîte du client, au lieu de
+     se détacher sur un blanc qui n'existera nulle part. */
+  .apercu {
+    border: 1px solid var(--slate-200); border-radius: var(--radius-card);
+    overflow: hidden; background: var(--slate-50);
+  }
+  /* Le rendu fait la largeur d'une lettre, pas celle du bloc : au-delà, la
+     carte de 600 px se centrait au milieu d'un désert gris. Sa hauteur est
+     fixe parce qu'une iframe isolée ne peut pas dire la sienne — mieux vaut
+     un cadre qui défile qu'un script pour l'ajuster. */
+  .apercu__rendu {
+    display: block; margin-inline: auto;
+    inline-size: 100%; max-inline-size: 41rem; block-size: 32rem;
+    border: 0; background: #fff;
+  }
   .apercu__brut { margin-block-start: 10px; }
   .apercu__brut > summary {
     cursor: pointer; font: var(--type-label); color: var(--slate-600);

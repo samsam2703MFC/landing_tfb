@@ -320,7 +320,7 @@ const RUBRIQUES = TOUTES
       .barre-actions {
         position: sticky; top: 0; z-index: 20;
         display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-        margin-block-end: 20px; padding: 12px 16px;
+        margin-block-end: 28px; padding: 12px 16px;
         background: rgba(255, 255, 255, 0.92);
         backdrop-filter: blur(8px);
         border: 1px solid var(--slate-200); border-radius: var(--radius-card);
@@ -378,6 +378,12 @@ const RUBRIQUES = TOUTES
       /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
          mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
       .champ__requis { color: var(--plum-600); }
+
+      /* Dans une rangée de champs, une vignette occupe toute la hauteur de sa
+         case : sinon elle flotte au-dessus des saisies voisines, plus courte
+         qu'elles, et la rangée se lit de travers. */
+      .duo > .champ:has(> .case) { grid-template-rows: auto 1fr; }
+      .duo > .champ > .case { block-size: 100%; }
 
       /* Un champ chiffré et son unité, et les colonnes de montants.
          Ces classes vivaient dans le `is:global` de l'écran Tarifs, donc
