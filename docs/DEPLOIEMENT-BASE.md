@@ -488,3 +488,106 @@ déploiement. Trois voies, au choix :
 Et en garde-fou, le workflow `.github/workflows/sync-modules.yml`, qui valide les
 fiches à chaque nuit sans écrire en base — pour qu'une fiche cassée se voie avant
 que le serveur ne la lise (§9.2).
+
+---
+
+## 11. Mettre le CODE à jour
+
+Le §10 concerne le **contenu** : il se met à jour tout seul, sans déploiement. Le
+**code**, lui, a besoin d'un build. C'est ce que fait `deploy/tfb-update.sh`.
+
+Les deux sont volontairement séparés : une fiche module cassée ne doit pas
+empêcher un correctif de partir, et un build raté ne doit pas figer le contenu.
+
+### 11.1 Le service applicatif
+
+Le §7 lance `npm start` à la main. C'est bon pour vérifier, pas pour un serveur :
+rien ne relance l'application au reboot ni après un plantage.
+
+```bash
+sudo cp deploy/tfb-landing.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now tfb-landing
+systemctl status tfb-landing
+```
+
+Adaptez `User=`, `WorkingDirectory=` et les `ReadWritePaths=` à votre installation.
+
+### 11.2 La mise à jour
+
+```bash
+sudo cp deploy/tfb-update.sh /usr/local/bin/tfb-update
+sudo chmod 755 /usr/local/bin/tfb-update
+sudo chown root: /usr/local/bin/tfb-update
+sudo cp deploy/tfb-update.service /etc/systemd/system/
+sudo systemctl daemon-reload
+```
+
+Puis, à chaque mise à jour :
+
+```bash
+sudo systemctl start tfb-update.service
+journalctl -u tfb-update -f
+```
+
+Le script fait, dans cet ordre : `git merge --ff-only`, `npm ci`,
+`prisma generate`, **build**, **migrations**, redémarrage, contrôle de santé.
+
+Trois propriétés valent d'être connues, parce qu'elles décident de ce qui se passe
+une nuit où ça se passe mal :
+
+- **Le build précède les migrations.** Le build ne touche pas la base, donc un
+  build raté laisse le schéma exactement où il était. Migrer d'abord, c'est se
+  retrouver avec une base en avance sur le code qui tourne — la panne la plus
+  pénible à défaire.
+- **L'ancien `.next` est conservé jusqu'à ce que le nouveau build aboutisse.** Si
+  le build échoue, il est remis en place, le dépôt revient au commit précédent, et
+  **le service n'est pas redémarré** : le site continue de servir la version
+  d'avant, et `git log` ne ment pas sur ce qui tourne.
+- **Un dépôt modifié à la main arrête tout.** Si un fichier suivi a été corrigé
+  directement sur le serveur, le script refuse plutôt que d'écraser ce travail.
+  Un fichier non suivi, lui, ne bloque rien.
+
+Le tout se règle par variables d'environnement si votre installation diffère :
+`TFB_APP_DIR`, `TFB_BRANCH`, `TFB_APP_SERVICE`, `TFB_HEALTH_URL`, `TFB_ENV_FILE`.
+
+### 11.3 Déclencher depuis GitHub
+
+Même montage qu'au §9.3, avec une clé **distincte** : celle qui déploie ne doit
+pas être celle qui synchronise, sinon compromettre l'une donne l'autre.
+
+```bash
+sudo cp deploy/tfb-update-trigger.sh /usr/local/bin/tfb-update-trigger
+sudo chmod 755 /usr/local/bin/tfb-update-trigger
+sudo chown root: /usr/local/bin/tfb-update-trigger
+sudo cp deploy/tfb-update.sudoers /etc/sudoers.d/tfb-update
+sudo chmod 440 /etc/sudoers.d/tfb-update
+sudo visudo -cf /etc/sudoers.d/tfb-update      # doit répondre "parsed OK"
+```
+
+Dans `~deploy/.ssh/authorized_keys`, une seconde ligne sur le modèle du §9.3 :
+
+```
+command="/usr/local/bin/tfb-update-trigger",restrict ssh-ed25519 AAAA… tfb-update@github-actions
+```
+
+Puis, dans **Settings → Secrets and variables → Actions** du dépôt :
+`DEPLOY_SSH_KEY` (la clé privée), `DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_KNOWN_HOSTS` (la sortie de `ssh-keyscan -H <hôte>`).
+
+`DEPLOY_KNOWN_HOSTS` n'est pas facultatif : sans lui il faudrait désactiver la
+vérification de l'hôte, et n'importe qui capable de se placer sur le chemin
+recevrait la clé de déploiement.
+
+`.github/workflows/deploy.yml` s'occupe du reste, à chaque push sur la branche de
+production. Il ne construit rien lui-même — pour la même raison qu'au §9.2, le
+build doit atterrir sur le disque que l'application sert.
+
+### 11.4 Quand ça coince
+
+| Symptôme | Cause | Correctif |
+| --- | --- | --- |
+| `des modifications non commitées traînent` | quelqu'un a édité un fichier sur le serveur | `git -C /var/www/landing_tfb status`, puis commitez ou annulez |
+| `l'historique local a divergé` | un commit a été fait sur le serveur | `git -C … log --oneline -5` pour voir ce qui a été ajouté |
+| `build raté — revenu à …` | le code poussé ne compile pas | le site tourne toujours ; corrigez et repoussez |
+| `le service ne répond pas` | l'application démarre mal | `journalctl -u tfb-landing -n 50` — souvent `.env` incomplet |

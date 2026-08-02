@@ -1,0 +1,10 @@
+# Le compte de déploiement peut lancer la mise à jour, et rien d'autre.
+#
+#   sudo cp deploy/tfb-update.sudoers /etc/sudoers.d/tfb-update
+#   sudo chmod 440 /etc/sudoers.d/tfb-update
+#   sudo visudo -cf /etc/sudoers.d/tfb-update     # doit répondre "parsed OK"
+#
+# Comme pour la sync : la commande est écrite en entier, jamais de joker.
+# `systemctl *` reviendrait à donner le droit d'arrêter n'importe quel service.
+
+deploy ALL=(root) NOPASSWD: /bin/systemctl start --no-block tfb-update.service
