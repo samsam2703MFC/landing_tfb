@@ -361,19 +361,45 @@ par dire deux prix différents — et c'est nous qui aurions tort. Les
 coordonnées du client, en revanche, restent corrigeables : un numéro de TVA
 faux reste faux quel que soit le statut de l'offre.
 
+### Le modèle de base, puis les options
+
+Tout réseau prend d'abord le **modèle de base** — deux socles, un par côté de
+la relation de franchise. Les modules qu'un socle comprend viennent avec lui :
+son prix les couvre, ils ne se refacturent pas à l'unité et ne figurent pas
+dans les options. **Tout le reste du catalogue est une option**, à 49 € par
+mois et par module.
+
+| Socle | Comprend | Prix |
+| --- | --- | --- |
+| **Franchisé** | Caisse POS *ou* Intégration API, Console franchisé, Facturation, Cuisine | 99 € par mois **et par point de vente** |
+| **Franchiseur** | Recettes & Food Cost, Redevances | 199 € par mois, une ligne pour le réseau |
+
+La caisse est un **choix**, pas deux modules : ou bien la nôtre est installée
+dans le point de vente, ou bien le réseau garde la sienne et on s'y branche.
+
+La composition des socles n'est pas écrite dans le code — chaque module porte
+son socle en base, et se déplace depuis l'écran **Modules** sans
+redéploiement. Un module qui quitte un socle redevient une option facturée le
+mois suivant.
+
 Ce qui se vend, avec les prix par défaut :
 
 | Poste | Prix | Rythme |
 | --- | --- | --- |
-| Modules de l'ERP | 49 € par module | par mois — prix propre possible par module |
+| Socle franchisé | 99 € | par mois, × points de vente |
+| Socle franchiseur | 199 € | par mois |
+| Modules en option | 49 € par module | par mois — prix propre possible par module |
 | Prestations d'onboarding (Design…) | catalogue | une fois |
 | Lignes libres, propres à une offre | saisi | une fois |
 | Journée de formation | 500 € | une fois |
 | Onboarding d'un poste | 1 500 € | une fois, par poste onboardé |
-| Poste en magasin | 199 € | par mois, × magasins ouverts |
-| Poste franchiseur | 999 € | par mois |
 | Application, louée à la vue | 1 000 € | par mois et par vue |
 | Application, achetée ferme | 24 mois de location | une fois, + 5 %/an |
+
+Les socles remplacent les deux lignes « poste en magasin » (199 €) et « poste
+franchiseur » (999 €) d'avant. Les offres déjà chiffrées à ces tarifs-là ne
+bougent pas : elles en portent une copie, et le calculateur ne cumule jamais
+un socle avec le poste qu'il remplace.
 
 Les **mois offerts** ne sont pas une remise : le prix mensuel ne bouge pas, on
 renonce aux N premières échéances. Les confondre ferait apparaître un

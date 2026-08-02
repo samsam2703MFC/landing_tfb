@@ -75,6 +75,7 @@ if (Astro.request.method === 'POST') {
       icone: f.get('icone'),
       ordre: f.get('ordre'),
       prix: f.get('prix'),
+      socle: f.get('socle'),
       leviers: f.getAll('leviers').map(String),
     });
     return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`${slug} enregistré.`)}`, 303);
@@ -136,7 +137,8 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                 <span>Famille</span>
                 <span>Leviers</span>
                 <span>Ordre</span>
-        <span>Prix / mois</span>
+                <span>Socle</span>
+                <span>Prix / mois</span>
                 <span>Comp.</span>
                 <span>Capt.</span>
                 <span>Statut</span>
@@ -181,6 +183,17 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   </span>
 
                   <input class="ligne-module__ordre num" type="number" name="ordre" min="1" value={m.ordre ?? 100} title="Ordre" aria-label="Ordre" />
+
+                  <select
+                    class="ligne-module__socle"
+                    name="socle"
+                    title="Un module de socle vient avec le modèle de base : son prix est compris dedans."
+                    aria-label={`Socle de ${m.nom || m.slug}`}
+                  >
+                    <option value="" selected={!m.socle}>option</option>
+                    <option value="franchise" selected={m.socle === 'franchise'}>franchisé</option>
+                    <option value="franchiseur" selected={m.socle === 'franchiseur'}>franchiseur</option>
+                  </select>
 
                   <span class="tarif__saisie ligne-module__prix">
                     <input
@@ -287,7 +300,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module {
     display: grid;
     grid-template-columns:
-      minmax(10rem, 1.3fr) 11rem 10rem 9rem 4.5rem 7rem 3.5rem 3.5rem 5.5rem auto;
+      minmax(9rem, 1.2fr) 10rem 9rem 8.5rem 4.5rem 7rem 7rem 3.5rem 3.5rem 5.5rem auto;
     gap: 12px;
     align-items: center;
     padding: 11px 16px;
@@ -312,6 +325,13 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module__icone select { font-family: var(--font-mono); font-size: var(--text-xs); }
   .ligne-module__ordre { text-align: end; }
   .ligne-module__prix { inline-size: 7rem; }
+  /* Un module de socle n'a pas de prix propre : son prix est celui du socle.
+     Le champ reste lisible mais dit qu'il ne sert plus. */
+  .ligne-module__socle { font-size: var(--text-xs); }
+  .ligne-module:has(.ligne-module__socle option[value='franchise']:checked) .ligne-module__prix,
+  .ligne-module:has(.ligne-module__socle option[value='franchiseur']:checked) .ligne-module__prix {
+    opacity: 0.45;
+  }
   .ligne-module__compte { text-align: end; color: var(--slate-600); }
   @media (max-width: 1200px) {
     .ligne-module { grid-template-columns: 1fr 1fr; }

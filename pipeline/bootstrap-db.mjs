@@ -62,6 +62,12 @@ function modele(pg) {
         ['leviers', t.objet],
         ['liens', t.objet],
         ['onboarding', t.texte],
+        // Le socle auquel ce module appartient — `franchise`, `franchiseur`,
+        // ou vide pour une option. Les modules d'un socle ne se vendent pas
+        // à l'unité : ils viennent avec lui, et son prix les couvre. C'est
+        // une donnée, pas une liste en dur, pour qu'un module puisse passer
+        // d'un socle aux options sans redéploiement.
+        ['socle', t.chaine(20)],
         // Prix du module, par mois, quand il est vendu dans une offre.
         // Zéro veut dire « le prix par défaut de la grille » : on ne recopie
         // pas 49 € treize fois pour devoir les changer treize fois.
@@ -292,6 +298,15 @@ function modele(pg) {
         ['nombre_postes', 'INT DEFAULT 0'],
         ['postes_franchiseur', 'INT DEFAULT 0'],
         ['postes_onboardes', 'INT DEFAULT 0'],
+        // Le modèle de base, avant toute option. Le socle franchisé se
+        // facture par point de vente — `nombre_postes` lui sert de quantité ;
+        // le socle franchiseur est une ligne unique pour le réseau.
+        //
+        // `socle_pos` tranche entre notre caisse et l'intégration de celle
+        // que le réseau a déjà : c'est un choix, pas deux modules.
+        ['socle_franchise', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['socle_franchiseur', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['socle_pos', `${t.chaine(10)} DEFAULT 'pos'`],
         // Le geste commercial : les N premiers mois ne sont pas facturés. Ce
         // n'est pas une remise — le prix mensuel ne bouge pas — donc ça ne
         // passe pas par les colonnes de remise.
@@ -314,6 +329,11 @@ function modele(pg) {
         ['multiplicateur_achat', 'INT DEFAULT 0'],
         ['taux_annuel', 'INT DEFAULT 0'],
         ['prix_jour_formation_cents', 'INT DEFAULT 0'],
+        ['prix_socle_franchise_cents', 'INT DEFAULT 0'],
+        ['prix_socle_franchiseur_cents', 'INT DEFAULT 0'],
+        // Les deux tarifs que les socles remplacent. Conservés parce que les
+        // offres déjà chiffrées les portent : les effacer changerait leurs
+        // montants, ce qu'une offre envoyée ne doit jamais faire.
         ['prix_poste_cents', 'INT DEFAULT 0'],
         ['prix_poste_franchiseur_cents', 'INT DEFAULT 0'],
         ['prix_onboarding_poste_cents', 'INT DEFAULT 0'],
@@ -330,8 +350,9 @@ function modele(pg) {
       colonnes: [
         ['id', t.id],
         ['offre_id', 'INT NOT NULL'],
-        // prestation · formation · module · poste · poste_franchiseur ·
-        // onboarding_poste · vue · achat · maintenance
+        // prestation · formation · socle_franchise · socle_franchiseur ·
+        // module · poste · poste_franchiseur · onboarding_poste · vue ·
+        // achat · maintenance
         ['type', `${t.chaine(20)} NOT NULL`],
         ['libelle', t.chaine(255)],
         ['note', t.texte],

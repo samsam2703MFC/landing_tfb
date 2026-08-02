@@ -27,7 +27,9 @@ const EN_TETE = {
 const LIBELLE_TYPE = {
   prestation: 'Onboarding',
   formation: 'Formation',
-  module: 'Module',
+  socle_franchise: 'Modèle de base',
+  socle_franchiseur: 'Modèle de base',
+  module: 'Option',
   poste: 'Postes',
   poste_franchiseur: 'Siège',
   onboarding_poste: 'Onboarding',
@@ -63,6 +65,7 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
                     {libelleLigne(l, langue)}
                     <span class="recap__ligne-type">{LIBELLE_TYPE[l.type] || l.type}</span>
                     {l.quantite > 1 && <span class="recap__ligne-qte fb-num">× {l.quantite}</span>}
+                    {l.note && <span class="recap__ligne-note">{l.note}</span>}
                   </span>
                   <span class="recap__ligne-montant fb-num">{montant(l.total_cents)}</span>
                 </li>
@@ -146,6 +149,10 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
     letter-spacing: var(--tracking-caps); text-transform: uppercase; color: var(--slate-400);
   }
   .recap__ligne-qte { font-size: 11px; color: var(--slate-400); }
+  /* Ce que porte la ligne en plus de son nom — la caisse choisie pour le
+     socle, ce qu'apporte un module. Sur sa propre ligne : à la suite, elle
+     repousserait le montant hors du regard. */
+  .recap__ligne-note { flex-basis: 100%; font: 400 11px/1.4 var(--font-sans); color: var(--slate-600); }
   .recap__ligne-montant { margin-inline-start: auto; font-size: var(--text-sm); white-space: nowrap; }
 
   .recap__totaux {

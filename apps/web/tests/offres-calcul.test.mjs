@@ -22,6 +22,9 @@ const TARIFS = {
   multiplicateur_achat: 24,           // 24 mois rachetés
   taux_annuel: 500,                   // 5 %
   prix_jour_formation_cents: 50_000,  // 500 € la journée
+  prix_socle_franchise_cents: 9_900,      // 99 € par point de vente et par mois
+  prix_socle_franchiseur_cents: 19_900,   // 199 € par mois pour le réseau
+  // Les deux tarifs d'avant les socles : une offre neuve les a à zéro.
   prix_poste_cents: 19_900,           // 199 € par magasin et par mois
   prix_poste_franchiseur_cents: 99_900,   // 999 € par mois pour le siège
   prix_onboarding_poste_cents: 150_000,   // 1 500 € par poste onboardé, une fois
@@ -443,5 +446,79 @@ describe('les lignes à moitié remplies', () => {
 
   it('tient sans vues ni prestations', () => {
     assert.deepEqual(lignesIncompletes({}), []);
+  });
+});
+
+describe('le modèle de base', () => {
+  /** Les tarifs d'une offre d'aujourd'hui : les postes n'existent plus. */
+  const AUJOURD_HUI = { ...TARIFS, prix_poste_cents: 0, prix_poste_franchiseur_cents: 0 };
+
+  it('facture le socle franchisé par point de vente', () => {
+    const lignes = lignesDe(offre({
+      tarifs: AUJOURD_HUI,
+      socle_franchise: true,
+      nombre_postes: 12,
+    }));
+    assert.deepEqual(lignes.map((l) => l.type), ['socle_franchise']);
+    assert.equal(lignes[0].quantite, 12);
+    assert.equal(lignes[0].total_cents, 118_800);   // 12 × 99 €
+    assert.equal(lignes[0].recurrence, 'mensuel');
+    assert.equal(lignes[0].note, 'Caisse POS');
+  });
+
+  it("dit l'intégration API quand le réseau garde sa caisse", () => {
+    const [ligne] = lignesDe(offre({
+      tarifs: AUJOURD_HUI, socle_franchise: true, nombre_postes: 1, socle_pos: 'api',
+    }));
+    assert.equal(ligne.note, 'Intégration API');
+  });
+
+  it('facture le socle franchiseur une seule fois pour le réseau', () => {
+    const lignes = lignesDe(offre({ tarifs: AUJOURD_HUI, socle_franchiseur: true }));
+    assert.deepEqual(lignes.map((l) => l.type), ['socle_franchiseur']);
+    assert.equal(lignes[0].quantite, 1);
+    assert.equal(lignes[0].total_cents, 19_900);
+  });
+
+  it('ne facture pas le socle franchisé sans point de vente', () => {
+    // Cocher le socle sans dire combien de magasins ne veut rien dire : on
+    // ne devine pas « au moins un ».
+    assert.deepEqual(lignesDe(offre({ tarifs: AUJOURD_HUI, socle_franchise: true })), []);
+  });
+
+  it('additionne les deux socles et les options', () => {
+    const { seaux } = calculerOffre(offre({
+      tarifs: AUJOURD_HUI,
+      socle_franchise: true,
+      socle_franchiseur: true,
+      nombre_postes: 10,
+      modules: [{ slug: 'webshop', nom: 'Webshop', prix_cents: 4_900 }],
+      tva: { taux: 2100, exoneree: false },
+    }));
+    // 10 × 99 € + 199 € + 49 € = 1 238 €
+    assert.equal(seaux.mensuel.ht, 123_800);
+    assert.equal(seaux.mensuel.ttc, 149_798);
+  });
+
+  it('ne cumule jamais un socle et le poste qu’il remplace', () => {
+    // `nombre_postes` sert de quantité aux deux : les additionner ferait
+    // payer le point de vente 99 € ET 199 € par mois.
+    const lignes = lignesDe(offre({
+      tarifs: TARIFS,               // l'ancien tarif est encore là
+      socle_franchise: true,
+      socle_franchiseur: true,
+      nombre_postes: 5,
+      postes_franchiseur: 1,
+    }));
+    assert.deepEqual(lignes.map((l) => l.type), ['socle_franchise', 'socle_franchiseur']);
+  });
+
+  it('laisse intactes les offres d’avant les socles', () => {
+    // Une offre chiffrée avant le modèle de base porte ses anciens tarifs :
+    // la rouvrir ne doit pas changer un centime.
+    const lignes = lignesDe(offre({ tarifs: TARIFS, nombre_postes: 5, postes_franchiseur: 1 }));
+    assert.deepEqual(lignes.map((l) => l.type), ['poste', 'poste_franchiseur']);
+    assert.equal(lignes[0].total_cents, 99_500);    // 5 × 199 €
+    assert.equal(lignes[1].total_cents, 99_900);
   });
 });

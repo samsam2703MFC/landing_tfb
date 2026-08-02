@@ -46,19 +46,19 @@ export const TARIFS = [
     ordre: 4,
   },
   {
-    cle: 'prix_poste',
-    valeur: '19900',
+    cle: 'prix_socle_franchise',
+    valeur: '9900',
     type: 'cents',
-    libelle: 'Prix par poste et par mois',
-    aide: 'Un poste par point de vente. Facturé chaque mois, comme les vues.',
+    libelle: 'Socle franchisé, par point de vente et par mois',
+    aide: "Le modèle de base côté magasin. Multiplié par le nombre de points de vente. Les modules du socle sont compris dedans : ils ne se refacturent pas à l'unité.",
     ordre: 5,
   },
   {
-    cle: 'prix_poste_franchiseur',
-    valeur: '99900',
+    cle: 'prix_socle_franchiseur',
+    valeur: '19900',
     type: 'cents',
-    libelle: 'Prix du poste franchiseur, par mois',
-    aide: 'Le poste du siège, distinct de ceux des magasins. Facturé chaque mois.',
+    libelle: 'Socle franchiseur, par mois',
+    aide: 'Le modèle de base côté siège, une seule ligne pour tout le réseau. Les modules du socle sont compris dedans.',
     ordre: 6,
   },
   {
@@ -136,6 +136,22 @@ The Franchise Buddy`,
  * tenir devant un client — ils s'ajoutent dans la console au fur et à mesure
  * qu'ils existent.
  */
+/**
+ * Ce que comprend le modèle de base, socle par socle.
+ *
+ * Un module qui figure ici n'est pas une option : il vient avec son socle et
+ * le prix du socle le couvre. Semé une seule fois — ensuite la composition
+ * se règle dans la console, module par module, sans redéploiement.
+ *
+ * `pos` est un cas à part : le socle franchisé prend **ou bien** notre caisse
+ * **ou bien** l'intégration de celle que le réseau utilise déjà. C'est un
+ * choix qui se fait sur l'offre, pas deux modules à cocher.
+ */
+export const SOCLES = {
+  franchise: ['pos', 'console-franchise', 'facturation', 'cuisine'],
+  franchiseur: ['recettes', 'redevances'],
+};
+
 export const PRESTATIONS = [
   {
     cle: 'design',

@@ -38,7 +38,7 @@ function entier(valeur) {
  * @param {Array<{nom: string, prix_cents: number, quantite?: number}>} offre.prestations
  *   Les modules d'onboarding retenus.
  * @param {number} offre.jours_formation Nombre de jours vendus.
- * @param {number} offre.nombre_postes Magasins ouverts, équipés au mois.
+ * @param {number} offre.nombre_postes Points de vente — la quantité du socle franchisé.
  * @param {number} offre.postes_franchiseur Postes du siège, au mois.
  * @param {number} offre.postes_onboardes Postes à onboarder, une seule fois.
  * @param {Array<{slug, nom, prix_cents, pourquoi?, apporte?}>} offre.modules
@@ -51,8 +51,13 @@ function entier(valeur) {
  * @param {number} offre.tarifs.multiplicateur_achat Nombre de mois rachetés.
  * @param {number} offre.tarifs.taux_annuel Maintenance annuelle, en points.
  * @param {number} offre.tarifs.prix_jour_formation_cents
- * @param {number} offre.tarifs.prix_poste_cents Prix **mensuel** d'un poste magasin.
- * @param {number} offre.tarifs.prix_poste_franchiseur_cents Prix **mensuel** du poste siège.
+ * @param {boolean} offre.socle_franchise Le modèle de base côté magasin.
+ * @param {boolean} offre.socle_franchiseur Le modèle de base côté siège.
+ * @param {'pos'|'api'} offre.socle_pos Notre caisse, ou l'intégration de la leur.
+ * @param {number} offre.tarifs.prix_socle_franchise_cents Prix **mensuel** par point de vente.
+ * @param {number} offre.tarifs.prix_socle_franchiseur_cents Prix **mensuel** du socle siège.
+ * @param {number} offre.tarifs.prix_poste_cents D'avant les socles — zéro aujourd'hui.
+ * @param {number} offre.tarifs.prix_poste_franchiseur_cents D'avant les socles.
  * @param {number} offre.tarifs.prix_onboarding_poste_cents Onboarding d'un poste, **une fois**.
  * @returns {Array<{type, libelle, note, quantite, prix_unitaire_cents, recurrence, total_cents}>}
  */
@@ -81,6 +86,39 @@ export function lignesDe(offre) {
       quantite: jours,
       prix_unitaire_cents: entier(t.prix_jour_formation_cents),
       recurrence: 'unique',
+    });
+  }
+
+  // Le modèle de base, avant toute option.
+  //
+  // Le socle franchisé suit la taille du réseau : il se facture par point de
+  // vente, et sa quantité augmente quand le client ouvre une boutique sans
+  // qu'on renégocie l'offre. Le socle franchiseur, lui, est une seule ligne
+  // pour tout le réseau — le siège n'est pas multiple.
+  //
+  // Les modules qu'ils comprennent ne produisent pas de ligne : leur prix est
+  // dans celui du socle. Les facturer en plus reviendrait à les vendre deux
+  // fois, et le client le verrait sur le devis.
+  const pointsDeVente = entier(offre.nombre_postes);
+  if (offre.socle_franchise && pointsDeVente > 0) {
+    lignes.push({
+      type: 'socle_franchise',
+      libelle: 'Socle franchisé',
+      note: offre.socle_pos === 'api' ? 'Intégration API' : 'Caisse POS',
+      quantite: pointsDeVente,
+      prix_unitaire_cents: entier(t.prix_socle_franchise_cents),
+      recurrence: 'mensuel',
+    });
+  }
+
+  if (offre.socle_franchiseur) {
+    lignes.push({
+      type: 'socle_franchiseur',
+      libelle: 'Socle franchiseur',
+      note: null,
+      quantite: 1,
+      prix_unitaire_cents: entier(t.prix_socle_franchiseur_cents),
+      recurrence: 'mensuel',
     });
   }
 
@@ -115,11 +153,12 @@ export function lignesDe(offre) {
     });
   }
 
-  // Un poste par magasin ouvert, facturé au mois. C'est la quantité qui suit
-  // la taille du réseau : elle augmente quand le client ouvre une boutique,
-  // sans qu'on renégocie l'offre.
+  // Les postes d'avant les socles. Une offre chiffrée à l'époque porte le
+  // tarif dans sa copie ; une offre d'aujourd'hui l'a à zéro et passe par le
+  // socle franchisé, qui utilise la même quantité. Les deux ne peuvent donc
+  // pas se cumuler — sans quoi le point de vente serait facturé deux fois.
   const postes = entier(offre.nombre_postes);
-  if (postes > 0) {
+  if (postes > 0 && !offre.socle_franchise && entier(t.prix_poste_cents) > 0) {
     lignes.push({
       type: 'poste',
       libelle: 'Postes en magasin',
@@ -130,10 +169,10 @@ export function lignesDe(offre) {
     });
   }
 
-  // Le siège a son propre poste, à son propre prix : il ne fait pas le même
-  // métier qu'un magasin et ne se compte pas avec eux.
+  // Le poste du siège, même histoire : remplacé par le socle franchiseur, et
+  // conservé pour les offres qui le portaient déjà.
   const siege = entier(offre.postes_franchiseur);
-  if (siege > 0) {
+  if (siege > 0 && !offre.socle_franchiseur && entier(t.prix_poste_franchiseur_cents) > 0) {
     lignes.push({
       type: 'poste_franchiseur',
       libelle: 'Poste franchiseur',

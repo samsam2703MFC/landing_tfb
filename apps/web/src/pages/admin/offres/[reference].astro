@@ -26,7 +26,8 @@ import {
   enregistrerOffre,
   languesOffre,
   listerPrestations,
-  modulesVendables,
+  modulesDesSocles,
+  modulesOptionnels,
   nouvelleVersion,
   offreFigee,
   supprimerOffre,
@@ -148,11 +149,14 @@ async function lireConfig(f, catalogue, modules, soucis) {
     refusees,
     langue: String(f.get('langue') || 'fr'),
     jours_formation: lire(enEntier, String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation', 'jours_formation'),
-    nombre_postes: lire(enEntier, String(f.get('nombre_postes') || '0').trim() || '0', 'Magasins ouverts', 'nombre_postes'),
+    nombre_postes: lire(enEntier, String(f.get('nombre_postes') || '0').trim() || '0', 'Points de vente', 'nombre_postes'),
     postes_franchiseur: lire(enEntier, String(f.get('postes_franchiseur') || '0').trim() || '0', 'Postes franchiseur', 'postes_franchiseur'),
     postes_onboardes: lire(enEntier, String(f.get('postes_onboardes') || '0').trim() || '0', 'Postes à onboarder', 'postes_onboardes'),
     mois_offerts: lire(enEntier, String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts', 'mois_offerts'),
     option_app: String(f.get('option_app') || 'aucune'),
+    socle_franchise: f.get('socle_franchise') === '1',
+    socle_franchiseur: f.get('socle_franchiseur') === '1',
+    socle_pos: String(f.get('socle_pos') || 'pos') === 'api' ? 'api' : 'pos',
     prestations,
     modules: modulesRetenus,
     vues,
@@ -232,7 +236,7 @@ if (Astro.request.method === 'POST') {
 
     const catalogue = await listerPrestations();
     const soucis = [];
-    const config = await lireConfig(f, catalogue, await modulesVendables(), soucis);
+    const config = await lireConfig(f, catalogue, await modulesOptionnels(), soucis);
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
     // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
     // le meilleur moyen de faire détester l'écran.
@@ -256,6 +260,7 @@ if (Astro.request.method === 'POST') {
 let offre = null;
 let catalogue = [];
 let modules = [];
+let socles = { franchise: [], franchiseur: [] };
 let langues = [];
 let vigueur = null;
 let chiffres = {};
@@ -263,7 +268,8 @@ try {
   offre = await chargerOffre(reference, versionDemandee);
   langues = await languesOffre();
   catalogue = await listerPrestations({ activesSeulement: true });
-  modules = await modulesVendables();
+  modules = await modulesOptionnels();
+  socles = await modulesDesSocles();
   vigueur = await tarifsEnVigueur();
   chiffres = await compteurs();
 } catch (err) {
@@ -390,16 +396,107 @@ const ETAT_STATUT = {
           <section class="bloc" style="margin-block-end:20px">
             <div class="bloc__tete">
               <div>
-                <h2>Les modules</h2>
+                <h2>Le modèle de base</h2>
                 <p>
-                  Ce que le réseau met en service, facturé au mois. Le texte affiché ici est
-                  celui de la fiche du module — il part tel quel sur l'offre.
+                  Ce que tout réseau prend. Les modules qu'il comprend sont dedans : ils ne
+                  se refacturent pas à l'unité, et ne figurent pas dans les options.
+                </p>
+              </div>
+            </div>
+
+            <div class="socles">
+              <div class="socle">
+                <label class="case case--seule">
+                  <input type="checkbox" name="socle_franchise" value="1" checked={offre.socle_franchise} />
+                  <span>
+                    <span class="case__tete">
+                      <strong>Franchisé</strong>
+                      <span class="fb-num case__prix">
+                        {formater(offre.prix_socle_franchise_cents)}/mois par point de vente
+                      </span>
+                    </span>
+                    <span class="champ__aide">
+                      {socles.franchise.filter((m) => m.slug !== 'pos').map((m) => m.nom).join(' · ')}
+                      {socles.franchise.some((m) => m.slug === 'pos') && ' · caisse'}
+                    </span>
+                  </span>
+                </label>
+
+                <div class="socle__reglages">
+                  <div class="champ champ--nombre">
+                    <label for="o-postes">Points de vente</label>
+                    <span class="tarif__saisie">
+                      <input
+                        id="o-postes"
+                        type="text"
+                        name="nombre_postes"
+                        value={refus('nombre_postes', offre.nombre_postes || 0)}
+                        inputmode="numeric"
+                      />
+                      <span class="tarif__unite">×</span>
+                    </span>
+                    <span class="champ__aide">
+                      Soit {formater((offre.nombre_postes || 0) * offre.prix_socle_franchise_cents)} par mois.
+                    </span>
+                  </div>
+
+                  <div class="champ">
+                    <span class="legende">La caisse</span>
+                    <label class="case case--seule">
+                      <input type="radio" name="socle_pos" value="pos" checked={offre.socle_pos !== 'api'} />
+                      <span>
+                        <strong>Caisse POS</strong>
+                        <span class="champ__aide">La nôtre, installée dans le point de vente.</span>
+                      </span>
+                    </label>
+                    <label class="case case--seule">
+                      <input type="radio" name="socle_pos" value="api" checked={offre.socle_pos === 'api'} />
+                      <span>
+                        <strong>Intégration API</strong>
+                        <span class="champ__aide">Le réseau garde sa caisse ; on s'y branche.</span>
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <div class="socle">
+                <label class="case case--seule">
+                  <input type="checkbox" name="socle_franchiseur" value="1" checked={offre.socle_franchiseur} />
+                  <span>
+                    <span class="case__tete">
+                      <strong>Franchiseur</strong>
+                      <span class="fb-num case__prix">
+                        {formater(offre.prix_socle_franchiseur_cents)}/mois
+                      </span>
+                    </span>
+                    <span class="champ__aide">
+                      {socles.franchiseur.map((m) => m.nom).join(' · ')}
+                    </span>
+                  </span>
+                </label>
+                <p class="champ__aide">
+                  Une seule ligne pour tout le réseau : le siège ne se compte pas par magasin.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Les options</h2>
+                <p>
+                  Les modules qui s'ajoutent au modèle de base, facturés au mois. Le texte
+                  affiché ici est celui de la fiche du module — il part tel quel sur l'offre.
                 </p>
               </div>
             </div>
 
             {modules.length === 0 ? (
-              <div class="bloc__pied">Aucun module actif au catalogue.</div>
+              <div class="bloc__pied">
+                Aucune option : tous les modules actifs font partie du modèle de base.
+              </div>
             ) : (
               <div class="cases">
                 {modules.map((m) => (
@@ -465,40 +562,7 @@ const ETAT_STATUT = {
                   {' '}{formater((offre.jours_formation || 0) * offre.prix_jour_formation_cents)} une fois.
                 </span>
               </div>
-              <div class="champ champ--nombre">
-                <label for="o-postes">Magasins ouverts</label>
-                <span class="tarif__saisie">
-                  <input
-                    id="o-postes"
-                    type="text"
-                    name="nombre_postes"
-                    value={refus('nombre_postes', offre.nombre_postes || 0)}
-                    inputmode="numeric"
-                  />
-                  <span class="tarif__unite">×</span>
-                </span>
-                <span class="champ__aide">
-                  Un poste par magasin, {formater(offre.prix_poste_cents)} par mois — soit
-                  {' '}{formater((offre.nombre_postes || 0) * offre.prix_poste_cents)} par mois.
-                </span>
-              </div>
-              <div class="champ champ--nombre">
-                <label for="o-siege">Postes franchiseur</label>
-                <span class="tarif__saisie">
-                  <input
-                    id="o-siege"
-                    type="text"
-                    name="postes_franchiseur"
-                    value={refus('postes_franchiseur', offre.postes_franchiseur || 0)}
-                    inputmode="numeric"
-                  />
-                  <span class="tarif__unite">×</span>
-                </span>
-                <span class="champ__aide">
-                  Le siège, {formater(offre.prix_poste_franchiseur_cents)} par mois — soit
-                  {' '}{formater((offre.postes_franchiseur || 0) * offre.prix_poste_franchiseur_cents)} par mois.
-                </span>
-              </div>
+              <input type="hidden" name="postes_franchiseur" value={offre.postes_franchiseur || 0} />
               <div class="champ champ--nombre">
                 <label for="o-onboardes">Postes à onboarder</label>
                 <span class="tarif__saisie">
@@ -904,6 +968,16 @@ const ETAT_STATUT = {
   .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--teal-700); }
   .case--module { align-items: start; }
   .case--seule { inline-size: 100%; }
+
+  /* Le modèle de base : deux colonnes qui se replient, chacune avec sa case
+     et ses réglages. Le socle franchisé en a deux — combien de points de
+     vente, et quelle caisse — le franchiseur aucun. */
+  .socles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); }
+  .socle { display: flex; flex-direction: column; gap: 10px; }
+  .socle__reglages { display: grid; gap: 12px; padding-inline-start: 12px; }
+  /* Les réglages ne servent que si le socle est pris. Grisés sinon, ils
+     disent d'un coup d'œil que la case au-dessus commande. */
+  .socle:not(:has(input[name='socle_franchise']:checked)) .socle__reglages { opacity: 0.45; }
 
   .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
 

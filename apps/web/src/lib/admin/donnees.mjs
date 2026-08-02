@@ -805,6 +805,10 @@ export async function tarifsEnVigueur() {
     multiplicateur_achat: nombre('multiplicateur_achat'),
     taux_annuel: nombre('taux_annuel'),
     prix_jour_formation_cents: nombre('prix_jour_formation'),
+    prix_socle_franchise_cents: nombre('prix_socle_franchise'),
+    prix_socle_franchiseur_cents: nombre('prix_socle_franchiseur'),
+    // Les deux tarifs que les socles remplacent. Absents de la grille, donc
+    // à zéro pour une offre neuve : seules les offres d'avant les portent.
     prix_poste_cents: nombre('prix_poste'),
     prix_poste_franchiseur_cents: nombre('prix_poste_franchiseur'),
     prix_onboarding_poste_cents: nombre('prix_onboarding_poste'),
@@ -858,7 +862,7 @@ export async function enregistrerTarifs(formulaire) {
 export async function modulesVendables() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, slug, nom, accroche, benefices, prix_cents, groupe
+    `SELECT id, slug, nom, accroche, benefices, prix_cents, groupe, socle
      FROM ${table('modules')} WHERE actif = ? ORDER BY ordre, nom`,
     [vrai(true)],
   );
@@ -875,8 +879,33 @@ export async function modulesVendables() {
       detail: benefices[0]?.texte || null,
       prix_cents: Number(m.prix_cents) || defaut,
       prix_propre: Number(m.prix_cents) > 0,
+      // Vide pour une option, `franchise` ou `franchiseur` pour un module du
+      // modèle de base — celui-là ne se vend pas à l'unité.
+      socle: m.socle || null,
     };
   });
+}
+
+/** Les modules du modèle de base, socle par socle. */
+export async function modulesDesSocles() {
+  const tous = await modulesVendables();
+  return {
+    franchise: tous.filter((m) => m.socle === 'franchise'),
+    franchiseur: tous.filter((m) => m.socle === 'franchiseur'),
+  };
+}
+
+/** Les modules vendus à l'unité : tout ce qui n'est dans aucun socle. */
+export async function modulesOptionnels() {
+  return (await modulesVendables()).filter((m) => !m.socle);
+}
+
+/** Rattache un module à un socle, ou l'en sort. */
+export async function enregistrerSocleModule(slug, socle) {
+  const valeur = ['franchise', 'franchiseur'].includes(String(socle)) ? String(socle) : null;
+  const db = await connexion();
+  await db.executer(`UPDATE ${table('modules')} SET socle = ? WHERE slug = ?`, [valeur, String(slug)]);
+  viderCache();
 }
 
 /** Fixe le prix propre d'un module. Zéro le remet au tarif général. */
@@ -978,6 +1007,8 @@ function normaliserOffre(ligne) {
   return {
     ...ligne,
     tva_exoneree: Boolean(ligne.tva_exoneree),
+    socle_franchise: Boolean(ligne.socle_franchise),
+    socle_franchiseur: Boolean(ligne.socle_franchiseur),
     prestations: lireJson(ligne.prestations, []),
     modules: lireJson(ligne.modules, []),
     vues: lireJson(ligne.vues, []),
@@ -1115,8 +1146,10 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
           prestations, modules, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel,
           prix_jour_formation_cents, nombre_postes, prix_poste_cents,
           postes_franchiseur, prix_poste_franchiseur_cents,
-          postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents)
-         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?)`,
+          postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents,
+          socle_franchise, socle_franchiseur, socle_pos,
+          prix_socle_franchise_cents, prix_socle_franchiseur_cents)
+         VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?, ?, ?, 'pos', ?, ?)`,
         [
           Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
           tarifs.tva_defaut, vrai(false), json([]), json([]), json([]),
@@ -1124,6 +1157,10 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
           tarifs.taux_annuel, tarifs.prix_jour_formation_cents, tarifs.prix_poste_cents,
           tarifs.prix_poste_franchiseur_cents, tarifs.prix_onboarding_poste_cents,
           tarifs.prix_module_cents,
+          // Le modèle de base est coché d'avance : c'est ce qu'on vend à tout
+          // le monde, et le décocher est le geste rare.
+          vrai(true), vrai(true),
+          tarifs.prix_socle_franchise_cents, tarifs.prix_socle_franchiseur_cents,
         ],
       );
       viderCache();
@@ -1176,6 +1213,9 @@ export function configDe(offre) {
       libre: Boolean(p.libre),
     })),
     modules: offre.modules || [],
+    socle_franchise: Boolean(offre.socle_franchise),
+    socle_franchiseur: Boolean(offre.socle_franchiseur),
+    socle_pos: offre.socle_pos || 'pos',
     jours_formation: offre.jours_formation || 0,
     nombre_postes: offre.nombre_postes || 0,
     postes_franchiseur: offre.postes_franchiseur || 0,
@@ -1188,6 +1228,8 @@ export function configDe(offre) {
       multiplicateur_achat: offre.multiplicateur_achat,
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
+      prix_socle_franchise_cents: offre.prix_socle_franchise_cents,
+      prix_socle_franchiseur_cents: offre.prix_socle_franchiseur_cents,
       prix_poste_cents: offre.prix_poste_cents,
       prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
       prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
@@ -1222,8 +1264,8 @@ export async function enregistrerOffre(id, config) {
   // d'arriver ici.
   const manquants = {};
   const aRattraper = [
-    ['nombre_postes', 'prix_poste_cents'],
-    ['postes_franchiseur', 'prix_poste_franchiseur_cents'],
+    ['socle_franchise', 'prix_socle_franchise_cents'],
+    ['socle_franchiseur', 'prix_socle_franchiseur_cents'],
     ['postes_onboardes', 'prix_onboarding_poste_cents'],
   ];
   if (aRattraper.some(([q, p]) => config[q] > 0 && !offre[p])) {
@@ -1245,6 +1287,7 @@ export async function enregistrerOffre(id, config) {
     `UPDATE ${table('offres')} SET
        langue = ?, jours_formation = ?, nombre_postes = ?, postes_franchiseur = ?,
        postes_onboardes = ?, mois_offerts = ?, option_app = ?, prestations = ?, modules = ?, vues = ?,
+       socle_franchise = ?, socle_franchiseur = ?, socle_pos = ?,
        remise_type = ?, remise_valeur = ?, tva_taux = ?, tva_exoneree = ?, tva_mention = ?,
        portee = ?, delai = ?, valide_jusqu_au = ?
      WHERE id = ?`,
@@ -1252,6 +1295,7 @@ export async function enregistrerOffre(id, config) {
       config.langue, config.jours_formation, config.nombre_postes, config.postes_franchiseur,
       config.postes_onboardes, config.mois_offerts, config.option_app,
       json(config.prestations), json(config.modules), json(config.vues),
+      vrai(config.socle_franchise), vrai(config.socle_franchiseur), config.socle_pos || 'pos',
       config.remise_type, config.remise_valeur,
       config.tva_taux, vrai(config.tva_exoneree), config.tva_mention || null,
       config.portee || null, config.delai || null, config.valide_jusqu_au || null,
@@ -1262,6 +1306,9 @@ export async function enregistrerOffre(id, config) {
   const lignes = lignesDe({
     prestations: config.prestations,
     modules: config.modules,
+    socle_franchise: config.socle_franchise,
+    socle_franchiseur: config.socle_franchiseur,
+    socle_pos: config.socle_pos,
     jours_formation: config.jours_formation,
     nombre_postes: config.nombre_postes,
     postes_franchiseur: config.postes_franchiseur,
@@ -1273,6 +1320,8 @@ export async function enregistrerOffre(id, config) {
       multiplicateur_achat: offre.multiplicateur_achat,
       taux_annuel: offre.taux_annuel,
       prix_jour_formation_cents: offre.prix_jour_formation_cents,
+      prix_socle_franchise_cents: offre.prix_socle_franchise_cents,
+      prix_socle_franchiseur_cents: offre.prix_socle_franchiseur_cents,
       prix_poste_cents: offre.prix_poste_cents,
       prix_poste_franchiseur_cents: offre.prix_poste_franchiseur_cents,
       prix_onboarding_poste_cents: offre.prix_onboarding_poste_cents,
@@ -1319,8 +1368,10 @@ export async function nouvelleVersion(reference) {
       remise_type, remise_valeur, tva_taux, tva_exoneree, tva_mention, option_app, jours_formation,
       prestations, modules, vues, prix_par_vue_cents, multiplicateur_achat, taux_annuel, prix_jour_formation_cents,
       nombre_postes, prix_poste_cents, postes_franchiseur, prix_poste_franchiseur_cents,
-      postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents, portee, delai)
-     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      postes_onboardes, prix_onboarding_poste_cents, mois_offerts, prix_module_cents, portee, delai,
+      socle_franchise, socle_franchiseur, socle_pos,
+      prix_socle_franchise_cents, prix_socle_franchiseur_cents)
+     VALUES (?, ?, ?, 'brouillon', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       source.prospect_id, String(reference), version, source.langue, source.devise,
       source.cree_par, new Date(), valideJusquAu,
@@ -1334,6 +1385,8 @@ export async function nouvelleVersion(reference) {
       source.postes_onboardes, tarifs.prix_onboarding_poste_cents,
       source.mois_offerts, tarifs.prix_module_cents,
       source.portee, source.delai,
+      vrai(source.socle_franchise), vrai(source.socle_franchiseur), source.socle_pos || 'pos',
+      tarifs.prix_socle_franchise_cents, tarifs.prix_socle_franchiseur_cents,
     ],
   );
 
@@ -1710,13 +1763,17 @@ export async function enregistrerLigneModule(slug, valeurs) {
       [brut ? enCents(brut, `Prix de ${slug}`) : 0, String(slug)],
     );
   }
+  // Le socle auquel le module appartient. Vide = une option, vendue à
+  // l'unité ; sinon il vient avec son socle et le prix du socle le couvre.
+  const socle = ['franchise', 'franchiseur'].includes(String(valeurs.socle)) ? String(valeurs.socle) : null;
   await db.executer(
-    `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ? WHERE slug = ?`,
+    `UPDATE ${table('modules')} SET groupe = ?, icone = ?, ordre = ?, leviers = ?, socle = ? WHERE slug = ?`,
     [
       String(valeurs.groupe || '').trim() || null,
       String(valeurs.icone || '').trim() || null,
       Number(valeurs.ordre) || 100,
       json(valeurs.leviers),
+      socle,
       String(slug),
     ],
   );

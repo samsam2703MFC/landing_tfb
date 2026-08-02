@@ -24,7 +24,7 @@ import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
-import { PRESTATIONS, TARIFS } from './contenu-offres.mjs';
+import { PRESTATIONS, SOCLES, TARIFS } from './contenu-offres.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
 import { json, ouvrir, table, upsert } from './lib/db.mjs';
 
@@ -297,6 +297,37 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       tarifsEcrits += 1;
     }
     if (tarifsEcrits > 0) console.log(`✓ ${tarifsEcrits} tarif(s) commerciaux`);
+
+    // Les deux tarifs que le modèle de base remplace. Les laisser dans la
+    // grille laisserait croire qu'ils servent encore, et un commercial les
+    // verrait à côté des socles sans savoir lequel s'applique. Les offres
+    // déjà chiffrées ne bougent pas : elles en portent une copie.
+    const perimes = ['prix_poste', 'prix_poste_franchiseur'];
+    const retires = await db.requete(
+      `SELECT cle FROM ${table('tarifs')} WHERE cle IN (?, ?)`,
+      perimes,
+    );
+    if (retires.length > 0) {
+      await db.executer(`DELETE FROM ${table('tarifs')} WHERE cle IN (?, ?)`, perimes);
+      console.log(`✓ ${retires.length} tarif(s) périmé(s) retiré(s) — remplacés par les socles`);
+    }
+
+    // La composition du modèle de base. Posée une seule fois : ensuite elle
+    // se règle module par module dans la console, et un module sorti d'un
+    // socle ne doit pas y retourner au déploiement suivant.
+    let soclesPoses = 0;
+    for (const [socle, slugs] of Object.entries(SOCLES)) {
+      for (const slug of slugs) {
+        const dejaLa = await db.requete(
+          `SELECT id, socle FROM ${table('modules')} WHERE slug = ? LIMIT 1`,
+          [slug],
+        );
+        if (dejaLa.length === 0 || dejaLa[0].socle != null) continue;
+        await db.executer(`UPDATE ${table('modules')} SET socle = ? WHERE id = ?`, [socle, dejaLa[0].id]);
+        soclesPoses += 1;
+      }
+    }
+    if (soclesPoses > 0) console.log(`✓ ${soclesPoses} module(s) rattaché(s) au modèle de base`);
 
     let prestationsEcrites = 0;
     for (const prestation of PRESTATIONS) {
