@@ -1,0 +1,30 @@
+---
+/**
+ * L'annexe telle que le client la reçoit.
+ *
+ * Même page que celle de la console, mais hors de `/admin` : le destinataire
+ * d'une offre n'a pas de compte, et lui demander d'en créer un pour lire trois
+ * pages de captures serait le meilleur moyen qu'il ne les lise jamais.
+ *
+ * L'accès tient à une clé signée, liée à la référence **et** à la version. Ce
+ * n'est pas un secret — l'annexe ne dit rien que le client n'ait déjà reçu —
+ * mais elle empêche de parcourir les offres des autres en changeant un numéro
+ * dans l'URL. Sans clé valable, la page répond 404 et non 403 : confirmer
+ * qu'une référence existe serait déjà en dire trop.
+ */
+import Annexe from '../../components/Annexe.astro';
+import { chargerOffre } from '../../lib/admin/donnees.mjs';
+import { cleAnnexeValide } from '../../lib/admin/session.mjs';
+
+const { reference } = Astro.params;
+const version = Astro.url.searchParams.get('version') || '1';
+const cle = Astro.url.searchParams.get('cle');
+
+const introuvable = () => new Response('Page introuvable', { status: 404 });
+if (!cleAnnexeValide(reference, version, cle)) return introuvable();
+
+const offre = await chargerOffre(reference, version);
+if (!offre) return introuvable();
+---
+
+<Annexe offre={offre} />

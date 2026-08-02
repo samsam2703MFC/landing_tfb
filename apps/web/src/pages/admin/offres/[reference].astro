@@ -37,6 +37,21 @@ import {
 import { calculerOffre, formater, lignesIncompletes } from '../../../lib/offres/calcul.mjs';
 import { construireCourriel, serviceCourriel } from '../../../lib/offres/courriel.mjs';
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
+import { cleAnnexe } from '../../../lib/admin/session.mjs';
+
+/**
+ * Le lien d'annexe remis au client, signé et absolu.
+ *
+ * Absolu parce qu'il part dans un courriel : un chemin relatif n'y mène nulle
+ * part. `SITE_DOMAIN` le fournit ; sans lui, on retombe sur l'adresse du
+ * serveur, ce qui reste cliquable pour un essai.
+ */
+function lienAnnexe(offre, origine) {
+  const racine = (import.meta.env.SITE_DOMAIN || process.env.SITE_DOMAIN || origine || '').replace(/\/+$/, '');
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+  const cle = cleAnnexe(offre.reference, String(offre.version));
+  return `${racine}${base}/annexe/${offre.reference}?version=${offre.version}&cle=${cle}`;
+}
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const { reference } = Astro.params;
@@ -218,7 +233,12 @@ if (Astro.request.method === 'POST') {
       const message = construireCourriel({
         offre: courante,
         resultat: calculerOffre(configDe(courante)),
-        gabarits: { sujet: tarifs.courriel_sujet, corps: tarifs.courriel_corps, css: tarifs.courriel_css },
+        gabarits: {
+          sujet: tarifs.courriel_sujet,
+          corps: tarifs.courriel_corps,
+          css: tarifs.courriel_css,
+          annexe: lienAnnexe(courante, Astro.url.origin),
+        },
         formater: (c) => formater(c, courante.langue, courante.devise),
       });
       if (!message.destinataire) {
@@ -343,6 +363,7 @@ const courriel = offre
         sujet: vigueur?.courriel_sujet || '',
         corps: vigueur?.courriel_corps || '',
         css: vigueur?.courriel_css || '',
+        annexe: lienAnnexe(offre, Astro.url.origin),
       },
       formater: (c) => formater(c, offre.langue, offre.devise),
     })
@@ -980,13 +1001,6 @@ const ETAT_STATUT = {
           </div>
         </div>
         <div class="actions">
-          {STATUTS_OFFRE.filter((s) => s !== offre.statut).map((s) => (
-            <form method="post">
-              <input type="hidden" name="action" value="statut" />
-              <input type="hidden" name="statut" value={s} />
-              <button class="bouton bouton--sobre bouton--sm" type="submit">Marquer {s}</button>
-            </form>
-          ))}
           <a
             class="bouton bouton--sobre bouton--sm"
             href={`${BASE}/admin/offres/${offre.reference}/annexe?version=${offre.version}`}
@@ -1009,6 +1023,8 @@ const ETAT_STATUT = {
           )}
         </div>
         <div class="bloc__pied">
+          Le statut se change depuis <a href={`${BASE}/admin/offres`}>la liste des offres</a>,
+          où l'on suit tout le portefeuille d'un coup d'œil.
           Une nouvelle version repart des <strong>tarifs d'aujourd'hui</strong> : rouvrir une
           offre de l'an dernier pour la renégocier au prix de l'an dernier n'aurait pas de sens.
         </div>

@@ -71,6 +71,10 @@ body, td, p, span { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, A
 /* Le geste commercial se lit en vert : ce n'est pas une alerte. */
 .tfb-offert { background: #d7f2f0; color: #0c6a66; }
 .tfb-mention { color: #565d73; }
+
+/* Le bouton qui mène à l'annexe. */
+.tfb-bouton { background: #7b4488; }
+.tfb-bouton__lien { color: #ffffff; }
 .tfb-pied { background: #f5f6f9; color: #565d73; }
 
 @media (max-width: 620px) {
@@ -138,16 +142,16 @@ function jour(valeur, langue = 'fr') {
  * `offert` sert au geste commercial, qui n'est pas une remise.
  */
 const MOTS = {
-  fr: { unique: 'À la signature', mensuel: 'Par mois', annuel: 'Par an', ht: 'Hors taxes', tva: 'TVA', total: 'Total', remise: 'Remise', offert: 'offert(s) sur l’abonnement, soit' },
-  en: { unique: 'On signature', mensuel: 'Per month', annuel: 'Per year', ht: 'Excl. VAT', tva: 'VAT', total: 'Total', remise: 'Discount', offert: 'free on the subscription, i.e.' },
-  nl: { unique: 'Bij ondertekening', mensuel: 'Per maand', annuel: 'Per jaar', ht: 'Excl. btw', tva: 'Btw', total: 'Totaal', remise: 'Korting', offert: 'gratis op het abonnement, ofwel' },
-  de: { unique: 'Bei Unterzeichnung', mensuel: 'Pro Monat', annuel: 'Pro Jahr', ht: 'Netto', tva: 'MwSt.', total: 'Gesamt', remise: 'Rabatt', offert: 'kostenlos im Abonnement, also' },
-  it: { unique: 'Alla firma', mensuel: 'Al mese', annuel: "All'anno", ht: 'Imponibile', tva: 'IVA', total: 'Totale', remise: 'Sconto', offert: 'in omaggio sull’abbonamento, ossia' },
-  es: { unique: 'A la firma', mensuel: 'Al mes', annuel: 'Al año', ht: 'Base imponible', tva: 'IVA', total: 'Total', remise: 'Descuento', offert: 'gratis en la suscripción, es decir' },
-  pl: { unique: 'Przy podpisaniu', mensuel: 'Miesięcznie', annuel: 'Rocznie', ht: 'Netto', tva: 'VAT', total: 'Razem', remise: 'Rabat', offert: 'gratis w abonamencie, czyli' },
-  uk: { unique: 'При підписанні', mensuel: 'Щомісяця', annuel: 'Щороку', ht: 'Без ПДВ', tva: 'ПДВ', total: 'Разом', remise: 'Знижка', offert: 'безкоштовно за передплатою, тобто' },
-  ru: { unique: 'При подписании', mensuel: 'В месяц', annuel: 'В год', ht: 'Без НДС', tva: 'НДС', total: 'Итого', remise: 'Скидка', offert: 'бесплатно по подписке, то есть' },
-  ar: { unique: 'عند التوقيع', mensuel: 'شهريًا', annuel: 'سنويًا', ht: 'قبل الضريبة', tva: 'ضريبة القيمة المضافة', total: 'الإجمالي', remise: 'خصم', offert: 'مجانًا على الاشتراك، أي' },
+  fr: { annexe: 'Voir le détail de l’offre', unique: 'À la signature', mensuel: 'Par mois', annuel: 'Par an', ht: 'Hors taxes', tva: 'TVA', total: 'Total', remise: 'Remise', offert: 'offert(s) sur l’abonnement, soit' },
+  en: { annexe: 'See the full breakdown', unique: 'On signature', mensuel: 'Per month', annuel: 'Per year', ht: 'Excl. VAT', tva: 'VAT', total: 'Total', remise: 'Discount', offert: 'free on the subscription, i.e.' },
+  nl: { annexe: 'Bekijk het volledige overzicht', unique: 'Bij ondertekening', mensuel: 'Per maand', annuel: 'Per jaar', ht: 'Excl. btw', tva: 'Btw', total: 'Totaal', remise: 'Korting', offert: 'gratis op het abonnement, ofwel' },
+  de: { annexe: 'Die Details ansehen', unique: 'Bei Unterzeichnung', mensuel: 'Pro Monat', annuel: 'Pro Jahr', ht: 'Netto', tva: 'MwSt.', total: 'Gesamt', remise: 'Rabatt', offert: 'kostenlos im Abonnement, also' },
+  it: { annexe: 'Vedi il dettaglio completo', unique: 'Alla firma', mensuel: 'Al mese', annuel: "All'anno", ht: 'Imponibile', tva: 'IVA', total: 'Totale', remise: 'Sconto', offert: 'in omaggio sull’abbonamento, ossia' },
+  es: { annexe: 'Ver el detalle completo', unique: 'A la firma', mensuel: 'Al mes', annuel: 'Al año', ht: 'Base imponible', tva: 'IVA', total: 'Total', remise: 'Descuento', offert: 'gratis en la suscripción, es decir' },
+  pl: { annexe: 'Zobacz pełne zestawienie', unique: 'Przy podpisaniu', mensuel: 'Miesięcznie', annuel: 'Rocznie', ht: 'Netto', tva: 'VAT', total: 'Razem', remise: 'Rabat', offert: 'gratis w abonamencie, czyli' },
+  uk: { annexe: 'Переглянути деталі', unique: 'При підписанні', mensuel: 'Щомісяця', annuel: 'Щороку', ht: 'Без ПДВ', tva: 'ПДВ', total: 'Разом', remise: 'Знижка', offert: 'безкоштовно за передплатою, тобто' },
+  ru: { annexe: 'Посмотреть детали', unique: 'При подписании', mensuel: 'В месяц', annuel: 'В год', ht: 'Без НДС', tva: 'НДС', total: 'Итого', remise: 'Скидка', offert: 'бесплатно по подписке, то есть' },
+  ar: { annexe: 'عرض التفاصيل الكاملة', unique: 'عند التوقيع', mensuel: 'شهريًا', annuel: 'سنويًا', ht: 'قبل الضريبة', tva: 'ضريبة القيمة المضافة', total: 'الإجمالي', remise: 'خصم', offert: 'مجانًا على الاشتراك، أي' },
 };
 
 /**
@@ -310,7 +314,7 @@ export function recapHtml(offre, resultat, formater) {
  * d'obtenir une lettre cassée. Il est découpé en paragraphes, le
  * récapitulatif prend sa place, et le tout est habillé.
  */
-export function corpsHtml({ texte, recap, css, titre, langue = 'fr', rtl = false }) {
+export function corpsHtml({ texte, recap, css, titre, annexe = '', motAnnexe = '', langue = 'fr', rtl = false }) {
   const paragraphes = String(texte || '')
     .split(/\n{2,}/)
     .map((p) => p.trim())
@@ -326,6 +330,19 @@ export function corpsHtml({ texte, recap, css, titre, langue = 'fr', rtl = false
   const corps = paragraphes
     .replace('<p style="margin:0 0 14px">{{RECAP}}</p>', recap)
     .replace(/\{\{RECAP\}\}/g, recap);
+
+  // Le bouton d'annexe, posé après le récapitulatif : le client lit d'abord
+  // ce qu'il paie, ensuite ce que ça couvre.
+  const bouton = annexe
+    ? `
+      <table role="presentation" cellpadding="0" cellspacing="0" style="border-collapse:collapse;margin:4px 0 18px">
+        <tr>
+          <td class="tfb-bouton" style="border-radius:8px;padding:11px 18px">
+            <a href="${html(annexe)}" class="tfb-bouton__lien" style="text-decoration:none;font-weight:700;font-size:14px">${html(motAnnexe)}</a>
+          </td>
+        </tr>
+      </table>`
+    : '';
 
   return `<!doctype html>
 <html lang="${html(langue)}"${rtl ? ' dir="rtl"' : ''}>
@@ -350,6 +367,7 @@ ${css}
           <tr>
             <td class="tfb-dedans" style="padding:28px;font-size:15px;line-height:1.6">
       ${corps}
+      ${bouton}
             </td>
           </tr>
           <tr>
@@ -394,6 +412,11 @@ export function construireCourriel({ offre, resultat, gabarits, formater }) {
     valide_jusqu_au: jour(offre.valide_jusqu_au, offre.langue),
     recapitulatif: recapTexte(offre, resultat, formater),
   };
+  // L'annexe part avec l'offre, toujours : le chiffrage seul ne dit pas ce
+  // qu'il couvre. Le jeton existe même sans lien fourni, pour qu'un gabarit
+  // qui l'appelle n'imprime pas « {annexe} » au client.
+  jetons.annexe = gabarits.annexe || '';
+
   const sujet = remplacer(gabarits.sujet, jetons);
   return {
     destinataire: offre.prospect?.contact_email || '',
@@ -406,6 +429,8 @@ export function construireCourriel({ offre, resultat, gabarits, formater }) {
     corps_html: corpsHtml({
       texte: remplacer(gabarits.corps, { ...jetons, recapitulatif: '{{RECAP}}' }),
       recap: recapHtml(offre, resultat, formater),
+      annexe: gabarits.annexe || '',
+      motAnnexe: (MOTS[offre.langue] || MOTS.fr).annexe,
       css: gabarits.css || CSS_COURRIEL,
       titre: sujet,
       langue: offre.langue,

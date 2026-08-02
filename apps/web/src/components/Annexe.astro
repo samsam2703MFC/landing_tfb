@@ -1,0 +1,336 @@
+---
+/**
+ * L'annexe de l'offre : ce que le client a retenu, montré plutôt que décrit.
+ *
+ * Une page à imprimer, pas un écran de console. Elle sort donc du gabarit
+ * habituel — pas de rail, pas de barre — et porte ses propres règles `@page` :
+ * A4, marges de 14 mm, et des sauts de page posés là où une fiche de module
+ * ne doit pas se couper en deux.
+ *
+ * Le PDF se fabrique dans le navigateur, par « Imprimer → Enregistrer en
+ * PDF ». C'est volontaire : produire le PDF côté serveur voudrait dire
+ * embarquer un moteur de rendu — plusieurs centaines de mégaoctets — pour
+ * obtenir exactement ce que le navigateur sait déjà faire.
+ *
+ * Ce qui est montré vient de la **copie** posée sur l'offre : une offre partie
+ * doit rester lisible telle qu'elle a été signée. Seuls le texte des fiches et
+ * les captures viennent du catalogue — ils décrivent le produit, pas le prix.
+ *
+ * Le même composant sert deux pages : celle de la console, où le commercial
+ * relit et imprime, et celle du client, ouverte par un lien signé depuis le
+ * courriel. Une seule annexe, deux portes.
+ */
+import { LEVIERS, leviersDe, titreLevier } from '../lib/leviers.mjs';
+import { configDe, dossierAnnexe, tarifsEnVigueur } from '../lib/admin/donnees.mjs';
+import { calculerOffre, formater } from '../lib/offres/calcul.mjs';
+
+const { offre, retour = null } = Astro.props;
+
+const [dossier, vigueur] = [await dossierAnnexe(offre), await tarifsEnVigueur()];
+const resultat = calculerOffre(configDe(offre));
+const sou = (c) => formater(c, offre.langue, offre.devise);
+
+// Les leviers réellement actionnés par ce que le client a retenu : la légende
+// du pied de page les met en avant, sans masquer les deux autres — un réseau
+// qui n'en actionne que quatre doit voir qu'il en existe six.
+const actionnes = new Set(dossier.flatMap((m) => m.leviers || []));
+
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE', { dateStyle: 'long' }) : '—');
+const pointsDeVente = Number(offre.nombre_postes) || 0;
+
+/** L'URL d'une capture, préfixée du chemin de montage. */
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const capture = (fichier) => `${BASE}/captures/${fichier}`;
+---
+
+<html lang={offre.langue || 'fr'} dir="ltr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Annexe — {offre.reference}</title>
+    <meta name="robots" content="noindex, nofollow" />
+
+    <style is:global>
+      /* ── Mise en page papier ─────────────────────────────────────────── */
+      @page { size: A4; margin: 14mm; }
+
+      :root {
+        --encre: #0c1329;
+        --gris: #565d73;
+        --trait: #dddfe8;
+        --marque: #7b4488;
+        --fond-doux: #f5f6f9;
+        --vert: #0c6a66;
+      }
+
+      * { box-sizing: border-box; }
+      body {
+        margin: 0; padding: 24px;
+        font: 400 13px/1.55 -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+        color: var(--encre); background: var(--fond-doux);
+      }
+      .feuille {
+        max-inline-size: 210mm; margin-inline: auto; padding: 18mm 16mm;
+        background: #fff; box-shadow: 0 1px 4px rgba(12, 19, 41, 0.1);
+      }
+
+      h1 { font-size: 21px; margin: 0 0 2px; letter-spacing: -0.01em; }
+      h2 {
+        font-size: 12px; margin: 0 0 10px;
+        letter-spacing: 0.09em; text-transform: uppercase; color: var(--marque);
+      }
+      h3 { font-size: 15px; margin: 0 0 2px; }
+      p { margin: 0 0 8px; }
+
+      .tete { border-block-end: 2px solid var(--encre); padding-block-end: 12px; margin-block-end: 20px; }
+      .tete__marque { font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gris); }
+      .tete__meta { display: flex; flex-wrap: wrap; gap: 4px 20px; font-size: 12px; color: var(--gris); margin-block-start: 8px; }
+      .tete__meta b { color: var(--encre); font-weight: 600; }
+
+      /* ── Ce qui est retenu, en une ligne par poste ───────────────────── */
+      .sommaire { inline-size: 100%; border-collapse: collapse; margin-block-end: 22px; }
+      .sommaire th {
+        text-align: start; font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase;
+        color: var(--gris); font-weight: 600; padding-block-end: 5px; border-block-end: 1px solid var(--trait);
+      }
+      .sommaire td { padding-block: 6px; border-block-end: 1px solid var(--trait); vertical-align: top; }
+      .sommaire .nombre { text-align: end; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .sommaire tfoot td { font-weight: 700; border-block-end: 0; padding-block-start: 9px; }
+
+      /* ── Une fiche de module ─────────────────────────────────────────── */
+      .fiche {
+        border-block-start: 1px solid var(--trait);
+        padding-block: 16px;
+        /* Une fiche ne se coupe pas en deux : le client tournerait la page au
+           milieu d'un argument. */
+        break-inside: avoid;
+      }
+      .fiche__tete { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-block-end: 8px; }
+      .fiche__origine {
+        font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--gris); margin-inline-start: auto;
+      }
+      .fiche__accroche { color: var(--gris); }
+
+      .deux { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin-block-start: 10px; }
+      .colonne__titre { font-size: 11px; font-weight: 700; margin-block-end: 5px; }
+      .colonne--perd .colonne__titre { color: var(--gris); }
+      .colonne--gagne .colonne__titre { color: var(--vert); }
+      .colonne ul { margin: 0; padding-inline-start: 15px; }
+      .colonne li { margin-block-end: 5px; }
+      .colonne li b { font-weight: 600; }
+      .colonne li span { display: block; color: var(--gris); font-size: 12px; }
+
+      .captures { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-block-start: 12px; }
+      .captures figure { margin: 0; }
+      .captures img {
+        inline-size: 100%; display: block;
+        border: 1px solid var(--trait); border-radius: 4px;
+      }
+      .captures figcaption { font-size: 10px; color: var(--gris); margin-block-start: 3px; }
+
+      /* ── Les pastilles de levier ─────────────────────────────────────── */
+      .pastilles { display: inline-flex; gap: 3px; }
+      .pastille {
+        /* `flex: none` : dans la légende, la pastille est l'enfant d'une
+           rangée souple et se laissait écraser en un trait vertical. */
+        flex: none;
+        inline-size: 17px; block-size: 17px; border-radius: 4px;
+        display: inline-flex; align-items: center; justify-content: center;
+        font: 700 10px/1 -apple-system, 'Segoe UI', Roboto, sans-serif;
+        /* Les fonds sont imprimés : sans cela, le code couleur disparaît sur
+           papier et la légende du pied ne renvoie plus à rien. */
+        print-color-adjust: exact; -webkit-print-color-adjust: exact;
+      }
+
+      /* ── La légende des leviers, en pied ─────────────────────────────── */
+      .leviers { margin-block-start: 26px; padding-block-start: 16px; border-block-start: 2px solid var(--encre); break-inside: avoid; }
+      .leviers__grille { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px; margin-block-start: 10px; }
+      .levier { display: flex; gap: 9px; align-items: start; }
+      .levier__nom { font-weight: 700; }
+      .levier__quoi { color: var(--gris); }
+      .levier__pourquoi { color: var(--gris); font-size: 12px; margin-block-start: 2px; }
+      .levier--dehors { opacity: 0.55; }
+      .levier__retenu {
+        font-size: 9px; letter-spacing: 0.06em; text-transform: uppercase;
+        color: var(--vert); font-weight: 700;
+      }
+
+      .pied { margin-block-start: 20px; font-size: 11px; color: var(--gris); }
+
+      /* ── À l'écran seulement ─────────────────────────────────────────── */
+      .imprimer {
+        max-inline-size: 210mm; margin: 0 auto 14px; display: flex; gap: 12px; align-items: center;
+        font-size: 13px; color: var(--gris);
+      }
+      .imprimer button {
+        font: 600 13px/1 inherit; color: #fff; background: var(--marque);
+        border: 0; border-radius: 8px; padding: 10px 16px; cursor: pointer;
+      }
+      .imprimer a { color: var(--marque); }
+
+      @media print {
+        body { padding: 0; background: #fff; }
+        .feuille { max-inline-size: none; padding: 0; box-shadow: none; }
+        .imprimer { display: none; }
+      }
+    </style>
+  </head>
+
+  <body>
+    <div class="imprimer">
+      <button type="button" onclick="window.print()">Imprimer — ou enregistrer en PDF</button>
+      <span>Dans la boîte d'impression, choisissez « Enregistrer au format PDF ».</span>
+      {retour && <a href={retour}>Retour à l'offre</a>}
+    </div>
+
+    <div class="feuille">
+      <header class="tete">
+        <div class="tete__marque">The Franchise Buddy — annexe technique</div>
+        <h1>{offre.prospect?.raison_sociale || 'Client'}</h1>
+        <div class="tete__meta">
+          <span><b>Offre</b> {offre.reference} · version {offre.version}</span>
+          <span><b>Établie le</b> {jour(offre.cree_le)}</span>
+          {offre.valide_jusqu_au && <span><b>Valable jusqu'au</b> {jour(offre.valide_jusqu_au)}</span>}
+          {pointsDeVente > 0 && <span><b>Points de vente</b> {pointsDeVente}</span>}
+        </div>
+      </header>
+
+      <h2>Ce qui est retenu</h2>
+      <table class="sommaire">
+        <thead>
+          <tr>
+            <th>Poste</th>
+            <th>Compris</th>
+            <th class="nombre">Rythme</th>
+            <th class="nombre">Montant</th>
+          </tr>
+        </thead>
+        <tbody>
+          {(offre.packs || []).map((p) => (
+            <tr>
+              <td><b>{p.nom}</b></td>
+              <td>{(p.modules || []).map((m) => m.nom).join(' · ')}</td>
+              <td class="nombre">{p.unite === 'poste_mois' ? `× ${pointsDeVente} / mois` : 'par mois'}</td>
+              <td class="nombre">
+                {sou(p.prix_cents * (p.unite === 'poste_mois' ? pointsDeVente : 1))}
+              </td>
+            </tr>
+          ))}
+          {(offre.modules || []).map((m) => (
+            <tr>
+              <td><b>{m.nom}</b></td>
+              <td>{m.apporte || '—'}</td>
+              <td class="nombre">par mois</td>
+              <td class="nombre">{sou(m.prix_cents)}</td>
+            </tr>
+          ))}
+          {(offre.prestations || []).map((p) => (
+            <tr>
+              <td><b>{p.nom}</b></td>
+              <td>{p.description || '—'}</td>
+              <td class="nombre">une fois</td>
+              <td class="nombre">{sou(p.prix_cents)}</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="3">Total mensuel, taxes comprises</td>
+            <td class="nombre">{sou(resultat.seaux.mensuel.ttc)}</td>
+          </tr>
+          {resultat.seaux.unique.ttc > 0 && (
+            <tr>
+              <td colspan="3">À la signature, taxes comprises</td>
+              <td class="nombre">{sou(resultat.seaux.unique.ttc)}</td>
+            </tr>
+          )}
+        </tfoot>
+      </table>
+
+      <h2>Ce que chaque module change</h2>
+      {dossier.length === 0 ? (
+        <p>Aucun module retenu pour l'instant.</p>
+      ) : (
+        dossier.map((m) => (
+          <section class="fiche">
+            <div class="fiche__tete">
+              <h3>{m.nom}</h3>
+              <span class="pastilles">
+                {leviersDe(m.leviers).map((l) => (
+                  <span class="pastille" style={`background:${l.fond};color:${l.encre}`} title={titreLevier(l)}>
+                    {l.lettre}
+                  </span>
+                ))}
+              </span>
+              <span class="fiche__origine">{m.pack || 'Option'}</span>
+            </div>
+            {m.accroche && <p class="fiche__accroche">{m.accroche}</p>}
+
+            <div class="deux">
+              <div class="colonne colonne--perd">
+                <div class="colonne__titre">Fait disparaître</div>
+                <ul>
+                  {m.problemes.map((p) => (
+                    <li><b>{p.titre}</b><span>{p.texte}</span></li>
+                  ))}
+                </ul>
+              </div>
+              <div class="colonne colonne--gagne">
+                <div class="colonne__titre">Apporte</div>
+                <ul>
+                  {m.benefices.map((b) => (
+                    <li><b>{b.titre}</b><span>{b.texte}</span></li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+
+            {m.captures.length > 0 && (
+              <div class="captures">
+                {m.captures.slice(0, 3).map((c) => (
+                  <figure>
+                    <img src={capture(c.fichier)} alt={c.titre || m.nom} />
+                    <figcaption>{c.titre}</figcaption>
+                  </figure>
+                ))}
+              </div>
+            )}
+          </section>
+        ))
+      )}
+
+      <section class="leviers">
+        <h2>Les six leviers de gestion</h2>
+        <p class="levier__quoi">
+          Un réseau ne se pilote pas poste par poste mais levier par levier. Chaque module
+          agit sur un ou plusieurs d'entre eux — les pastilles de couleur, ci-dessus,
+          disent lesquels.
+        </p>
+        <div class="leviers__grille">
+          {LEVIERS.map((l) => (
+            <div class={actionnes.has(l.cle) ? 'levier' : 'levier levier--dehors'}>
+              <span class="pastille" style={`background:${l.fond};color:${l.encre}`}>{l.lettre}</span>
+              <div>
+                <div>
+                  <span class="levier__nom">{l.nom}</span>
+                  <span class="levier__quoi"> — {l.question}</span>
+                  {actionnes.has(l.cle) && <span class="levier__retenu"> · actionné</span>}
+                </div>
+                <div class="levier__pourquoi">{l.pourquoi}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <p class="pied">
+        Annexe à l'offre {offre.reference} version {offre.version}. Les montants figurent
+        sur l'offre elle-même et font foi ; cette annexe décrit ce qu'ils couvrent.
+        {offre.tva_exoneree && (offre.tva_mention || vigueur?.mention_autoliquidation)
+          ? ` ${offre.tva_mention || vigueur.mention_autoliquidation}`
+          : ''}
+      </p>
+    </div>
+  </body>
+</html>

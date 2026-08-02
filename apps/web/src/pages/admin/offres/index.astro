@@ -13,6 +13,7 @@ import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import {
   STATUTS_OFFRE,
+  changerStatutOffre,
   calculerTotauxOffre,
   compteurs,
   listerOffres,
@@ -22,6 +23,22 @@ import { formater } from '../../../lib/offres/calcul.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
+
+// Le statut se change ici, et non sur la fiche : c'est la liste qu'on ouvre
+// le matin pour savoir où en est le portefeuille, et c'est là qu'on coche ce
+// qui a bougé — pas en rouvrant huit fiches l'une après l'autre.
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    await changerStatutOffre(f.get('id'), String(f.get('statut')));
+    return Astro.redirect(
+      `${BASE}/admin/offres${Astro.url.search}${Astro.url.search ? '&' : '?'}ok=${encodeURIComponent('Statut mis à jour.')}`,
+      303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
 
 const filtres = {
   prospect: Astro.url.searchParams.get('client') || '',
@@ -37,7 +54,7 @@ try {
   commerciaux = await listerUtilisateurs();
   chiffres = await compteurs();
 } catch (err) {
-  erreur = `Base injoignable : ${err.message}`;
+  erreur = erreur || `Base injoignable : ${err.message}`;
 }
 
 const message = Astro.url.searchParams.get('ok');
@@ -127,7 +144,7 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
             <tr>
               <th style="inline-size:10rem">Référence</th>
               <th>Client</th>
-              <th style="inline-size:7rem">Statut</th>
+              <th style="inline-size:11rem">Statut</th>
               <th style="inline-size:9rem">Commercial</th>
               <th style="inline-size:7rem">Valable au</th>
               <th class="nombre" style="inline-size:8rem">Une fois</th>
@@ -148,7 +165,17 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                     {o.raison_sociale || '—'}
                     {o.contact_nom && <code class="slug">{o.contact_nom}</code>}
                   </td>
-                  <td><span class={ETAT_STATUT[o.statut]}>{o.statut}</span></td>
+                  <td>
+                    <form method="post" class="ligne-serree">
+                      <input type="hidden" name="id" value={o.id} />
+                      <select name="statut" aria-label={`Statut de ${o.reference}`}>
+                        {STATUTS_OFFRE.map((s) => (
+                          <option value={s} selected={s === o.statut}>{s}</option>
+                        ))}
+                      </select>
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
+                    </form>
+                  </td>
                   <td class="champ__aide">{o.auteur_nom || '—'}</td>
                   <td class="fb-num champ__aide">{jour(o.valide_jusqu_au)}</td>
                   <td class="nombre fb-num">{t.seaux.unique.ttc > 0 ? formater(t.seaux.unique.ttc, o.langue, o.devise) : '—'}</td>

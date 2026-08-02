@@ -320,9 +320,11 @@ const RUBRIQUES = TOUTES
       .barre-actions {
         position: sticky; top: 0; z-index: 20;
         display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-        margin-block-end: 28px; padding: 12px 16px;
-        background: rgba(255, 255, 255, 0.92);
-        backdrop-filter: blur(8px);
+        margin-block-end: 32px; padding: 16px;
+        /* Opaque, et non translucide : au défilement, le contenu passe sous la
+           barre. À 92 % d'opacité on voyait une vignette affleurer derrière le
+           bouton, et les deux se lisaient comme un seul bloc mal aligné. */
+        background: #fff;
         border: 1px solid var(--slate-200); border-radius: var(--radius-card);
         box-shadow: var(--shadow-sm);
       }
@@ -351,8 +353,17 @@ const RUBRIQUES = TOUTES
       .bloc > form > .roule, .bloc > fieldset > .roule { margin-inline: -16px; }
       /* Le dernier élément ne doit pas non plus toucher le fond du bloc. */
       .bloc > :last-child:not(.bloc__pied):not(.roule) { padding-block-end: 16px; }
+      /* …ni coller au pied quand il y en a un. Une table, elle, s'y adosse :
+         son dernier filet et le liseré du pied ne font qu'un trait. */
+      .bloc > :not(.bloc__tete):not(.roule) + .bloc__pied { margin-block-start: 16px; }
       /* Un fieldset nu ne redouble pas la marge de ses enfants. */
       .bloc > fieldset.nu > :not(.roule) { margin-inline: 0; }
+      /* Un champ et son bouton sur la même ligne, dans une cellule de table.
+         Ces règles vivaient dans l'écran Comptes, donc nulle part ailleurs :
+         la liste des offres s'en sert aussi. */
+      .ligne-serree { display: flex; align-items: center; gap: 6px; }
+      .ligne-serree input, .ligne-serree select { min-inline-size: 0; }
+
       /* Dans une table, les actions d'une ligne tiennent sur une ligne. */
       td .actions { flex-wrap: nowrap; }
       td .actions form { margin: 0; }

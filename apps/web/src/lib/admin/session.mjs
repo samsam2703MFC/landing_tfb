@@ -76,6 +76,34 @@ export function motDePasseValide(propose) {
 }
 
 // ---------------------------------------------------------------------------
+// Le lien d'annexe remis au client
+// ---------------------------------------------------------------------------
+
+/**
+ * La clé qui ouvre l'annexe d'une offre à quelqu'un qui n'a pas de compte.
+ *
+ * Le client doit pouvoir lire son annexe depuis le courriel : la mettre
+ * derrière la console la rendrait illisible pour son seul destinataire. Elle
+ * est donc publique, mais **pas devinable** — signée par la même clé que les
+ * sessions, et liée à la référence *et* à la version. Changer de version
+ * change la clé : un lien envoyé en janvier n'ouvre pas la renégociation de
+ * mars.
+ *
+ * Rien de secret ne transite : l'annexe décrit ce que le client a lui-même
+ * reçu. La signature évite seulement qu'on parcoure les offres des autres en
+ * changeant un numéro dans l'URL.
+ */
+export function cleAnnexe(reference, version) {
+  return signer(`annexe:${reference}:${version}`).slice(0, 32);
+}
+
+/** La clé proposée ouvre-t-elle bien cette annexe-là ? */
+export function cleAnnexeValide(reference, version, proposee) {
+  if (!proposee) return false;
+  return memeChaine(proposee, cleAnnexe(reference, version));
+}
+
+// ---------------------------------------------------------------------------
 // Mots de passe des comptes
 // ---------------------------------------------------------------------------
 
