@@ -86,14 +86,21 @@ jobs:
           set -a; . /etc/tfb-landing.env; set +a
           sudo -u "$APP_USER" DATABASE_URL="$DATABASE_URL" npx prisma migrate deploy
           # Inlinée au build : sudo purge l'environnement, on la repasse.
-          sudo -u "$APP_USER" NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH:-}" npm run build
+          # --max-old-space-size : la machine a 1 Go de RAM. Sans borne, Node
+          # grossit jusqu'à ce que le noyau le tue, et le service repart sur un
+          # .next incomplet — panne observée le 02/08.
+          sudo -u "$APP_USER" NEXT_PUBLIC_BASE_PATH="${NEXT_PUBLIC_BASE_PATH:-}" \
+               NODE_OPTIONS=--max-old-space-size=1536 npm run build
 
           sudo systemctl restart tfb-landing
           REMOTE
 
       - name: Contrôler la santé
         env:
-          HEALTH_URL: ${{ vars.HEALTH_URL || 'http://127.0.0.1:3000/api/health' }}
+          # Le sous-chemin vient du serveur : une app servie sous
+          # NEXT_PUBLIC_BASE_PATH ne répond pas à la racine, et le contrôle
+          # échouerait sur un déploiement parfaitement réussi.
+          HEALTH_PATH: ${{ vars.HEALTH_PATH || '/api/health' }}
           HOST: ${{ secrets.SSH_HOST }}
           USER: ${{ secrets.SSH_USER }}
           PORT: ${{ secrets.SSH_PORT }}
@@ -101,7 +108,8 @@ jobs:
           # Interrogé depuis le serveur : /api/health n'a pas besoin d'être public.
           for i in $(seq 1 20); do
             body=$(ssh -i ~/.ssh/id_deploy -p "${PORT:-22}" -o BatchMode=yes "$USER@$HOST" \
-                   "curl -fsS '$HEALTH_URL'" 2>/dev/null || true)
+                   "set -a; . /etc/tfb-landing.env 2>/dev/null; set +a; \
+                    curl -fsS \"http://127.0.0.1:3000\${NEXT_PUBLIC_BASE_PATH:-}$HEALTH_PATH\"" 2>/dev/null || true)
             case "$body" in
               *'"db":"up"'*) echo "$body"; echo "::notice::Déploiement vérifié — l'app lit la base."; exit 0 ;;
             esac
