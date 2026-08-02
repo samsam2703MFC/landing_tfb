@@ -307,7 +307,11 @@ const modulesRetenus = new Set((offre?.modules || []).map((m) => m.slug));
 // Les packs de l'offre, et la question qu'ils posent : faut-il demander un
 // nombre de points de vente ? Seulement si l'un d'eux s'y facture.
 const retenus = new Set((offre?.packs || []).map((p) => p.cle));
-const auPointDeVente = (offre?.packs || []).some((p) => p.unite === 'poste_mois');
+// L'unité se lit sur le **catalogue**, pas sur la copie posée dans l'offre :
+// une offre d'avant les packs n'en a aucune, et le champ le plus important de
+// l'écran disparaissait alors sans un mot. Le catalogue, lui, l'a toujours.
+const packsAuPoste = packs.filter((p) => retenus.has(p.cle) && p.unite === 'poste_mois');
+const pointsDeVente = Number(offre?.nombre_postes) || 0;
 
 // Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
 // La ligne de réserve s'affiche entièrement vide — un « 0,00 » préimprimé en
@@ -419,6 +423,43 @@ const ETAT_STATUT = {
               </div>
             </div>
 
+            <div class="pdv">
+              <div class="champ pdv__champ">
+                <label for="o-postes">Points de vente</label>
+                <span class="tarif__saisie pdv__saisie">
+                  <input
+                    id="o-postes"
+                    type="text"
+                    name="nombre_postes"
+                    value={refus('nombre_postes', pointsDeVente)}
+                    inputmode="numeric"
+                  />
+                  <span class="tarif__unite">×</span>
+                </span>
+              </div>
+              <p class="pdv__effet">
+                {packsAuPoste.length === 0 ? (
+                  <>Aucun pack retenu ne se facture au point de vente : ce nombre ne change
+                  rien au chiffrage pour l'instant.</>
+                ) : pointsDeVente === 0 ? (
+                  <>
+                    <strong>Sans ce nombre, {packsAuPoste.map((p) => p.nom).join(' et ')} ne
+                    se facture{packsAuPoste.length > 1 ? 'nt' : ''} pas.</strong>{' '}
+                    On ne devine pas « au moins un ».
+                  </>
+                ) : (
+                  <>
+                    {packsAuPoste.map((p) => (
+                      <span class="pdv__ligne">
+                        {p.nom} : {pointsDeVente} × {formater(p.prix_cents)} ={' '}
+                        <strong class="fb-num">{formater(pointsDeVente * p.prix_cents)}</strong> par mois
+                      </span>
+                    ))}
+                  </>
+                )}
+              </p>
+            </div>
+
             {packs.length === 0 ? (
               <div class="bloc__pied">
                 Aucun pack au catalogue. Un administrateur en crée depuis l'écran Modules.
@@ -469,28 +510,6 @@ const ETAT_STATUT = {
               </div>
             )}
 
-            {auPointDeVente && (
-              <div class="champ champ--nombre" style="margin-block-start:14px">
-                <label for="o-postes">Points de vente</label>
-                <span class="tarif__saisie">
-                  <input
-                    id="o-postes"
-                    type="text"
-                    name="nombre_postes"
-                    value={refus('nombre_postes', offre.nombre_postes || 0)}
-                    inputmode="numeric"
-                  />
-                  <span class="tarif__unite">×</span>
-                </span>
-                <span class="champ__aide">
-                  Multiplie les packs facturés au point de vente. Sans ce nombre, ils ne se
-                  facturent pas : on ne devine pas « au moins un ».
-                </span>
-              </div>
-            )}
-            {!auPointDeVente && (
-              <input type="hidden" name="nombre_postes" value={offre.nombre_postes || 0} />
-            )}
           </section>
 
           <section class="bloc" style="margin-block-end:20px">
@@ -998,10 +1017,42 @@ const ETAT_STATUT = {
      vente, et quelle caisse — le franchiseur aucun. */
   .socles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr)); }
   .socle { display: flex; flex-direction: column; gap: 10px; }
-  .socle__reglages { display: grid; gap: 12px; padding-inline-start: 12px; }
-  /* Les réglages ne servent que si le socle est pris. Grisés sinon, ils
-     disent d'un coup d'œil que la case au-dessus commande. */
-  .socle:not(:has(input[name='socle_franchise']:checked)) .socle__reglages { opacity: 0.45; }
+  /* Les réglages d'un pack sont en retrait, et gardent de l'air sous eux :
+     sans quoi la dernière case touchait la bordure du bloc. */
+  .socle__reglages { display: grid; gap: 12px; padding-inline-start: 12px; padding-block-end: 4px; }
+
+  /* Le nombre de points de vente multiplie la plus grosse ligne de l'offre :
+     ce n'est pas un champ parmi d'autres, et il ne se lit pas en bas de bloc.
+     Il ouvre la section, et dit ce qu'il produit. */
+  .pdv {
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+    margin-block-end: 16px; padding: 14px 16px;
+    border: 1px solid var(--plum-200); border-radius: var(--radius-card);
+    background: var(--plum-50);
+  }
+  .pdv__champ { gap: 3px; }
+  .pdv__champ > label { font: 600 var(--text-sm) / 1.2 var(--font-sans); color: var(--plum-700, #532d5b); }
+  .pdv__saisie { inline-size: 8rem; }
+  .pdv__saisie input {
+    font: 700 var(--text-lg, 20px) / 1.2 var(--font-display, var(--font-sans));
+    text-align: end;
+  }
+  .pdv__effet {
+    margin: 0; flex: 1; min-inline-size: 14rem;
+    display: flex; flex-direction: column; gap: 2px;
+    font: 400 var(--text-sm) / 1.5 var(--font-sans); color: var(--slate-600);
+  }
+  .pdv__effet strong { color: var(--navy-900); }
+  .pdv__ligne { display: block; }
+  /* Les réglages ne servent que si le pack est pris. Grisés sinon, ils disent
+     d'un coup d'œil que la case au-dessus commande. La règle vise la case du
+     pack lui-même : nommée autrement, elle grisait tout, y compris le choix
+     de caisse d'un pack bel et bien retenu. */
+  .socle:not(:has(input[name='pack']:checked)) .socle__reglages { opacity: 0.45; }
+  /* Dans une carte de pack, le prix suit le nom au lieu d'être poussé au
+     bout : renvoyé à la ligne, il se retrouvait seul et aligné à droite,
+     détaché de ce qu'il chiffre. */
+  .socle .case__tete .case__prix { margin-inline-start: 0; white-space: normal; }
 
   .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
 
