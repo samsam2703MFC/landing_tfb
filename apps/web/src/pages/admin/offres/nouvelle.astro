@@ -56,7 +56,10 @@ let chiffres = {};
 try {
   prospects = await listerProspects();
   langues = await languesOffre();
-  leads = (await listerLeads()).filter((l) => !l.traite);
+  // Toutes les demandes, et non les seules non traitées : c'est justement
+  // **après** l'appel qu'on ouvre une demande dans le CRM, et le préremplissage
+  // disparaissait au moment précis où l'on s'en servait.
+  leads = await listerLeads();
   chiffres = await compteurs();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
@@ -64,6 +67,9 @@ try {
 
 // Une demande de démo peut préremplir le formulaire.
 const depuisLead = leads.find((l) => String(l.id) === Astro.url.searchParams.get('lead')) || null;
+// Le rappel « des demandes attendent » ne parle que de celles qu'on n'a pas
+// encore appelées : les autres sont déjà en route.
+const aAppeler = leads.filter((l) => !l.traite);
 const prerempli = depuisLead
   ? {
       raison_sociale: depuisLead.reseau || '',
@@ -113,18 +119,18 @@ const prerempli = depuisLead
     </section>
   )}
 
-  {leads.length > 0 && !depuisLead && (
+  {aAppeler.length > 0 && !depuisLead && (
     <section class="bloc" style="margin-block-end:20px">
       <div class="bloc__tete">
         <div>
           <h2>Depuis une demande reçue</h2>
-          <p>{leads.length} demande(s) de démonstration en attente. Le formulaire se remplit tout seul.</p>
+          <p>{aAppeler.length} demande(s) de démonstration pas encore appelée(s). Le formulaire se remplit tout seul.</p>
         </div>
       </div>
       <div class="roule">
         <table>
           <tbody>
-            {leads.slice(0, 8).map((l) => (
+            {aAppeler.slice(0, 8).map((l) => (
               <tr>
                 <td><strong>{l.nom}</strong><code class="slug">{l.email}</code></td>
                 <td>{l.reseau}</td>

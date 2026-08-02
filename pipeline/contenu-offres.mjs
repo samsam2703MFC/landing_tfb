@@ -194,6 +194,56 @@ Fait le {date_du_jour}, à signer électroniquement par {signataire_nom}
     aide: "Jetons du dossier client, des conditions et de l'offre — la liste complète est rappelée sur la fiche du contrat. Un jeton inconnu ou vide reste visible et bloque l'édition : jamais effacé en silence.",
     ordre: 24,
   },
+  // ── L'appel de découverte ───────────────────────────────────────────────
+  {
+    cle: 'guide_appel',
+    valeur: `AVANT DE DÉCROCHER — deux minutes
+Lire sa demande : le nom du réseau, ce qu'il a écrit dans « sa situation ».
+Regarder son site : combien de points de vente, depuis quand, franchise ou
+succursales. On n'appelle pas un réseau de trois magasins comme un de soixante.
+
+LES DIX PREMIÈRES SECONDES
+« Bonjour, {commercial} de The Franchise Buddy. Vous avez demandé une
+démonstration sur notre site — c'est bien vous qui suivez le réseau {reseau} ?
+Je vous prends cinq minutes pour comprendre ce que vous cherchez, et on voit
+ensuite si ça vaut le coup d'aller plus loin. »
+
+Annoncer la durée et la sortie : personne ne raccroche à un appel qui a une fin.
+
+CE QU'IL FAUT SAVOIR EN SORTANT — six questions
+1. Combien de points de vente aujourd'hui, combien dans un an ?
+   → C'est le nombre qui chiffre l'offre. Sans lui, pas de proposition.
+2. Qu'est-ce qui vous fait perdre le plus de temps aujourd'hui ?
+   → Laisser répondre. Ne pas proposer de réponse : c'est là qu'on apprend
+     quel levier lui parle.
+3. Comment savez-vous, aujourd'hui, ce qui se vend dans un magasin ?
+   → S'il répond « on demande » ou « en fin de mois », le sujet est trouvé.
+4. Qui décide, et qui signe ? Et d'ici quand ?
+   → Un interlocuteur qui ne signe pas n'est pas un refus : c'est une étape
+     de plus à prévoir. Le savoir tôt évite trois semaines perdues.
+5. Vous avez déjà un outil ? Lequel, et qu'est-ce qui vous y manque ?
+   → Une caisse déjà en place se garde : on l'intègre, on ne la remplace pas.
+6. Un budget est-il déjà posé quelque part ?
+   → S'il n'y en a pas, dire l'ordre de grandeur maintenant plutôt que de le
+     découvrir à l'offre.
+
+CE QU'ON NE FAIT PAS AU PREMIER APPEL
+Dérouler les treize modules. Donner un prix ferme. Promettre une date.
+Un appel de découverte sert à comprendre, pas à vendre.
+
+FERMER L'APPEL
+Toujours repartir avec la prochaine date : « Je vous envoie une proposition
+chiffrée pour {jour}. Vous la regardez, et on se rappelle le {jour} à {heure} ? »
+Une offre envoyée sans rendez-vous de retour attend en moyenne trois semaines.
+
+APRÈS L'APPEL
+Marquer la demande contactée, l'ouvrir dans le CRM, et noter dans le journal
+ce qui s'est dit — surtout ce qui bloque. C'est ce qu'on relira dans un mois.`,
+    type: 'texte',
+    libelle: 'Guide de l’appel de découverte',
+    aide: "Rappelé derrière le (i) de l'écran Demandes, au moment de décrocher. À réécrire au fil de ce qui marche : c'est la mémoire de l'équipe, pas un script à lire mot à mot.",
+    ordre: 30,
+  },
   {
     cle: 'cgv',
     valeur: '',

@@ -272,6 +272,15 @@ if (Astro.request.method === 'POST') {
           "Ce client n'a pas d'adresse de courriel. Corrigez ses coordonnées avant d'envoyer.",
         );
       }
+      // Le bouton est grisé quand l'offre n'est pas prête, mais un bouton
+      // grisé se contourne : c'est ici que le refus compte.
+      const chiffre = calculerOffre(configDe(courante));
+      const totalTtc = chiffre.seaux.unique.ttc + chiffre.seaux.mensuel.ttc + chiffre.seaux.annuel.ttc;
+      if (lignesIncompletes(configDe(courante)).length > 0 || totalTtc === 0 || !courante.valide_jusqu_au) {
+        throw new Error(
+          "Cette offre n'est pas prête à partir : il lui manque un chiffrage, une date de validité, ou une ligne est à moitié remplie.",
+        );
+      }
       const service = serviceCourriel();
       await service.envoyer(message);
       await changerStatutOffre(courante.id, 'envoyee', session.id);
@@ -352,6 +361,28 @@ const incompletes = offre ? lignesIncompletes(configDe(offre)) : [];
 
 /** La saisie refusée d'un champ, s'il y en a une — sinon la valeur en base. */
 const refus = (cle, defaut) => (soumis?.refusees?.has(cle) ? soumis.refusees.get(cle) : defaut);
+/**
+ * Ce qui empêche l'offre de partir, dit en français.
+ *
+ * Les lignes à moitié remplies n'étaient pas seules à mériter un refus : une
+ * offre entièrement vide passait, et le client recevait une lettre à zéro
+ * euro sans date de validité. Personne n'avait rien saisi — c'est justement
+ * le cas où l'écran doit arrêter la main.
+ */
+const empechements = [];
+if (offre) {
+  for (const m of incompletes) empechements.push(direManque(m));
+  const total = resultat
+    ? resultat.seaux.unique.ttc + resultat.seaux.mensuel.ttc + resultat.seaux.annuel.ttc
+    : 0;
+  if (total === 0) {
+    empechements.push("L'offre ne chiffre rien : aucun pack, aucun module, aucune prestation.");
+  }
+  if (!offre.valide_jusqu_au) {
+    empechements.push("Pas de date de validité — la lettre annoncerait « valable jusqu'au — ».");
+  }
+}
+
 const vuesFautives = new Set(incompletes.filter((m) => m.ou === 'vue').map((m) => m.rang - 1));
 const libresFautives = new Set(incompletes.filter((m) => m.ou === 'libre').map((m) => m.rang - 1));
 const message = Astro.url.searchParams.get('ok');
@@ -1022,17 +1053,19 @@ const ETAT_STATUT = {
               )}
             </div>
 
-            {incompletes.length > 0 && (
+            {empechements.length > 0 && (
               <div class="recap__alerte" style="margin-block-start:12px">
-                <strong>{incompletes.length} ligne(s) à reprendre avant l'envoi.</strong>{' '}
-                Elles sont listées dans le chiffrage, juste au-dessus.
+                <strong>L'offre ne peut pas partir :</strong>
+                <ul style="margin:6px 0 0; padding-inline-start:20px">
+                  {empechements.map((e) => <li>{e}</li>)}
+                </ul>
               </div>
             )}
 
             <div class="actions">
               <form method="post" onsubmit={service.expedie ? undefined : "return confirm('Aucun courriel ne partira réellement. Marquer quand même l’offre comme envoyée ?')"}>
                 <input type="hidden" name="action" value="envoyer" />
-                <button class="bouton bouton--marque" type="submit" disabled={incompletes.length > 0}>
+                <button class="bouton bouton--marque" type="submit" disabled={empechements.length > 0}>
                   <Icone nom="mail" taille={16} />
                   {service.expedie ? "Envoyer l'offre" : "Journaliser et marquer envoyée"}
                 </button>

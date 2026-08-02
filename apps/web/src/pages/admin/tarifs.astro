@@ -76,8 +76,12 @@ const DU_CONTRAT = new Set([
   'contrat_reconduction', 'contrat_gabarit', 'cgv',
 ]);
 const contrat = tarifs.filter((t) => DU_CONTRAT.has(t.cle));
-const chiffres_ = tarifs.filter((t) => t.type !== 'texte' && t.type !== 'booleen' && !DU_CONTRAT.has(t.cle));
-const textes = tarifs.filter((t) => t.type === 'texte' && !DU_CONTRAT.has(t.cle));
+// Le guide d'appel non plus ne chiffre rien : il vit ici parce que tout ce qui
+// se règle sans redéploiement vit ici, mais dans sa propre section.
+const guide = tarifs.find((t) => t.cle === 'guide_appel') || null;
+const aPart = new Set([...DU_CONTRAT, 'guide_appel']);
+const chiffres_ = tarifs.filter((t) => t.type !== 'texte' && t.type !== 'booleen' && !aPart.has(t.cle));
+const textes = tarifs.filter((t) => t.type === 'texte' && !aPart.has(t.cle));
 ---
 
 <Console
@@ -170,6 +174,26 @@ const textes = tarifs.filter((t) => t.type === 'texte' && !DU_CONTRAT.has(t.cle)
           Montants TTC, TVA à {(vigueur.tva_defaut / 100)} %. L'achat vaut
           {' '}{vigueur.multiplicateur_achat} mois de location — modifier le multiplicateur
           change le rapport entre les deux colonnes.
+        </div>
+      </section>
+    )}
+
+    {guide && (
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>L'appel de découverte</h2>
+            <p>
+              Rappelé derrière le (i) de <a href={`${BASE}/admin/leads`}>l'écran Demandes</a>, au
+              moment de décrocher. À réécrire au fil de ce qui marche : c'est la mémoire de
+              l'équipe, pas un script à lire mot à mot.
+            </p>
+          </div>
+        </div>
+        <div class="champ">
+          <label for="g-appel"><strong>{guide.libelle || guide.cle}</strong></label>
+          <input type="hidden" name="cle" value={guide.cle} />
+          <textarea id="g-appel" name="valeur" rows="20">{afficherTarif(guide)}</textarea>
         </div>
       </section>
     )}

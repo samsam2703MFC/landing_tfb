@@ -7,7 +7,9 @@
  * demande confirmation.
  */
 import Console from '../../components/Console.astro';
-import { compteurs, listerLeads, marquerLead, supprimerLead } from '../../lib/admin/donnees.mjs';
+import Icone from '../../components/Icone.astro';
+import { compteurs, listerLeads, listerTarifs, marquerLead, supprimerLead } from '../../lib/admin/donnees.mjs';
+import { lireTarif } from '../../lib/offres/montants.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -28,9 +30,13 @@ if (Astro.request.method === 'POST') {
 }
 
 let leads = [];
+let guide = '';
 let chiffres = {};
 try {
   leads = await listerLeads();
+  // Le guide d'appel n'est pas écrit ici : il se relit et se corrige sur
+  // l'écran Tarifs, au fil de ce qui marche.
+  guide = lireTarif((await listerTarifs()).find((t) => t.cle === 'guide_appel')) || '';
   chiffres = await compteurs();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
@@ -63,18 +69,35 @@ function quand(valeur) {
         <h2>Demandes de démonstration</h2>
         <p>
           <span class="jeton">landing_leads</span> — reçues par le formulaire de la page d'accueil.
-          Aucun courriel n'est envoyé : cette table est la seule trace.
+          Aucun courriel n'est envoyé : cette table est la seule trace. On appelle, on marque
+          contactée, puis on ouvre dans le CRM — dans cet ordre, parce qu'une offre chiffrée
+          avant le premier appel se chiffre à l'aveugle.
         </p>
       </div>
     </div>
+
+    {guide && (
+      <details class="guide">
+        <summary>
+          <Icone nom="info" taille={16} />
+          <span>À quoi doit ressembler l'appel</span>
+          <span class="champ__aide">Les six questions, et ce qu'on ne fait pas au premier appel.</span>
+        </summary>
+        <pre class="guide__corps">{guide}</pre>
+        <p class="champ__aide" style="margin:10px 16px 0">
+          Ce texte se corrige sur <a href={`${BASE}/admin/tarifs`}>l'écran Tarifs</a> : c'est la
+          mémoire de l'équipe, pas un script à lire mot à mot.
+        </p>
+      </details>
+    )}
 
     {leads.length === 0 ? (
       <div class="bloc__corps"><p class="tuile__note">Aucune demande pour l'instant.</p></div>
     ) : (
       <div class="roule">
-        <table>
+        <table class="demandes">
           <thead>
-            <tr><th>Reçue</th><th>Personne</th><th>Réseau</th><th>Sa situation</th><th>Statut</th><th><span class="invisible">Actions</span></th></tr>
+            <tr><th>Reçue</th><th>Personne</th><th>Réseau</th><th>Sa situation</th><th>Suite</th><th><span class="invisible">Actions</span></th></tr>
           </thead>
           <tbody>
             {leads.map((l) => (
@@ -86,16 +109,24 @@ function quand(valeur) {
                 </td>
                 <td>{l.reseau || '—'}</td>
                 <td style="color:var(--slate-600);max-inline-size:30rem">{l.situation || '—'}</td>
-                <td><span class={l.traite ? 'etat etat--on' : 'etat etat--manque'}>{l.traite ? 'traitée' : 'en attente'}</span></td>
+                <td><span class={l.traite ? 'etat etat--on' : 'etat etat--manque'}>{l.traite ? 'contactée' : 'à appeler'}</span></td>
                 <td>
                   <div class="actions">
                     <form method="post">
                       <input type="hidden" name="id" value={l.id} />
                       <input type="hidden" name="traite" value={l.traite ? '0' : '1'} />
-                      <button class="bouton bouton--sobre bouton--sm" type="submit">
-                        {l.traite ? 'Remettre en attente' : 'Marquer traitée'}
+                      <button class={l.traite ? 'bouton bouton--sobre bouton--sm' : 'bouton bouton--marque bouton--sm'} type="submit">
+                        {l.traite ? 'Pas encore appelée' : 'Contactée'}
                       </button>
                     </form>
+                    {/* Le CRM ne s'ouvre qu'après l'appel : chiffrer avant
+                        d'avoir parlé, c'est inventer le nombre de points de
+                        vente qui fait tout le prix. */}
+                    {l.traite && (
+                      <a class="bouton bouton--marque bouton--sm" href={`${BASE}/admin/offres/nouvelle?lead=${l.id}`}>
+                        <Icone nom="arrow-up-right" taille={16} /> Ouvrir dans le CRM
+                      </a>
+                    )}
                     <form method="post">
                       <input type="hidden" name="id" value={l.id} />
                       <button
@@ -115,6 +146,34 @@ function quand(valeur) {
       </div>
     )}
 
-    <div class="bloc__pied">{leads.length} demande(s) · {attente} en attente.</div>
+    <div class="bloc__pied">{leads.length} demande(s) · {attente} à appeler.</div>
   </section>
 </Console>
+
+<style is:global>
+  /* Le guide reste replié : on ne le rouvre qu'au moment de décrocher, et
+     déplié en permanence il pousserait les demandes hors de l'écran. */
+  .guide { margin: 4px 16px 20px; }
+  .guide > summary {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 10px 14px; border: 1px solid var(--slate-200); border-radius: 10px;
+    background: var(--slate-50); font-weight: 600; font-size: var(--text-sm);
+  }
+  .guide > summary::-webkit-details-marker { display: none; }
+  .guide > summary > .champ__aide { font-weight: 400; }
+  .guide[open] > summary { border-end-start-radius: 0; border-end-end-radius: 0; }
+  /* Trois boutons dans une cellule : sans cela « Ouvrir dans le CRM » se
+     coupe en deux lignes et la rangée grandit. */
+  .demandes .actions { flex-wrap: nowrap; }
+  .demandes .actions .bouton { white-space: nowrap; }
+  .guide__corps {
+    margin: 0;
+    padding: 18px 20px;
+    border: 1px solid var(--slate-200);
+    border-block-start: 0;
+    border-end-start-radius: 10px; border-end-end-radius: 10px;
+    font: var(--text-sm) / 1.6 var(--font-sans);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+</style>
