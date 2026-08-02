@@ -1179,6 +1179,29 @@ function modele(pg) {
       ],
     },
     {
+      // Les polices importées d'un client. Le fichier est stocké en base et
+      // non dans public/, qui est figé au build : un fichier déposé depuis la
+      // console n'y survivrait pas au déploiement suivant.
+      //
+      // Le @font-face est fabriqué depuis ces colonnes, jamais repris du
+      // fichier — il n'y a donc rien à assainir.
+      nom: table('charte_polices'),
+      colonnes: [
+        ['id', t.id],
+        ['prospect_id', 'INT NOT NULL'],
+        ['famille', `${t.chaine(60)} NOT NULL`],
+        // titres · interface · les_deux
+        ['role', `${t.chaine(12)} DEFAULT 'les_deux'`],
+        ['graisse', `${t.chaine(3)} DEFAULT '400'`],
+        ['style', `${t.chaine(8)} DEFAULT 'normal'`],
+        ['format', t.chaine(12)],
+        ['type_mime', t.chaine(40)],
+        ['fichier', 'LONGTEXT'],
+        ['octets', 'INT DEFAULT 0'],
+        ['cree_le', t.chaine(40)],
+      ],
+    },
+    {
       // La base de données d'un client. Chaque client a la sienne, de structure
       // identique aux autres : l'isolation n'est pas une colonne dans un WHERE,
       // c'est la connexion.

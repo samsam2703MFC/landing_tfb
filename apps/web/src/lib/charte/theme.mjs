@@ -49,6 +49,44 @@ const PILES = {
   systeme: 'system-ui, -apple-system, "Segoe UI", sans-serif',
 };
 
+/**
+ * La pile d'un client qui a importé ses propres polices.
+ *
+ * Toujours suivie d'un repli : une police téléchargée peut manquer — réseau
+ * coupé, cache vidé, format refusé par un vieux navigateur — et une caisse qui
+ * n'affiche rien plutôt qu'une police approchante est une caisse à l'arrêt.
+ */
+function pileClient(polices, role, repli) {
+  const famille = (polices || []).find((p) => p.role === role || p.role === 'les_deux')?.famille;
+  return famille ? `"${famille}", ${PILES[repli]}` : PILES[repli];
+}
+
+/**
+ * Les `@font-face` d'un client, fabriqués ici et non repris d'un fichier.
+ *
+ * Le fichier de police n'apporte aucune règle : famille, graisse et style
+ * viennent de ce que la console déclare, et l'adresse est une route de ce site.
+ * Il n'y a donc rien à assainir — rien du fichier n'entre dans la feuille.
+ *
+ * `font-display: swap` parce qu'un texte invisible pendant le téléchargement
+ * est pire qu'un texte dans la mauvaise police : la caisse doit être lisible
+ * tout de suite.
+ */
+export function facesCharte(polices, base = '') {
+  return (polices || [])
+    .filter((p) => p.famille && /^[A-Za-z0-9 _-]+$/.test(p.famille))
+    .map((p) => [
+      '@font-face {',
+      `  font-family: "${p.famille}";`,
+      `  src: url("${base}/polices/${Number(p.id)}") format("${p.format}");`,
+      `  font-weight: ${/^[0-9]{3}$/.test(String(p.graisse)) ? p.graisse : 400};`,
+      `  font-style: ${p.style === 'italic' ? 'italic' : 'normal'};`,
+      '  font-display: swap;',
+      '}',
+    ].join('\n'))
+    .join('\n');
+}
+
 const OMBRES = {
   aucune: { s: 'none', m: 'none', l: 'none' },
   douce: {
@@ -70,7 +108,7 @@ const DENSITES = { compacte: 0.8, normale: 1, confortable: 1.25 };
  * Toutes les variables CSS que le design system lit, résolues pour un client.
  * Rendu comme un bloc de déclarations, à poser dans un sélecteur.
  */
-export function cssCharte(valeurs) {
+export function cssCharte(valeurs, polices = []) {
   const v = { ...defauts(), ...valeurs };
 
   const primaire = couleur(v['theme.primaire'], '#7b4488');
@@ -90,8 +128,10 @@ export function cssCharte(valeurs) {
   const rayon = Number(parmi(v['theme.arrondi'], ['4', '8', '12', '16'], '12'));
   const ombre = OMBRES[parmi(v['theme.profondeur'], ['aucune', 'douce', 'marquee'], 'douce')];
   const echelle = DENSITES[parmi(v['theme.densite'], ['compacte', 'normale', 'confortable'], 'normale')];
-  const titres = PILES[parmi(v['theme.police_titres'], Object.keys(PILES), 'manrope')];
-  const interface_ = PILES[parmi(v['theme.police_interface'], Object.keys(PILES), 'plex-sans')];
+  const choixTitres = parmi(v['theme.police_titres'], [...Object.keys(PILES), 'client'], 'manrope');
+  const choixInterface = parmi(v['theme.police_interface'], [...Object.keys(PILES), 'client'], 'plex-sans');
+  const titres = choixTitres === 'client' ? pileClient(polices, 'titres', 'manrope') : PILES[choixTitres];
+  const interface_ = choixInterface === 'client' ? pileClient(polices, 'interface', 'plex-sans') : PILES[choixInterface];
 
   const espace = (n) => `${Math.round(n * echelle * 100) / 100}px`;
 

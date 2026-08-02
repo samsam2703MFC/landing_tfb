@@ -27,7 +27,8 @@ import { chargerProspect } from '../../lib/admin/donnees.mjs';
 import { MAISON, charteMaison, chartePubliee } from '../../lib/admin/charte.mjs';
 import { cleCharteValide } from '../../lib/admin/session.mjs';
 import { REGISTRE, resoudreTout, valeursResolues } from '../../lib/charte/registre.mjs';
-import { cssCharte, logoCharte } from '../../lib/charte/theme.mjs';
+import { cssCharte, facesCharte, logoCharte } from '../../lib/charte/theme.mjs';
+import { listerPolices } from '../../lib/charte/polices.mjs';
 
 const id = Number(Astro.params.prospect);
 const introuvable = () => new Response('Page introuvable', { status: 404 });
@@ -39,15 +40,20 @@ if (!Number.isInteger(id) || id === MAISON || !cleCharteValide(id, Astro.url.sea
   return introuvable();
 }
 
-const [prospect, publie, maison] = await Promise.all([
+const [prospect, publie, maison, polices] = await Promise.all([
   chargerProspect(id),
   chartePubliee(id),
   charteMaison(),
+  listerPolices(id).catch(() => []),
 ]);
 if (!prospect) return introuvable();
 
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const valeurs = valeursResolues(publie.donnees, maison.donnees);
-const css = cssCharte(valeurs);
+const css = cssCharte(valeurs, polices);
+// Les @font-face avant le bloc :root — une police déclarée après son usage se
+// charge quand même, mais l'ordre rend la feuille lisible pour qui l'inspecte.
+const faces = facesCharte(polices, BASE);
 const logo = logoCharte(valeurs);
 const resolutions = resoudreTout(publie.donnees, maison.donnees);
 const propres = resolutions.filter((r) => r.depuis === 'client');
@@ -94,7 +100,7 @@ const ESPACES = [
     {/* La charte s'applique à toute la page, en surcharge du design system
         chargé au-dessus. C'est exactement ce qui se passe dans l'application du
         client : rien n'est compilé pour lui, ce sont des variables. */}
-    <style is:inline set:html={`:root {\n  ${css}\n}`}></style>
+    <style is:inline set:html={`${faces}${faces ? '\n' : ''}:root {\n  ${css}\n}`}></style>
 
     <header class="tete">
       <div class="tete__dedans">
