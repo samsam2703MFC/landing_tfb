@@ -1,0 +1,179 @@
+---
+/**
+ * Étape 1 — ce que le client veut piloter.
+ *
+ * L'écran où se voit toute l'architecture : quatre modules cochés, une seule
+ * connexion à faire. C'est calculé, pas affirmé — et le pied de bloc dit la
+ * conséquence contre-intuitive : décocher un module ne retire pas forcément
+ * une étape, parce qu'un autre demande peut-être déjà la même chose.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { connexion, table } from '../../../../lib/db.mjs';
+import {
+  etatParcours,
+  journaliserParcours,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { capacitesRequises } from '../../../../lib/onboarding/moteur.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const choisis = f.getAll('module').map(String);
+    if (choisis.length === 0) throw new Error('Choisissez au moins un module : sans lui, il n’y a rien à brancher.');
+
+    const parcours = await ouvrirParcours(prospectId);
+    const db = await connexion();
+    await db.executer(
+      `UPDATE ${table('parcours')} SET etat = ? WHERE id = ?`,
+      [JSON.stringify({ ...(parcours.etat || {}), modules: choisis }), parcours.id],
+    );
+    await marquerEtape(parcours.id, 'modules', {
+      charge: { modules: choisis },
+      utilisateurId: (Astro.locals.session || {}).id || null,
+    });
+    await journaliserParcours(parcours.id, {
+      type: 'modules',
+      texte: `${choisis.length} module(s) retenu(s) : ${choisis.join(', ')}`,
+      utilisateurId: (Astro.locals.session || {}).id || null,
+    });
+    return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/prerequis`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let etat = null;
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  if (prospect) etat = await etatParcours(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const choisis = new Set(etat?.parcours?.etat?.modules || []);
+// Ce que donnerait la sélection actuelle : affiché en haut, pour que le
+// client voie le nombre de connexions bouger pendant qu'il coche.
+const apercu = etat ? capacitesRequises(etat.modules.filter((m) => choisis.has(m.slug))) : null;
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Ce que vous voulez piloter"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && etat && (
+    <form method="post">
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Le parcours
+        </a>
+        <button class="bouton bouton--marque" type="submit">Continuer</button>
+        <span class="barre-actions__note">
+          {apercu && apercu.requises.length > 0
+            ? `${apercu.requises.length} type(s) de donnée à lire — une seule connexion par caisse.`
+            : 'Cochez ce que vous voulez piloter.'}
+        </span>
+      </div>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Étape 1 — Ce que vous voulez piloter</h2>
+            <p>
+              Chaque module dit de quelles données il a besoin. C'est l'union de ces besoins qui
+              décide des étapes suivantes — pas le nombre de modules cochés.
+            </p>
+          </div>
+          {choisis.size > 0 && <span class="etat etat--on">{choisis.size} module(s)</span>}
+        </div>
+
+        <div class="bloc__corps">
+          <div class="cases">
+            {etat.modules.map((m) => (
+              <label class={`case${choisis.has(m.slug) ? ' case--prise' : ''}`}>
+                <span class="ligne-serree" style="align-items:start">
+                  <input type="checkbox" name="module" value={m.slug} checked={choisis.has(m.slug)} />
+                  <span>
+                    <strong>{m.nom}</strong>
+                    {m.quoi && <span class="champ__aide">{m.quoi}</span>}
+                    <span class="puces">
+                      {m.besoins.length === 0
+                        ? <span class="puce">n'a besoin d'aucune donnée</span>
+                        : m.besoins.map((b) => (
+                          <span class={b.requis ? 'puce puce--cap' : 'puce'}>
+                            {b.libelle}{!b.requis && ' (optionnel)'}
+                          </span>
+                        ))}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div class="bloc__pied">
+          Décocher un module ne retire pas forcément une étape : si un autre demande déjà la même
+          donnée, il n'y a rien de moins à brancher. C'est pour cela que le nombre de connexions
+          ne suit pas le nombre de modules.
+        </div>
+      </section>
+
+      {apercu && apercu.requises.length > 0 && (
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>Ce qu'il faudra lire</h2>
+              <p>Le calcul, en direct : c'est ce que la connexion à votre caisse ira chercher.</p>
+            </div>
+          </div>
+          <div class="bloc__corps">
+            <div class="cases">
+              {apercu.requises.map((c) => (
+                <div class="case">
+                  <strong>{c.capacite}</strong>
+                  <span class="champ__aide">Demandé par : {c.modules.join(', ')}.</span>
+                </div>
+              ))}
+              {apercu.optionnelles.map((c) => (
+                <div class="case">
+                  <strong>{c.capacite} <span class="etat">optionnel</span></strong>
+                  <span class="champ__aide">{c.note_degradee || 'Utile, pas indispensable.'}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+    </form>
+  )}
+</Console>
+
+<style is:global>
+  /* Une vignette cochée se voit du premier coup d'œil : sans cela, l'écran
+     des modules ne dit pas ce qui est retenu tant qu'on ne lit pas les cases. */
+  .case--prise { border-color: var(--plum-400); background: var(--plum-50); }
+  .puces { display: flex; gap: 6px; flex-wrap: wrap; margin-block-start: 6px; }
+  .puce {
+    font: 600 10.5px var(--font-sans); border-radius: 20px; padding: 2px 8px;
+    background: var(--slate-100); color: var(--slate-600);
+  }
+  .puce--cap { background: var(--plum-100); color: var(--plum-700); }
+</style>

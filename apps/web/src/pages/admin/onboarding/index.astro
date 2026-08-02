@@ -1,0 +1,184 @@
+---
+/**
+ * Les mises en route en cours.
+ *
+ * L'écran qu'on ouvre le matin pour savoir où ça coince, chez qui, et depuis
+ * combien de temps. C'est aussi la métrique produit qui compte : les clients
+ * s'arrêtent tous à la même étape quand cette étape est mauvaise.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { compteurs, listerProspects } from '../../../lib/admin/donnees.mjs';
+import { chargerParcours, listerConnexions } from '../../../lib/admin/onboarding.mjs';
+import { coffreOuvert } from '../../../lib/onboarding/coffre.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+let lignes = [];
+let chiffres = {};
+try {
+  const prospects = await listerProspects();
+  const connexions = await listerConnexions({});
+  const parConnexion = new Map();
+  for (const c of connexions) {
+    if (!parConnexion.has(c.prospect_id)) parConnexion.set(c.prospect_id, []);
+    parConnexion.get(c.prospect_id).push(c);
+  }
+  lignes = await Promise.all(prospects.map(async (p) => {
+    const parcours = await chargerParcours(p.id);
+    const siennes = parConnexion.get(p.id) || [];
+    return {
+      prospect: p,
+      parcours,
+      connexions: siennes,
+      actives: siennes.filter((c) => c.statut === 'active').length,
+      // Ce qui intéresse vraiment : depuis quand ça ne bouge plus.
+      dort: parcours?.activite_le
+        ? Math.floor((Date.now() - new Date(parcours.activite_le).getTime()) / 86400000)
+        : null,
+    };
+  }));
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const enCours = lignes.filter((l) => l.parcours && l.parcours.statut === 'en_cours');
+const bloquees = enCours.filter((l) => l.dort !== null && l.dort >= 2);
+const message = Astro.url.searchParams.get('ok');
+const coffre = coffreOuvert();
+---
+
+<Console
+  titre="Mises en route"
+  fil="TFB Admin · Onboarding · Parcours"
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {!coffre && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Le coffre des secrets n'est pas ouvert</h2>
+          <p>
+            Aucune clé d'API ne peut être enregistrée tant que
+            <span class="jeton">SECRETS_CLE_1</span> n'est pas posée sur le serveur.
+            Elle se fabrique en une ligne, et ne se met <strong>jamais</strong> en base :
+            <code class="slug">node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"</code>
+          </p>
+        </div>
+      </div>
+    </section>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Où en sont les clients</h2>
+        <p>
+          {enCours.length} mise(s) en route en cours
+          {bloquees.length > 0 && <>, dont <strong>{bloquees.length} sans mouvement depuis deux jours ou plus</strong></>}.
+          Un parcours qui dort attend presque toujours une clé d'API que le client n'a pas.
+        </p>
+      </div>
+    </div>
+
+    {lignes.length === 0 ? (
+      <div class="bloc__pied">Aucun client. Une mise en route s'ouvre depuis la fiche d'un client.</div>
+    ) : (
+      <div class="roule">
+        <table class="parcours">
+          <thead>
+            <tr>
+              <th>Client</th><th>État</th><th>Étape</th><th>Caisses</th>
+              <th class="nombre">Sans mouvement</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {lignes.map((l) => (
+              <tr>
+                <td>
+                  <strong>{l.prospect.raison_sociale}</strong>
+                  {l.prospect.contact_nom && <code class="slug">{l.prospect.contact_nom}</code>}
+                </td>
+                <td>
+                  {!l.parcours ? <span class="etat">pas commencée</span>
+                    : l.parcours.statut === 'termine' ? <span class="etat etat--on">terminée</span>
+                    : <span class="etat etat--manque">en cours</span>}
+                </td>
+                <td class="champ__aide">{l.parcours?.etape_courante || '—'}</td>
+                <td>
+                  {l.connexions.length === 0 ? <span class="champ__aide">—</span> : (
+                    <>
+                      {l.actives} active(s) sur {l.connexions.length}
+                      <code class="slug">{[...new Set(l.connexions.map((c) => c.connecteur_nom))].join(' · ')}</code>
+                    </>
+                  )}
+                </td>
+                <td class="nombre fb-num">
+                  {l.dort === null ? '—'
+                    : <span class={l.dort >= 2 ? 'etat etat--manque' : 'champ__aide'}>{l.dort} j</span>}
+                </td>
+                <td>
+                  <div class="actions">
+                    <a class="bouton bouton--marque bouton--sm" href={`${BASE}/admin/onboarding/${l.prospect.id}`}>
+                      {l.parcours ? 'Reprendre' : 'Commencer'}
+                    </a>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <div class="bloc__pied">
+      Le nombre qui compte n'est pas « combien de parcours en cours » mais <strong>à quelle étape
+      ils s'arrêtent</strong> : quand trois clients bloquent au même endroit, c'est l'écran qui est
+      mauvais, pas les clients.
+    </div>
+  </section>
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les caisses branchées</h2>
+        <p>Toutes connexions confondues. Le détail se lit sur <a href={`${BASE}/admin/connexions`}>l'écran Connexions</a>.</p>
+      </div>
+      <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/connecteurs`}>
+        <Icone nom="settings" taille={16} /> Connecteurs
+      </a>
+    </div>
+    <div class="bloc__corps">
+      <div class="chiffres">
+        {[
+          ['active', 'branchées', 'etat--on'],
+          ['erreur', 'en erreur', 'etat--manque'],
+          ['test', 'testées, pas encore actives', ''],
+          ['brouillon', 'en cours de configuration', ''],
+        ].map(([statut, mot, classe]) => {
+          const n = lignes.flatMap((l) => l.connexions).filter((c) => c.statut === statut).length;
+          return (
+            <div class="chiffre">
+              <b class={classe ? `etat ${classe}` : undefined}>{n}</b>
+              <span>{mot}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  </section>
+</Console>
+
+<style is:global>
+  .parcours { min-inline-size: 68rem; }
+  .parcours td, .parcours th { white-space: nowrap; }
+  .chiffres { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(12rem, 100%), 1fr)); }
+  .chiffre { border: 1px solid var(--slate-200); border-radius: 11px; padding: 12px 14px; }
+  .chiffre b { display: block; font: 700 var(--text-xl, 20px) / 1.2 var(--font-mono); font-variant-numeric: tabular-nums; }
+  .chiffre span { font-size: var(--text-xs); color: var(--slate-500); }
+</style>

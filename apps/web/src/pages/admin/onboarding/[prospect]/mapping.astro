@@ -1,0 +1,288 @@
+---
+/**
+ * Étape 6 — ce que nous avons compris des données du client.
+ *
+ * L'écran le plus important du parcours. Un mapping faux ne casse rien : il
+ * produit des chiffres plausibles et faux, qu'on découvre six semaines plus
+ * tard en comparant avec le comptable.
+ *
+ * Trois niveaux de confiance, et la différence n'est pas cosmétique : elle
+ * dit au client **où regarder**. « Trouvé » vient d'un alias connu du
+ * manifest ; « à confirmer » d'une simple ressemblance de nom ; « non fourni »
+ * veut dire que la caisse ne le donne pas.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  adaptateurDe,
+  chargerConnexion,
+  contexteDe,
+  enregistrerMapping,
+  journaliserParcours,
+  listerCorrespondances,
+  manifestDe,
+  mappingIncomplet,
+  marquerEtape,
+  ouvrirParcours,
+  proposerMapping,
+} from '../../../../lib/admin/onboarding.mjs';
+import { CHAMPS_CANONIQUES, normaliser } from '../../../../lib/onboarding/normalisation.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+    const carte = {};
+    for (const c of CHAMPS_CANONIQUES) {
+      const source = String(f.get(`s_${c.cle}`) || '').trim();
+      const diviser = String(f.get(`d_${c.cle}`) || '').trim();
+      if (!source) continue;
+      carte[c.cle] = {
+        source,
+        transform: diviser && Number(diviser) > 1 ? { type: 'diviser', par: Number(diviser) } : null,
+        confiance: 'manuelle',
+      };
+    }
+    const manque = mappingIncomplet(carte);
+    if (manque.length > 0) {
+      throw new Error(
+        `Il manque ${manque.length} champ(s) sans lesquels une ligne ne peut pas être lue : `
+        + `${manque.map((m) => m.libelle).join(', ')}.`,
+      );
+    }
+    await enregistrerMapping(connexionId, carte);
+    await marquerEtape(parcours.id, 'mapping', { connexionId, utilisateurId: qui });
+    await journaliserParcours(parcours.id, {
+      type: 'mapping', connexionId, utilisateurId: qui,
+      texte: `Mapping enregistré : ${Object.keys(carte).length} champ(s)`,
+      detail: carte,
+    });
+    return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/boutiques?connexion=${connexionId}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let echantillon = [];
+let carte = {};
+let apercu = null;
+let soucisEchantillon = null;
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (cx) {
+    const pos = await adaptateurDe(cx.id);
+    const ctx = await contexteDe(cx.id);
+    const rep = await pos.echantillon({ ...ctx, maximum: 10 });
+    if (rep.ok) echantillon = rep.lignes;
+    else soucisEchantillon = rep;
+
+    const manifest = await manifestDe(cx.id);
+    const deja = await listerCorrespondances(cx.id);
+    // Ce qui est déjà enregistré prime : on ne réécrit pas par-dessus un choix
+    // que quelqu'un a fait à la main.
+    carte = Object.keys(deja).length > 0 ? deja : proposerMapping(echantillon, manifest);
+
+    // Ce que donnerait la première ligne avec ce mapping : c'est ce chiffre
+    // que le client reconnaît ou non. Une erreur d'un facteur cent s'y voit.
+    if (echantillon.length > 0) {
+      try {
+        apercu = normaliser(echantillon[0], { correspondances: carte, devise: prospect.devise || 'EUR' });
+      } catch (err) {
+        apercu = { refus: err.message };
+      }
+    }
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const champsDisponibles = echantillon.length > 0 ? Object.keys(echantillon[0]) : [];
+const manque = mappingIncomplet(carte);
+const aConfirmer = Object.entries(carte).filter(([, c]) => c.confiance === 'suggeree').length;
+const message = Astro.url.searchParams.get('ok');
+const euros = (n) => (n === null || n === undefined ? '—'
+  : new Intl.NumberFormat('fr-BE', { style: 'currency', currency: prospect?.devise || 'EUR' }).format(n));
+---
+
+<Console
+  titre="Ce que nous avons compris"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && (
+    <form method="post">
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm"
+           href={`${BASE}/admin/onboarding/${prospect.id}/configuration?connexion=${cx.id}`}>
+          <Icone nom="arrow-left" taille={16} /> La connexion
+        </a>
+        <button class="bouton bouton--marque" type="submit" disabled={echantillon.length === 0}>
+          Enregistrer le mapping
+        </button>
+        <span class="barre-actions__note">
+          {manque.length > 0
+            ? `${manque.length} champ(s) obligatoire(s) à trouver.`
+            : aConfirmer > 0 ? `${aConfirmer} champ(s) à confirmer.` : 'Tout est reconnu.'}
+        </span>
+      </div>
+
+      {soucisEchantillon && (
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>{soucisEchantillon.message}</h2>
+              <p>
+                Sans une ligne réelle, il n'y a rien à mapper. Reprenez la connexion, ou élargissez
+                la période interrogée dans les adresses avancées.
+              </p>
+            </div>
+            <a class="bouton bouton--sobre bouton--sm"
+               href={`${BASE}/admin/onboarding/${prospect.id}/configuration?connexion=${cx.id}`}>
+              Revoir la connexion
+            </a>
+          </div>
+        </section>
+      )}
+
+      {echantillon.length > 0 && (
+        <>
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Étape 6 — Ce que nous avons compris de vos données</h2>
+                <p>
+                  {echantillon.length} ligne(s) réellement récupérée(s) de votre caisse, à côté de
+                  ce que nous en avons déduit. C'est cet écran qui décide si tout le reste sera juste.
+                </p>
+              </div>
+              {manque.length === 0 && aConfirmer === 0 && <span class="etat etat--on">tout reconnu</span>}
+            </div>
+
+            <div class="bloc__corps">
+              <div class="duo">
+                <div class="champ">
+                  <span class="legende">Ce que votre caisse renvoie</span>
+                  <pre class="trace">{JSON.stringify(echantillon[0], null, 2)}</pre>
+                </div>
+
+                <div class="champ">
+                  <span class="legende">Ce que nous en faisons</span>
+                  <div class="cartes-map">
+                    {CHAMPS_CANONIQUES.map((champ) => {
+                      const c = carte[champ.cle] || {};
+                      const etat = !c.source ? (champ.requis ? 'manque' : 'absent')
+                        : c.confiance === 'suggeree' ? 'suggeree' : 'auto';
+                      return (
+                        <div class="ligne-map">
+                          <span class="ligne-map__cible">
+                            {champ.libelle}
+                            {champ.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
+                          </span>
+                          <select name={`s_${champ.cle}`}>
+                            <option value="">— non fourni —</option>
+                            {champsDisponibles.map((d) => (
+                              <option value={d} selected={c.source === d}>{d}</option>
+                            ))}
+                          </select>
+                          <span class="tarif__saisie ligne-map__div">
+                            <input type="number" name={`d_${champ.cle}`} min="1" step="1"
+                                   value={c.transform?.type === 'diviser' ? c.transform.par : ''}
+                                   placeholder="÷" title="Diviser par — pour les prix en centimes" />
+                          </span>
+                          <span class={`conf conf--${etat}`}>
+                            {etat === 'auto' ? 'trouvé' : etat === 'suggeree' ? 'à confirmer'
+                              : etat === 'manque' ? 'à trouver' : 'non fourni'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="bloc__pied">
+              La colonne « ÷ » divise avant enregistrement. C'est elle qui rattrape les prix en
+              centimes — l'erreur la plus fréquente, et la plus coûteuse, parce qu'elle multiplie
+              tout par cent sans que rien ne le signale.
+            </div>
+          </section>
+
+          {apercu && (
+            <section class="bloc">
+              <div class="bloc__tete">
+                <div>
+                  <h2>Ce que donnerait la première ligne</h2>
+                  <p>Le chiffre que vous reconnaissez, ou pas. Une erreur d'un facteur cent se voit ici.</p>
+                </div>
+              </div>
+              <div class="bloc__corps">
+                {apercu.refus ? (
+                  <div class="promesse promesse--non">
+                    <h3>Cette ligne ne peut pas être lue</h3>
+                    <p>{apercu.refus}</p>
+                  </div>
+                ) : (
+                  <>
+                    <div class="chiffres">
+                      <div class="chiffre"><b>{apercu.produit_libelle || '—'}</b><span>produit</span></div>
+                      <div class="chiffre"><b>{apercu.quantite ?? '—'}</b><span>quantité</span></div>
+                      <div class="chiffre"><b>{euros(apercu.prix_unitaire_ttc)}</b><span>prix unitaire</span></div>
+                      <div class="chiffre"><b>{euros(apercu.total_ttc)}</b><span>total de la ligne</span></div>
+                    </div>
+                    <p class="champ__aide" style="margin-block-start:12px">
+                      Vendue le {apercu.vendu_le ? new Date(apercu.vendu_le).toLocaleString('fr-BE') : '—'},
+                      rattachée à la journée d'exploitation du <strong>{apercu.jour_exploitation || '—'}</strong>
+                      {apercu.heure !== null && <> (il était {apercu.heure}h)</>}.
+                      {apercu.canal && <> Canal : {apercu.canal}.</>}
+                    </p>
+                    <p class="champ__aide">
+                      Si ce prix vous surprend d'un facteur cent, votre caisse compte en centimes :
+                      posez 100 dans la colonne « ÷ » du prix et du total.
+                    </p>
+                  </>
+                )}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+    </form>
+  )}
+</Console>
+
+<style is:global>
+  .cartes-map { display: grid; gap: 2px; }
+  .ligne-map {
+    display: grid; grid-template-columns: 1fr 1fr 4.5rem 6rem; gap: 8px;
+    align-items: center; padding: 6px 0; border-block-end: 1px solid var(--slate-100);
+  }
+  .ligne-map:last-child { border-block-end: 0; }
+  .ligne-map__cible { font: 600 var(--text-sm) / 1.3 var(--font-sans); }
+  .ligne-map select, .ligne-map input { font-size: var(--text-xs); padding: 5px 8px; }
+  .ligne-map__div { max-inline-size: 4.5rem; }
+  .conf {
+    font: 600 10.5px var(--font-sans); border-radius: 20px; padding: 3px 8px; text-align: center;
+    background: var(--slate-100); color: var(--slate-500);
+  }
+  .conf--auto { background: var(--green-100); color: var(--green-700); }
+  .conf--suggeree { background: var(--amber-100); color: var(--amber-700); }
+  .conf--manque { background: var(--red-100); color: var(--red-700); }
+</style>

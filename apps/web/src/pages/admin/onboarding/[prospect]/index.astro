@@ -1,0 +1,200 @@
+---
+/**
+ * Le parcours d'un client : où il en est, et par quoi continuer.
+ *
+ * Une colonne par caisse, et non une ligne d'étapes. C'est la seule
+ * représentation qui dise la vérité d'un réseau à trois POS : on peut avoir
+ * fini GoPOS, être au milieu de Lightspeed, et attendre encore la clé de
+ * Square depuis trois semaines.
+ */
+import Console from '../../../../components/Console.astro';
+import FilEtapes from '../../../../components/FilEtapes.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  etatParcours,
+  lireJournalParcours,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { avancement } from '../../../../lib/onboarding/moteur.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    await ouvrirParcours(prospectId);
+    return Astro.redirect(
+      `${BASE}/admin/onboarding/${prospectId}?ok=${encodeURIComponent('Mise en route ouverte.')}`, 303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let etat = null;
+let journal = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  if (prospect) {
+    etat = await etatParcours(prospect.id);
+    if (etat.parcours) journal = await lireJournalParcours(etat.parcours.id, 12);
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const suivi = etat ? avancement(etat.plan.etapes, etat.faites) : null;
+const message = Astro.url.searchParams.get('ok');
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Mise en route'}
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding`}>
+          <Icone nom="arrow-left" taille={16} /> Toutes les mises en route
+        </a>
+        <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/prospects/${prospect.id}`}>Fiche client</a>
+        {suivi && (
+          <span class="barre-actions__note">
+            {suivi.fini
+              ? 'Tout est branché.'
+              : `${suivi.terminees} caisse(s) terminée(s) sur ${suivi.total - 1}.`}
+          </span>
+        )}
+      </div>
+
+      {!etat.parcours ? (
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>Rien n'est encore commencé</h2>
+              <p>
+                La mise en route branche les caisses de {prospect.raison_sociale} et remplit son
+                tableau de bord. Elle se fait en une fois ou en plusieurs — l'état est gardé,
+                et le client peut reprendre où il s'est arrêté.
+              </p>
+            </div>
+          </div>
+          <form method="post">
+            <div class="actions">
+              <button class="bouton bouton--marque" type="submit">
+                <Icone nom="play" taille={16} /> Ouvrir la mise en route
+              </button>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <>
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Le parcours</h2>
+                <p>
+                  Une colonne par caisse. On peut en terminer une et laisser la suivante en
+                  attente — le tableau de bord se remplit au fur et à mesure.
+                </p>
+              </div>
+              {etat.retenus.length > 0 && (
+                <span class="etat etat--on">
+                  {etat.retenus.length} module(s) · {etat.connexions.length} caisse(s)
+                </span>
+              )}
+            </div>
+            <div class="bloc__corps">
+              <FilEtapes colonnes={suivi.colonnes} base={BASE} prospectId={prospect.id} />
+            </div>
+            <div class="bloc__pied">
+              Ouvert le {jourHeure(etat.parcours.debut_le)}, dernière activité le
+              {' '}{jourHeure(etat.parcours.activite_le)}.
+              {etat.parcours.jeton_reprise && (
+                <> Lien de reprise : <code class="slug">/onboarding/{etat.parcours.jeton_reprise}</code></>
+              )}
+            </div>
+          </section>
+
+          {etat.connexions.length > 0 && (
+            <section class="bloc" style="margin-block-end:20px">
+              <div class="bloc__tete">
+                <div><h2>Ses caisses</h2><p>Une connexion par groupe de boutiques.</p></div>
+                <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/parc`}>
+                  Gérer le parc
+                </a>
+              </div>
+              <div class="roule">
+                <table>
+                  <thead>
+                    <tr><th>Groupe</th><th>Caisse</th><th>État</th><th>Dernier test</th><th></th></tr>
+                  </thead>
+                  <tbody>
+                    {etat.connexions.map((c) => (
+                      <tr>
+                        <td><strong>{c.libelle}</strong></td>
+                        <td>{c.connecteur_nom}</td>
+                        <td>
+                          <span class={c.statut === 'active' ? 'etat etat--on'
+                            : c.statut === 'erreur' ? 'etat etat--manque' : 'etat'}>{c.statut}</span>
+                        </td>
+                        <td class="champ__aide fb-num">{jourHeure(c.dernier_test_le)}</td>
+                        <td>
+                          <div class="actions">
+                            <a class="bouton bouton--sobre bouton--sm"
+                               href={`${BASE}/admin/onboarding/${prospect.id}/configuration?connexion=${c.id}`}>
+                              Ouvrir
+                            </a>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          <section class="bloc">
+            <div class="bloc__tete">
+              <div>
+                <h2>Ce qui s'est passé</h2>
+                <p>Qui a testé, qui a changé un mapping, qui a lancé un import. C'est la première question qu'on se pose quand un chiffre bouge.</p>
+              </div>
+            </div>
+            {journal.length === 0 ? (
+              <div class="bloc__pied">Rien au journal pour l'instant.</div>
+            ) : (
+              <div class="roule">
+                <table>
+                  <tbody>
+                    {journal.map((l) => (
+                      <tr>
+                        <td style="inline-size:10rem" class="champ__aide fb-num">{jourHeure(l.quand)}</td>
+                        <td style="inline-size:8rem"><span class="etat">{l.type}</span></td>
+                        <td>{l.texte}</td>
+                        <td style="inline-size:9rem" class="champ__aide">{l.qui || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
+    </>
+  )}
+</Console>

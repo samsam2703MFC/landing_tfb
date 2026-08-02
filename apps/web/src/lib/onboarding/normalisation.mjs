@@ -55,7 +55,19 @@ const CANAUX = {
  * personnelle écrite puis effacée est restée écrite. La liste est large à
  * dessein — on préfère perdre un champ neutre que garder un nom.
  */
-const PERSONNEL = /^(customer|client|buyer|guest|user|contact)?_?(name|nom|firstname|lastname|prenom|email|mail|phone|tel|telephone|address|adresse|birth|naissance|vat_number)$/i;
+//
+// Deux listes, et la distinction n'est pas un détail : elle a coûté le nom des
+// produits. `name` tout court est le libellé d'un article dans presque toutes
+// les caisses — le retirer vidait la colonne « produit » de chaque ligne, en
+// silence, et le mapping se plaignait ensuite d'un champ introuvable.
+//
+//   · TOUJOURS — un courriel, un téléphone, une date de naissance n'ont
+//     jamais rien à faire sur une ligne de vente, quel que soit leur préfixe ;
+//   · SEULEMENT PRÉFIXÉ — un nom, une adresse : `customer_name` est
+//     personnel, `name` est le pain au chocolat.
+const TOUJOURS = /^(?:[a-z]+_)?(email|e_?mail|phone|tel|telephone|mobile|birth|birthdate|naissance|ssn)$/i;
+const PREFIXE = /^(customer|client|buyer|guest|user|contact|payer|invoice)_(name|nom|firstname|lastname|prenom|fullname|address|adresse|city|ville|zip|postal)$/i;
+const OBJET_PERSONNEL = /^(customer|client|buyer|guest|contact|payer)$/i;
 
 /** Retire récursivement ce qui ressemble à une donnée personnelle. */
 export function sansDonneesPersonnelles(objet) {
@@ -63,9 +75,9 @@ export function sansDonneesPersonnelles(objet) {
   if (!objet || typeof objet !== 'object') return objet;
   const propre = {};
   for (const [cle, valeur] of Object.entries(objet)) {
-    if (PERSONNEL.test(cle)) continue;
+    if (TOUJOURS.test(cle) || PREFIXE.test(cle)) continue;
     // Un objet « customer » entier disparaît, quel que soit son contenu.
-    if (/^(customer|client|buyer|guest|contact)$/i.test(cle)) continue;
+    if (OBJET_PERSONNEL.test(cle)) continue;
     propre[cle] = sansDonneesPersonnelles(valeur);
   }
   return propre;

@@ -12,7 +12,7 @@
 import '../design-system/styles.css';
 import Icone from './Icone.astro';
 import { lien } from '../lib/lien.mjs';
-import { cheminAutorise } from '../lib/admin/session.mjs';
+import { ROLES_DITS, cheminAutorise } from '../lib/admin/session.mjs';
 
 const {
   titre,
@@ -659,7 +659,7 @@ const RUBRIQUES = TOUTES
             {session.secours ? (
               <><b>Clé de secours</b><span>aucun compte — rien ne portera de nom</span></>
             ) : (
-              <><b>{session.nom || session.identifiant || 'Compte'}</b><span>{session.role === 'admin' ? 'administrateur' : 'commercial'}</span></>
+              <><b>{session.nom || session.identifiant || 'Compte'}</b><span>{(ROLES_DITS[session.role] || ROLES_DITS.commercial).nom.toLowerCase()}</span></>
             )}
           </div>
           <a class="rail__lien" href={lien('/')} target="_blank">

@@ -1,0 +1,63 @@
+---
+/**
+ * Le fil du parcours : une colonne par caisse.
+ *
+ * Ce n'est pas une ligne d'étapes, et c'est la seule chose qu'il faut
+ * comprendre de cet écran. Un réseau qui a grandi par rachats n'a pas la même
+ * caisse partout ; on en termine une, on laisse la suivante en attente de la
+ * clé d'un franchisé, et le tableau de bord se remplit au fur et à mesure.
+ */
+const { colonnes = [], base = '', prospectId } = Astro.props;
+
+const lien = (colonne, etape) => {
+  const q = colonne.connexion ? `?connexion=${colonne.connexion}` : '';
+  return `${base}/admin/onboarding/${prospectId}/${etape.cle}${q}`;
+};
+---
+
+<div class="fil">
+  {colonnes.map((c) => (
+    <article class={`fil__col${c.terminee ? ' fil__col--faite' : ''}`}>
+      <div class="fil__tete">
+        <b>{c.connexion ? (c.nom || 'Caisse') : 'Votre entreprise'}</b>
+        <span class={c.terminee ? 'etat etat--on' : c.faites > 0 ? 'etat etat--manque' : 'etat'}>
+          {c.terminee ? 'terminée' : `${c.faites}/${c.total}`}
+        </span>
+      </div>
+      <ol class="pas">
+        {c.etapes.map((e) => (
+          <li class={e.faite ? 'ok' : (c.courante && c.courante.cle === e.cle ? 'ici' : '')}>
+            <a href={lien(c, e)}>{e.libelle}</a>
+          </li>
+        ))}
+      </ol>
+    </article>
+  ))}
+</div>
+
+<style is:global>
+  .fil { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(15rem, 100%), 1fr)); }
+  .fil__col { border: 1px solid var(--slate-200); border-radius: 12px; padding: 14px; background: #fff; }
+  .fil__col--faite { background: var(--slate-25, #fafbfd); }
+  .fil__tete { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  .fil__tete b { font-size: var(--text-sm); }
+
+  /* Une pastille numérotée par étape, cochée quand elle est faite. La
+     numérotation est locale à la colonne : dans un réseau à trois caisses,
+     « étape 4 » ne veut rien dire, « la quatrième de Lightspeed » si. */
+  .pas { margin: 12px 0 0; padding: 0; list-style: none; display: grid; gap: 6px; counter-reset: p; }
+  .pas li { position: relative; padding-inline-start: 26px; font-size: var(--text-sm); }
+  .pas li::before {
+    counter-increment: p; content: counter(p);
+    position: absolute; inset-inline-start: 0; inset-block-start: 1px;
+    inline-size: 18px; block-size: 18px; border-radius: 50%;
+    background: var(--slate-100); color: var(--slate-400);
+    font: 600 10px / 18px var(--font-mono); text-align: center;
+  }
+  .pas li.ok::before { content: "✓"; background: var(--green-100); color: var(--green-700); }
+  .pas li.ici::before { background: var(--plum-500); color: #fff; }
+  .pas li.ici > a { font-weight: 600; color: var(--plum-600); }
+  .pas li > a { color: var(--slate-600); text-decoration: none; }
+  .pas li > a:hover { text-decoration: underline; }
+  .pas li.ok > a { color: var(--slate-700); }
+</style>

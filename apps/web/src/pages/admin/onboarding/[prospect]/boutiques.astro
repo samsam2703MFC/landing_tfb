@@ -1,0 +1,204 @@
+---
+/**
+ * Étape 7 — les boutiques de la caisse, et celles du client.
+ *
+ * Bloquant à dessein : une boutique vue chez la caisse doit être soit
+ * rapprochée, soit **explicitement ignorée**. Un entrepôt qui enregistre des
+ * sorties de stock fausserait le chiffre d'affaires — mieux vaut l'écarter
+ * sciemment que le découvrir au contrôle de cohérence.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  chargerConnexion,
+  journaliserParcours,
+  listerBoutiques,
+  listerRapprochements,
+  marquerEtape,
+  ouvrirParcours,
+  rafraichirBoutiquesDistantes,
+  rapprocher,
+  rapprochementsEnSuspens,
+} from '../../../../lib/admin/onboarding.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+
+    if (action === 'relire') {
+      const r = await rafraichirBoutiquesDistantes(connexionId, prospectId);
+      if (!r.ok) throw new Error(r.message);
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/boutiques?connexion=${connexionId}&ok=${encodeURIComponent(`${r.vues} boutique(s) vue(s), ${r.nouvelles} nouvelle(s).`)}`,
+        303,
+      );
+    }
+
+    if (action === 'rapprocher') {
+      for (const [cle, valeur] of f.entries()) {
+        if (!cle.startsWith('r_')) continue;
+        const id = cle.slice(2);
+        const v = String(valeur);
+        await rapprocher(id, {
+          boutiqueId: v === 'ignorer' || v === '' ? null : v,
+          ignoree: v === 'ignorer',
+        });
+      }
+      const reste = rapprochementsEnSuspens(await listerRapprochements(connexionId));
+      if (reste.length > 0) {
+        throw new Error(
+          `${reste.length} boutique(s) sans décision : ${reste.map((r) => r.externe_libelle).join(', ')}. `
+          + 'Associez-les, ou ignorez-les explicitement.',
+        );
+      }
+      await marquerEtape(parcours.id, 'boutiques', { connexionId, utilisateurId: qui });
+      await journaliserParcours(parcours.id, {
+        type: 'boutiques', connexionId, utilisateurId: qui,
+        texte: 'Rapprochement des boutiques terminé',
+      });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/historique?connexion=${connexionId}`, 303);
+    }
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let rapprochements = [];
+let boutiques = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (cx) {
+    rapprochements = await listerRapprochements(cx.id);
+    boutiques = await listerBoutiques(prospectId);
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const suspens = rapprochementsEnSuspens(rapprochements);
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Rapprochement des boutiques"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm"
+           href={`${BASE}/admin/onboarding/${prospect.id}/mapping?connexion=${cx.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Le mapping
+        </a>
+        <form method="post">
+          <input type="hidden" name="action" value="relire" />
+          <button class="bouton bouton--sobre bouton--sm" type="submit">
+            <Icone nom="refresh-cw" taille={16} /> Relire les boutiques de la caisse
+          </button>
+        </form>
+        <span class="barre-actions__note">
+          {suspens.length > 0
+            ? `${suspens.length} à trancher.`
+            : `${rapprochements.length} boutique(s) rapprochée(s).`}
+        </span>
+      </div>
+
+      <form method="post">
+        <input type="hidden" name="action" value="rapprocher" />
+        <section class="bloc">
+          <div class="bloc__tete">
+            <div>
+              <h2>Étape 7 — Vos boutiques et les siennes</h2>
+              <p>
+                Rapprochement proposé par ressemblance de nom. Toute boutique de la caisse doit
+                être associée ou ignorée : c'est ce qui empêche un entrepôt de fausser votre
+                chiffre sans qu'on s'en aperçoive.
+              </p>
+            </div>
+            {suspens.length === 0 && rapprochements.length > 0 && (
+              <span class="etat etat--on">tout tranché</span>
+            )}
+          </div>
+
+          {rapprochements.length === 0 ? (
+            <div class="champ">
+              <span class="champ__aide">
+                Aucune boutique lue chez la caisse. Elle n'en fournit peut-être pas la liste —
+                dans ce cas le rapprochement se fera à l'import, sur l'identifiant que portent
+                les ventes.
+              </span>
+            </div>
+          ) : (
+            <div class="roule">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="inline-size:34%">Vue dans {cx.connecteur_nom}</th>
+                    <th style="inline-size:6%"></th>
+                    <th style="inline-size:36%">Votre boutique</th>
+                    <th>État</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rapprochements.map((r) => (
+                    <tr>
+                      <td>
+                        <strong>{r.externe_libelle || r.externe_id}</strong>
+                        <code class="slug">{r.externe_id}</code>
+                      </td>
+                      <td style="text-align:center;color:var(--slate-300)">→</td>
+                      <td>
+                        <select name={`r_${r.id}`}>
+                          <option value="" selected={!r.boutique_id && !r.ignoree}>— à choisir —</option>
+                          {boutiques.map((b) => (
+                            <option value={b.id} selected={String(r.boutique_id) === String(b.id)}>{b.nom}</option>
+                          ))}
+                          <option value="ignorer" selected={r.ignoree}>Ignorer cette boutique</option>
+                        </select>
+                      </td>
+                      <td>
+                        {r.ignoree ? <span class="etat">ignorée</span>
+                          : r.boutique_id ? <span class="etat etat--on">rapprochée</span>
+                          : <span class="etat etat--manque">à trancher</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer et continuer</button>
+          </div>
+
+          <div class="bloc__pied">
+            Une boutique ignorée n'est pas oubliée : ses ventes sont lues et écartées, et le
+            choix reste visible ici. Si une nouvelle boutique apparaît plus tard dans votre
+            caisse, elle reviendra « à trancher » plutôt que d'entrer en silence.
+          </div>
+        </section>
+      </form>
+    </>
+  )}
+</Console>

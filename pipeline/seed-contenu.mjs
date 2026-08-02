@@ -25,8 +25,13 @@ import { createHash } from 'node:crypto';
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
 import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
 import { ETAPES, PACKS, PRESTATIONS, TARIFS } from './contenu-offres.mjs';
+import { BESOINS, CAPACITES, CONNECTEURS } from './contenu-onboarding.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
-import { json, ouvrir, table, upsert } from './lib/db.mjs';
+import { estPostgres, json, ouvrir, table, upsert } from './lib/db.mjs';
+
+/** Vrai et faux du dialecte : MySQL n'a pas de type booléen. */
+const VRAI = () => (estPostgres() ? true : 1);
+const FAUX = () => (estPostgres() ? false : 0);
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 
@@ -395,6 +400,79 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       etapesEcrites += 1;
     }
     if (etapesEcrites > 0) console.log(`✓ ${etapesEcrites} étape(s) de suivi`);
+
+    // ── Onboarding : capacités, besoins des modules, connecteurs ──────────
+    //
+    // Jamais réécrits : une équipe qui a corrigé un manifest dans la console
+    // doit le garder au déploiement suivant. Seule la première insertion pose
+    // les valeurs.
+    let capacitesEcrites = 0;
+    for (const c of CAPACITES) {
+      const dejaLa = await db.requete(`SELECT id FROM ${table('capacites')} WHERE cle = ? LIMIT 1`, [c.cle]);
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('capacites'), 'cle', c.cle, {
+        libelle: c.libelle, description: c.description, ordre: c.ordre,
+      });
+      capacitesEcrites += 1;
+    }
+    if (capacitesEcrites > 0) console.log(`✓ ${capacitesEcrites} capacité(s) de donnée`);
+
+    // Les besoins se rattachent par slug de module et clé de capacité : on
+    // annote le catalogue existant plutôt que d'en tenir un second.
+    const modulesParSlug = new Map(
+      (await db.requete(`SELECT id, slug FROM ${table('modules')}`)).map((m) => [m.slug, m.id]),
+    );
+    const capacitesParCle = new Map(
+      (await db.requete(`SELECT id, cle FROM ${table('capacites')}`)).map((c) => [c.cle, c.id]),
+    );
+    let besoinsEcrits = 0;
+    for (const b of BESOINS) {
+      const moduleId = modulesParSlug.get(b.module);
+      const capaciteId = capacitesParCle.get(b.capacite);
+      // Un module absent du catalogue n'est pas une erreur : le réseau n'a
+      // peut-être pas encore ce produit. On passe, sans bruit.
+      if (!moduleId || !capaciteId) continue;
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('module_capacites')} WHERE module_id = ? AND capacite_id = ? LIMIT 1`,
+        [moduleId, capaciteId],
+      );
+      if (dejaLa.length > 0) continue;
+      await db.executer(
+        `INSERT INTO ${table('module_capacites')} (module_id, capacite_id, requis, note_degradee)
+         VALUES (?, ?, ?, ?)`,
+        [moduleId, capaciteId, b.requis ? VRAI() : FAUX(), b.note_degradee || null],
+      );
+      besoinsEcrits += 1;
+    }
+    if (besoinsEcrits > 0) console.log(`✓ ${besoinsEcrits} besoin(s) de module`);
+
+    let connecteursEcrits = 0;
+    for (const c of CONNECTEURS) {
+      const dejaLa = await db.requete(`SELECT id FROM ${table('connecteurs')} WHERE cle = ? LIMIT 1`, [c.cle]);
+      if (dejaLa.length > 0) continue;
+      await upsert(db, table('connecteurs'), 'cle', c.cle, {
+        nom: c.nom, type: 'api', manifest: JSON.stringify(c.manifest),
+        version_manifest: 1, actif: true, ordre: c.ordre,
+      });
+      const [pose] = await db.requete(`SELECT id FROM ${table('connecteurs')} WHERE cle = ? LIMIT 1`, [c.cle]);
+      for (const cap of c.capacites || []) {
+        const capaciteId = capacitesParCle.get(cap);
+        if (!capaciteId) continue;
+        await db.executer(
+          `INSERT INTO ${table('connecteur_capacites')} (connecteur_id, capacite_id) VALUES (?, ?)`,
+          [pose.id, capaciteId],
+        );
+      }
+      // La version 1 part aussi à l'historique : on veut pouvoir dire avec
+      // quel manifest une connexion a été configurée, dès la première.
+      await db.executer(
+        `INSERT INTO ${table('connecteur_versions')} (connecteur_id, version, manifest, note, ecrit_le)
+         VALUES (?, ?, ?, ?, ?)`,
+        [pose.id, 1, JSON.stringify(c.manifest), 'Version semée', new Date()],
+      );
+      connecteursEcrits += 1;
+    }
+    if (connecteursEcrits > 0) console.log(`✓ ${connecteursEcrits} connecteur(s) de caisse`);
 
     let prestationsEcrites = 0;
     for (const prestation of PRESTATIONS) {

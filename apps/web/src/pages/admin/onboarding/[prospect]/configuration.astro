@@ -1,0 +1,321 @@
+---
+/**
+ * Étapes 4 et 5 — la connexion à une caisse, et son test.
+ *
+ * **Aucun champ n'est écrit dans cette page.** Le formulaire est construit
+ * depuis le manifest du connecteur : un champ ajouté au manifest apparaît ici
+ * sans qu'on touche au code, et c'est toute la promesse de l'architecture.
+ *
+ * Les adresses interrogées sont modifiables : c'est le cas « une adresse pour
+ * les ventes, une autre pour le catalogue », et il est plus fréquent qu'on ne
+ * croit.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  chargerConnecteur,
+  chargerConnexion,
+  enregistrerConfig,
+  enregistrerPoint,
+  journaliserParcours,
+  listerPoints,
+  marquerEtape,
+  ouvrirParcours,
+  poserSecret,
+  secretsPoses,
+  testerConnexion,
+} from '../../../../lib/admin/onboarding.mjs';
+import { coffreOuvert } from '../../../../lib/onboarding/coffre.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+const connexionId = Astro.url.searchParams.get('connexion');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'config');
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+    const cx = await chargerConnexion(connexionId);
+    if (!cx) throw new Error("Cette connexion n'existe pas.");
+    const connecteur = await chargerConnecteur(cx.connecteur_cle);
+
+    if (action === 'config') {
+      const config = {};
+      for (const champ of connecteur.manifest.fields || []) {
+        const valeur = String(f.get(champ.code) ?? '').trim();
+        if (champ.type === 'secret') {
+          // Un secret vide veut dire « ne change rien » : le formulaire ne le
+          // relit jamais, donc il arrive vide à chaque affichage.
+          if (valeur) await poserSecret(cx.id, champ.code, valeur);
+          continue;
+        }
+        if (champ.required && !valeur) throw new Error(`« ${champ.label || champ.code} » est obligatoire.`);
+        config[champ.code] = valeur;
+      }
+      await enregistrerConfig(cx.id, config, connecteur.manifest);
+
+      for (const p of await listerPoints(cx.id)) {
+        const gabarit = String(f.get(`point_${p.genre}`) ?? '').trim();
+        if (gabarit && gabarit !== p.gabarit) await enregistrerPoint(cx.id, p.genre, gabarit);
+      }
+      await marquerEtape(parcours.id, 'configuration', { connexionId: cx.id, utilisateurId: qui });
+      await journaliserParcours(parcours.id, {
+        type: 'configuration', connexionId: cx.id, utilisateurId: qui,
+        texte: `Configuration enregistrée pour « ${cx.libelle} »`,
+      });
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/configuration?connexion=${cx.id}&ok=${encodeURIComponent('Configuration enregistrée.')}`,
+        303,
+      );
+    }
+
+    if (action === 'test') {
+      const r = await testerConnexion(cx.id, { utilisateurId: qui });
+      await journaliserParcours(parcours.id, {
+        type: 'test', connexionId: cx.id, utilisateurId: qui,
+        texte: r.ok
+          ? `Test réussi : ${r.detail.boutiques} boutique(s), ${r.detail.produits} produit(s), ${r.detail.lignes} ligne(s) de vente`
+          : `Test échoué : ${r.code}`,
+        detail: r,
+      });
+      if (r.ok) await marquerEtape(parcours.id, 'test', { connexionId: cx.id, charge: r.detail, utilisateurId: qui });
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/configuration?connexion=${cx.id}`, 303,
+      );
+    }
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let cx = null;
+let connecteur = null;
+let points = [];
+let secrets = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  cx = await chargerConnexion(connexionId);
+  if (cx) {
+    connecteur = await chargerConnecteur(cx.connecteur_cle);
+    points = await listerPoints(cx.id);
+    secrets = await secretsPoses(cx.id);
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if ((!prospect || !cx) && !erreur) return new Response('Connexion introuvable', { status: 404 });
+
+const poses = new Map(secrets.map((s) => [s.champ, s.masque]));
+const champs = (connecteur?.manifest.fields || []).slice().sort((a, b) => (a.order || 0) - (b.order || 0));
+const groupes = [
+  { cle: 'connexion', titre: 'Connexion' },
+  { cle: 'avance', titre: 'Avancé' },
+];
+const dernier = cx?.dernier_test || null;
+const message = Astro.url.searchParams.get('ok');
+const coffre = coffreOuvert();
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+
+/** Ce que l'écran propose de faire après un échec, selon le code. */
+const SUITES = {
+  cle: { mot: 'Corriger la clé', ancre: '#config' },
+  adresses: { mot: 'Revoir les adresses', ancre: '#avance' },
+  reessayer: { mot: 'Réessayer', ancre: '#test' },
+  mapping: { mot: 'Passer au mapping manuel', ancre: null },
+  periode: { mot: 'Élargir la période', ancre: '#avance' },
+};
+---
+
+<Console
+  titre={cx?.libelle || 'Connexion'}
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && cx && connecteur && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Le parcours
+        </a>
+        <span class="etat">{connecteur.nom}</span>
+        <span class="barre-actions__note">
+          Formulaire construit depuis le manifest — {champs.length} champ(s), {points.length} adresse(s).
+        </span>
+      </div>
+
+      {!coffre && (
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Le coffre n'est pas ouvert</h2>
+              <p>
+                <span class="jeton">SECRETS_CLE_1</span> n'est pas posée sur le serveur : la clé
+                d'API ne pourra pas être enregistrée. Le reste du formulaire fonctionne.
+              </p>
+            </div>
+          </div>
+        </section>
+      )}
+
+      <form method="post" id="config">
+        <input type="hidden" name="action" value="config" />
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Étape 4 — Connexion à {connecteur.nom}</h2>
+              <p>
+                Les appels partent <strong>de notre serveur</strong>, jamais de votre navigateur.
+                Une adresse menant à un service interne est refusée, y compris après redirection.
+              </p>
+            </div>
+          </div>
+
+          {groupes.map((g) => {
+            const siens = champs.filter((c) => (c.group || 'connexion') === g.cle);
+            if (siens.length === 0) return null;
+            return (
+              <div class="groupe" id={g.cle}>
+                <span class="groupe__titre">{g.titre}</span>
+                <div class="duo">
+                  {siens.map((c) => (
+                    <div class="champ">
+                      <label for={`c-${c.code}`}>
+                        {c.label || c.code}
+                        {c.required && <span class="champ__requis" aria-hidden="true"> *</span>}
+                      </label>
+                      <input
+                        id={`c-${c.code}`}
+                        type={c.type === 'secret' ? 'password' : c.type === 'url' ? 'url' : 'text'}
+                        name={c.code}
+                        value={c.type === 'secret' ? '' : (cx.config[c.code] ?? c.default ?? '')}
+                        placeholder={c.type === 'secret' && poses.has(c.code)
+                          ? poses.get(c.code) : (c.placeholder || '')}
+                        required={c.required && !(c.type === 'secret' && poses.has(c.code))}
+                        autocomplete={c.type === 'secret' ? 'new-password' : 'off'}
+                      />
+                      {c.help && <span class="champ__aide">{c.help}</span>}
+                      {c.type === 'secret' && poses.has(c.code) && (
+                        <span class="champ__aide">
+                          Une clé est enregistrée ({poses.get(c.code)}). Laissez vide pour la garder —
+                          elle ne se relit pas, même par nous.
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+
+          <div class="groupe" id="avance">
+            <span class="groupe__titre">Les adresses interrogées</span>
+            <p class="champ__aide">
+              Pré-remplies depuis le manifest, modifiables. C'est ici qu'on met une adresse
+              différente pour les ventes et pour le catalogue.
+            </p>
+            <div class="duo">
+              {points.map((p) => (
+                <div class="champ" style="grid-column:1/-1">
+                  <label for={`p-${p.genre}`}>{p.genre}</label>
+                  <input id={`p-${p.genre}`} type="text" name={`point_${p.genre}`}
+                         value={p.gabarit} class="fb-num" />
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">Enregistrer la configuration</button>
+          </div>
+        </section>
+      </form>
+
+      <section class="bloc" id="test">
+        <div class="bloc__tete">
+          <div>
+            <h2>Étape 5 — Test de connexion</h2>
+            <p>Un résultat lisible en moins d'une minute, succès comme échec. Dernier test : {jourHeure(cx.dernier_test_le)}.</p>
+          </div>
+          <form method="post">
+            <input type="hidden" name="action" value="test" />
+            <button class="bouton bouton--marque bouton--sm" type="submit">
+              <Icone nom="refresh-cw" taille={16} /> Tester la connexion
+            </button>
+          </form>
+        </div>
+
+        {dernier && (
+          <div class="bloc__corps">
+            {dernier.ok ? (
+              <div class="promesse promesse--oui">
+                <h3><Icone nom="circle-check" taille={16} /> Connexion établie</h3>
+                <div class="chiffres" style="margin-block-start:10px">
+                  <div class="chiffre"><b>{dernier.detail.boutiques}</b><span>boutiques détectées</span></div>
+                  <div class="chiffre"><b>{dernier.detail.produits}</b><span>produits</span></div>
+                  <div class="chiffre"><b>{dernier.detail.categories}</b><span>catégories</span></div>
+                  <div class="chiffre"><b>{dernier.detail.lignes}</b><span>lignes de vente lues</span></div>
+                </div>
+                <p class="champ__aide" style="margin-block-start:10px">
+                  Période essayée : du {dernier.detail.periode.de} au {dernier.detail.periode.a}.
+                </p>
+              </div>
+            ) : (
+              <div class="promesse promesse--non">
+                <h3>{dernier.message}</h3>
+                {dernier.technique && <p class="champ__aide">{dernier.technique}</p>}
+                <div class="actions" style="margin-block-start:10px">
+                  {(() => {
+                    const suite = SUITES[dernier.suite] || SUITES.reessayer;
+                    return <a class="bouton bouton--sm" href={suite.ancre || '#config'}>{suite.mot}</a>;
+                  })()}
+                  <a class="bouton bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/parc`}>
+                    Changer de caisse
+                  </a>
+                </div>
+              </div>
+            )}
+
+            {Array.isArray(dernier.traces) && dernier.traces.length > 0 && (
+              <details style="margin-block-start:14px">
+                <summary class="champ__aide">Ce qui est réellement parti ({dernier.traces.length} ligne(s))</summary>
+                <pre class="trace">{dernier.traces.join('\n')}</pre>
+              </details>
+            )}
+          </div>
+        )}
+
+        <div class="bloc__pied">
+          {dernier?.ok
+            ? <>La suite : <a href={`${BASE}/admin/onboarding/${prospect.id}/mapping?connexion=${cx.id}`}>vérifier ce que nous avons compris de vos données</a>.</>
+            : 'Toute erreur affichée mène quelque part : jamais de cul-de-sac, jamais de message brut de l’API.'}
+        </div>
+      </section>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  .groupe { margin-block-start: 24px; }
+  .groupe:first-of-type { margin-block-start: 0; }
+  .groupe__titre { display: block; font: 600 var(--text-sm) / 1.3 var(--font-sans); color: var(--slate-700); }
+  .groupe > .champ__aide { margin: 4px 0 12px; }
+  /* Les traces sont du texte de machine : la chasse fixe s'impose, et le fond
+     encré évite de les confondre avec ce que le client doit lire. */
+  .trace {
+    margin: 8px 0 0; padding: 12px 14px; border-radius: 10px;
+    background: var(--navy-900); color: #c8cee6;
+    font: 12px / 1.6 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere;
+    max-block-size: 260px; overflow: auto;
+  }
+</style>

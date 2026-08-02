@@ -151,7 +151,22 @@ export function empreinteValide(motDePasse, empreinte) {
 // ---------------------------------------------------------------------------
 
 /** Les rôles, du plus large au plus étroit. */
-export const ROLES = ['admin', 'commercial'];
+export const ROLES = ['admin', 'commercial', 'technique'];
+
+/** Ce que chaque rôle fait, dit en une phrase pour l'écran des comptes. */
+export const ROLES_DITS = {
+  admin: { nom: 'Administrateur', quoi: 'Tout.' },
+  commercial: {
+    nom: 'Commercial',
+    quoi: 'Offres, contrats, demandes, son portefeuille.',
+    pas: 'Les connexions techniques, les manifests, les clés.',
+  },
+  technique: {
+    nom: 'Technique',
+    quoi: 'Brancher les caisses : connexions, tests, mapping, imports, journaux.',
+    pas: 'Les prix. Ni offres, ni contrats, ni tarifs. Il branche, il ne vend pas.',
+  },
+};
 
 /**
  * Fabrique un jeton : expiration, aléa, identifiant du compte et rôle, signés
@@ -202,23 +217,60 @@ export function jetonValide(jeton) {
  * nouveauté ouverte par oubli, et c'est la grille tarifaire qui serait
  * modifiable par tout le monde.
  */
-const OUVERT_AU_COMMERCIAL = [
+/** Ce que tout compte connecté peut ouvrir, quel que soit son rôle. */
+const COMMUN = [
   // `/admin` est le tableau de bord, et **lui seul** : le déclarer comme un
   // sous-arbre ouvrirait toute la console d'un coup, tarifs compris.
   { chemin: '/admin', arbre: false },
   { chemin: '/admin/deconnexion', arbre: false },
   { chemin: '/admin/motdepasse', arbre: false },
+];
+
+const OUVERT_AU_COMMERCIAL = [
+  ...COMMUN,
   { chemin: '/admin/leads', arbre: true },
   { chemin: '/admin/offres', arbre: true },
   { chemin: '/admin/prospects', arbre: true },
+  { chemin: '/admin/contrats', arbre: true },
+  { chemin: '/admin/pieces', arbre: true },
 ];
+
+/**
+ * Ce qu'un profil technique peut ouvrir.
+ *
+ * Il branche des caisses ; il ne vend pas. La ligne de partage est le prix :
+ * ni offres, ni contrats, ni tarifs, ni marges. Sans ce troisième rôle, poser
+ * une connexion demanderait un compte administrateur — donc l'accès à toute la
+ * grille tarifaire et à tous les contrats, pour quelqu'un dont le métier est
+ * de configurer une API.
+ *
+ * Il ouvre en revanche **n'importe quel client**, parce qu'il dépanne : lui
+ * demander d'être affecté à un portefeuille l'empêcherait de faire son travail
+ * le jour où une synchro tombe chez quelqu'un d'autre.
+ */
+const OUVERT_AU_TECHNIQUE = [
+  ...COMMUN,
+  { chemin: '/admin/onboarding', arbre: true },
+  { chemin: '/admin/connexions', arbre: true },
+  { chemin: '/admin/connecteurs', arbre: true },
+  { chemin: '/admin/boutiques', arbre: true },
+  // La fiche d'un client, pour lire ses coordonnées et ses boutiques. Les
+  // offres et les contrats vivent ailleurs et lui restent fermés.
+  { chemin: '/admin/prospects', arbre: true },
+];
+
+const PAR_ROLE = { commercial: OUVERT_AU_COMMERCIAL, technique: OUVERT_AU_TECHNIQUE };
 
 /** Le rôle a-t-il le droit d'ouvrir ce chemin ? */
 export function cheminAutorise(chemin, role) {
   if (role === 'admin') return true;
   const nu = String(chemin || '').split('?')[0].replace(/\/+$/, '') || '/admin';
-  return OUVERT_AU_COMMERCIAL.some(
-    ({ chemin: permis, arbre }) => nu === permis || (arbre && nu.startsWith(`${permis}/`)),
+  const permis = PAR_ROLE[role];
+  // Un rôle inconnu n'ouvre rien : c'est la même règle que la liste blanche,
+  // appliquée aux rôles eux-mêmes.
+  if (!permis) return false;
+  return permis.some(
+    ({ chemin: p, arbre }) => nu === p || (arbre && nu.startsWith(`${p}/`)),
   );
 }
 

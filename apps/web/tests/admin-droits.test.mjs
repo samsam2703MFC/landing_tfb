@@ -120,8 +120,8 @@ describe('le jeton de session', () => {
     assert.equal(lireJeton('9999999999999.abc.signature'), null);
   });
 
-  it('ne connaît que deux rôles', () => {
-    assert.deepEqual(ROLES, ['admin', 'commercial']);
+  it('ne connaît que trois rôles', () => {
+    assert.deepEqual(ROLES, ['admin', 'commercial', 'technique']);
     // Un rôle inventé retombe sur le plus étroit plutôt que d'ouvrir.
     assert.equal(lireJeton(creerJeton({ id: 7, role: 'superadmin' })).role, 'commercial');
   });
@@ -153,5 +153,47 @@ describe('les mots de passe', () => {
     for (const mauvaise of ['', 'nimporte quoi', 'scrypt$abc', 'md5$sel$empreinte', null]) {
       assert.equal(empreinteValide('un-mot-de-passe-long', mauvaise), false);
     }
+  });
+});
+
+describe('le profil technique', () => {
+  it('ouvre l’onboarding, les connexions et les connecteurs', () => {
+    for (const chemin of ['/admin/onboarding', '/admin/onboarding/12/mapping',
+      '/admin/connexions', '/admin/connecteurs', '/admin/boutiques']) {
+      assert.equal(cheminAutorise(chemin, 'technique'), true, chemin);
+    }
+  });
+
+  it('n’ouvre rien de ce qui touche au prix', () => {
+    // C'est la raison d'être du rôle : brancher une caisse sans donner accès
+    // à toute la grille tarifaire et à tous les contrats.
+    for (const chemin of ['/admin/tarifs', '/admin/offres', '/admin/offres/TFB-2026-0001',
+      '/admin/contrats', '/admin/prestations', '/admin/leads']) {
+      assert.equal(cheminAutorise(chemin, 'technique'), false, chemin);
+    }
+  });
+
+  it('ouvre la fiche d’un client, parce qu’il dépanne n’importe lequel', () => {
+    assert.equal(cheminAutorise('/admin/prospects/7', 'technique'), true);
+  });
+
+  it('ouvre le tableau de bord, mais pas la console entière', () => {
+    assert.equal(cheminAutorise('/admin', 'technique'), true);
+    assert.equal(cheminAutorise('/admin/reglages', 'technique'), false);
+  });
+
+  it('le commercial ne voit toujours pas les connexions techniques', () => {
+    assert.equal(cheminAutorise('/admin/connexions', 'commercial'), false);
+    assert.equal(cheminAutorise('/admin/connecteurs', 'commercial'), false);
+    assert.equal(cheminAutorise('/admin/onboarding', 'commercial'), false);
+  });
+
+  it('un rôle inconnu n’ouvre rien du tout', () => {
+    assert.equal(cheminAutorise('/admin', 'bricoleur'), false);
+    assert.equal(cheminAutorise('/admin/tarifs', 'bricoleur'), false);
+  });
+
+  it('survit à un aller-retour par le jeton', () => {
+    assert.equal(lireJeton(creerJeton({ id: 9, role: 'technique' })).role, 'technique');
   });
 });

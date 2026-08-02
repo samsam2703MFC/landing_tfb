@@ -1,0 +1,270 @@
+---
+/**
+ * Étape 3 — le parc : les boutiques, et la caisse de chacune.
+ *
+ * L'étape que la spécification n'avait pas : elle supposait « une seule
+ * connexion à votre caisse suffit ». C'est faux pour un réseau qui a grandi
+ * par rachats, et le rattraper après coup aurait coûté cher.
+ *
+ * Le groupement se fait une fois. Ajouter une boutique plus tard, c'est la
+ * ranger dans un groupe existant — sans refaire de configuration.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import {
+  ajouterBoutique,
+  creerConnexion,
+  etatParcours,
+  journaliserParcours,
+  listerBoutiques,
+  listerConnecteurs,
+  marquerEtape,
+  ouvrirParcours,
+  supprimerBoutique,
+} from '../../../../lib/admin/onboarding.mjs';
+import { connecteursPossibles } from '../../../../lib/onboarding/moteur.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+
+    if (action === 'boutique') {
+      await ajouterBoutique(prospectId, {
+        nom: f.get('nom'), adresse: f.get('adresse'),
+        fuseau: f.get('fuseau'), coupure_jour: f.get('coupure_jour'),
+      });
+    } else if (action === 'boutique-suppression') {
+      await supprimerBoutique(f.get('boutique_id'));
+    } else if (action === 'groupe') {
+      const id = await creerConnexion({
+        prospectId,
+        connecteurCle: String(f.get('connecteur')),
+        libelle: String(f.get('libelle') || '').trim() || null,
+        utilisateurId: qui,
+      });
+      await journaliserParcours(parcours.id, {
+        type: 'connexion', connexionId: id, utilisateurId: qui,
+        texte: `Groupe « ${f.get('libelle')} » créé sur ${f.get('connecteur')}`,
+      });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/configuration?connexion=${id}`, 303);
+    } else if (action === 'suite') {
+      await marquerEtape(parcours.id, 'parc', { utilisateurId: qui });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}`, 303);
+    }
+    return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/parc`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let etat = null;
+let boutiques = [];
+let connecteurs = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  if (prospect) {
+    etat = await etatParcours(prospect.id);
+    boutiques = await listerBoutiques(prospect.id);
+    connecteurs = connecteursPossibles(
+      await listerConnecteurs(),
+      etat.capacites.requises.map((c) => c.capacite),
+    );
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+const message = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Vos boutiques et leurs caisses"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && etat && (
+    <>
+      <div class="barre-actions">
+        <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}`}>
+          <Icone nom="arrow-left" taille={16} /> Le parcours
+        </a>
+        <form method="post">
+          <input type="hidden" name="action" value="suite" />
+          <button class="bouton bouton--marque bouton--sm" type="submit">Le parc est décrit</button>
+        </form>
+        <span class="barre-actions__note">
+          {boutiques.length} boutique(s), {etat.connexions.length} caisse(s).
+        </span>
+      </div>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Les groupes de boutiques</h2>
+            <p>
+              Un groupe par caisse. Quarante boutiques sur quatre caisses font
+              <strong> quatre connexions, pas quarante</strong> — et le reste du parcours se répète
+              par groupe, jamais par boutique.
+            </p>
+          </div>
+        </div>
+
+        {etat.connexions.length === 0 ? (
+          <div class="champ"><span class="champ__aide">Aucun groupe. Créez le premier ci-dessous.</span></div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr><th>Groupe</th><th>Caisse</th><th>État</th><th></th></tr>
+              </thead>
+              <tbody>
+                {etat.connexions.map((c) => (
+                  <tr>
+                    <td><strong>{c.libelle}</strong></td>
+                    <td>{c.connecteur_nom}<code class="slug">{c.connecteur_cle}</code></td>
+                    <td>
+                      <span class={c.statut === 'active' ? 'etat etat--on'
+                        : c.statut === 'erreur' ? 'etat etat--manque' : 'etat'}>{c.statut}</span>
+                    </td>
+                    <td>
+                      <div class="actions">
+                        <a class="bouton bouton--sobre bouton--sm"
+                           href={`${BASE}/admin/onboarding/${prospect.id}/configuration?connexion=${c.id}`}>
+                          Configurer
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form method="post">
+          <input type="hidden" name="action" value="groupe" />
+          <div class="duo">
+            <div class="champ">
+              <label for="g-libelle">Nom du groupe<span class="champ__requis" aria-hidden="true"> *</span></label>
+              <input id="g-libelle" type="text" name="libelle" required placeholder="Historique Bruxelles" />
+              <span class="champ__aide">Ce qui distingue ce groupe des autres pour le client.</span>
+            </div>
+            <div class="champ">
+              <label for="g-connecteur">Caisse<span class="champ__requis" aria-hidden="true"> *</span></label>
+              <select id="g-connecteur" name="connecteur" required>
+                {connecteurs.map((c) => (
+                  <option value={c.cle}>
+                    {c.nom}{c.beta ? ' (bêta)' : ''}
+                    {c.manquantes.length > 0 ? ` — ne fournit pas : ${c.manquantes.join(', ')}` : ''}
+                  </option>
+                ))}
+              </select>
+              <span class="champ__aide">
+                Les caisses les plus couvrantes d'abord. Une caisse incomplète reste utilisable —
+                on rapprochera à la main ce qu'elle ne donne pas.
+              </span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="plus" taille={16} /> Créer le groupe et le configurer
+            </button>
+          </div>
+        </form>
+
+        <div class="bloc__pied">
+          Une boutique qui n'a aucune caisse connue peut être suivie à la main : elle
+          n'apparaîtra simplement pas dans les chiffres automatiques. Mieux vaut le décider
+          maintenant que le découvrir au contrôle de cohérence.
+        </div>
+      </section>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Les boutiques</h2>
+            <p>
+              Celles que le client reconnaît. Elles seront rapprochées de ce que chaque caisse
+              annonce — les noms ne se ressemblent jamais tout à fait.
+            </p>
+          </div>
+        </div>
+
+        {boutiques.length === 0 ? (
+          <div class="champ"><span class="champ__aide">Aucune boutique déclarée.</span></div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr><th>Nom</th><th>Fuseau</th><th class="nombre">Journée d'exploitation</th><th></th></tr>
+              </thead>
+              <tbody>
+                {boutiques.map((b) => (
+                  <tr>
+                    <td><strong>{b.nom}</strong>{b.adresse && <code class="slug">{b.adresse}</code>}</td>
+                    <td class="champ__aide">{b.fuseau}</td>
+                    <td class="nombre fb-num champ__aide">à partir de {String(b.coupure_jour).padStart(2, '0')}h00</td>
+                    <td>
+                      <form method="post" class="actions"
+                            onsubmit="return confirm('Retirer cette boutique ? Ses ventes déjà importées restent en base.')">
+                        <input type="hidden" name="action" value="boutique-suppression" />
+                        <input type="hidden" name="boutique_id" value={b.id} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Retirer</button>
+                      </form>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <form method="post">
+          <input type="hidden" name="action" value="boutique" />
+          <div class="duo">
+            <div class="champ">
+              <label for="b-nom">Nom<span class="champ__requis" aria-hidden="true"> *</span></label>
+              <input id="b-nom" type="text" name="nom" required placeholder="Boulangerie du Coin — Centre" />
+            </div>
+            <div class="champ">
+              <label for="b-adresse">Adresse</label>
+              <input id="b-adresse" type="text" name="adresse" />
+            </div>
+            <div class="champ">
+              <label for="b-fuseau">Fuseau</label>
+              <input id="b-fuseau" type="text" name="fuseau" value="Europe/Brussels" />
+            </div>
+            <div class="champ champ--nombre">
+              <label for="b-coupure">La journée commence à</label>
+              <span class="tarif__saisie">
+                <input id="b-coupure" type="number" name="coupure_jour" min="0" max="12" value="4" />
+                <span class="tarif__unite">h</span>
+              </span>
+              <span class="champ__aide">Une vente à 01h30 compte pour la veille. Un glacier met 0, un bar 5.</span>
+            </div>
+          </div>
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit">
+              <Icone nom="plus" taille={16} /> Ajouter la boutique
+            </button>
+          </div>
+        </form>
+      </section>
+    </>
+  )}
+</Console>

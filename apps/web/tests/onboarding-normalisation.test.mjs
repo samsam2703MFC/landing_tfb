@@ -215,6 +215,18 @@ describe('les données personnelles', () => {
     const brute = { id: 'L-1', product_name: 'Pain', total: 320, vat: 6 };
     assert.deepEqual(sansDonneesPersonnelles(brute), brute);
   });
+
+  it('garde « name » tout court : c’est le nom du produit', () => {
+    // Le retirer vidait la colonne produit de chaque ligne, en silence, et le
+    // mapping se plaignait ensuite d'un champ introuvable.
+    const brute = { id: 'L-1', name: 'Pain au chocolat', label: 'Viennoiserie', title: 'x' };
+    assert.deepEqual(sansDonneesPersonnelles(brute), brute);
+  });
+
+  it('retire un courriel ou un téléphone, même sans préfixe', () => {
+    const propre = sansDonneesPersonnelles({ id: 'L-1', email: 'x@y.be', phone: '+32', name: 'Pain' });
+    assert.deepEqual(propre, { id: 'L-1', name: 'Pain' });
+  });
 });
 
 describe('le mapping incomplet', () => {
