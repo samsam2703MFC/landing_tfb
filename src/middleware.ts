@@ -31,8 +31,25 @@ function pickLocale(request: NextRequest): string {
   return DEFAULT_LOCALE;
 }
 
+/**
+ * Paths that must never be sent to a locale: the API, the console, the per-tenant
+ * theme page and Next's own assets.
+ *
+ * Checked here rather than in the matcher because the matcher is evaluated against
+ * the FULL path, basePath included. Under NEXT_PUBLIC_BASE_PATH=/landing_tfb its
+ * negative lookahead reads « landing_tfb/… », never recognises « api », and lets
+ * everything through — which redirected /landing_tfb/api/health to
+ * /landing_tfb/fr/api/health, an address that does not exist. Inside the function
+ * `pathname` has already had basePath stripped, so the test is reliable.
+ */
+const NEVER_LOCALISED = ['/api', '/admin', '/preview', '/_next', '/icons', '/brand', '/favicon.ico'];
+
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (NEVER_LOCALISED.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`))) {
+    return NextResponse.next();
+  }
 
   const hasLocale = LOCALES.some((l) => pathname === `/${l}` || pathname.startsWith(`/${l}/`));
   if (hasLocale) return NextResponse.next();
@@ -44,6 +61,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except the API, the back office, and Next's own assets.
-  matcher: ['/((?!api|admin|_next|favicon.ico|icons|brand).*)'],
+  // Deliberately broad: the exclusions live in NEVER_LOCALISED above, where the
+  // path is free of basePath. Keeping them here as well would look like a second
+  // safeguard while being the one that does not work under a sub-path.
+  matcher: ['/((?!_next/static|_next/image).*)'],
 };
