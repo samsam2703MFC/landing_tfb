@@ -6,6 +6,15 @@
  * qui fait l'identité, la couleur ne fait que la renforcer. Deux leviers
  * portent une encre sombre parce que leur fond est clair (contraste AA).
  *
+ * `question` dit ce que le levier mesure, `pourquoi` dit pourquoi il existe :
+ * la première tient sur une pastille, la seconde s'imprime en annexe d'offre,
+ * là où le client découvre le modèle et non l'outil.
+ *
+ * Chaque couleur porte sa valeur littérale en repli — `var(--plum-500,
+ * #7b4488)`. Sans ce repli, une page qui ne charge pas les jetons du design
+ * system, comme l'annexe imprimable d'une offre, affiche six pastilles
+ * transparentes : le code couleur disparaît et la légende ne renvoie à rien.
+ *
  * Ce fichier est la seule source : la page d'accueil, les fiches, l'onboarding
  * et la console lisent tous ces six entrées.
  */
@@ -16,15 +25,19 @@ export const LEVIERS = [
     lettre: 'T',
     nom: 'Trafic',
     question: 'Combien de clients entrent ?',
-    fond: 'var(--ember-500)',
-    encre: 'var(--navy-900)',
+    pourquoi:
+      "Sans clients qui poussent la porte, rien d'autre ne compte. C'est le seul levier qui se joue avant la vente, et le seul qu'un réseau peut actionner pour tous ses points de vente à la fois.",
+    fond: 'var(--ember-500, #f0912a)',
+    encre: 'var(--navy-900, #0c1329)',
   },
   {
     cle: 'recurrence',
     lettre: 'R',
     nom: 'Récurrence',
     question: 'Combien reviennent ?',
-    fond: 'var(--teal-700)',
+    pourquoi:
+      "Un client qui revient coûte moins cher qu'un client à conquérir. C'est le levier qui transforme un bon mois en une rente, et celui qu'on oublie parce qu'il ne se voit pas dans le chiffre du jour.",
+    fond: 'var(--teal-700, #0c6a66)',
     encre: '#fff',
   },
   {
@@ -32,7 +45,9 @@ export const LEVIERS = [
     lettre: 'E',
     nom: 'Expérience',
     question: 'Que vivent-ils sur place ?',
-    fond: 'var(--plum-500)',
+    pourquoi:
+      "Ce qui se passe entre la porte et l'addition décide du retour. C'est le levier que le franchisé tient seul, et celui que le réseau ne peut que rendre possible — jamais imposer.",
+    fond: 'var(--plum-500, #7b4488)',
     encre: '#fff',
   },
   {
@@ -40,7 +55,9 @@ export const LEVIERS = [
     lettre: 'F',
     nom: 'Food Cost',
     question: 'Que coûte ce qu’on sert ?',
-    fond: 'var(--red-500)',
+    pourquoi:
+      "La matière est le premier poste de coût variable, et le plus sensible : un gramme de dérive par portion se compte en dizaines de milliers d'euros à l'échelle d'un réseau.",
+    fond: 'var(--red-500, #c0304a)',
     encre: '#fff',
   },
   {
@@ -48,7 +65,9 @@ export const LEVIERS = [
     lettre: 'L',
     nom: 'Labour',
     question: 'Que coûtent les heures ?',
-    fond: 'var(--blue-500)',
+    pourquoi:
+      "Les heures sont le second poste variable, et le seul qui se pilote au quart d'heure. Trop peu, l'expérience tombe ; trop, la marge part — c'est un arbitrage, pas une économie.",
+    fond: 'var(--blue-500, #2a5fd0)',
     encre: '#fff',
   },
   {
@@ -56,7 +75,9 @@ export const LEVIERS = [
     lettre: 'O',
     nom: 'Overhead',
     question: 'Que coûte la structure ?',
-    fond: 'var(--slate-700)',
+    pourquoi:
+      "Loyers, licences, siège : ce qui ne bouge pas avec le chiffre. C'est le levier le plus lent à corriger, donc celui qu'il faut décider juste au départ.",
+    fond: 'var(--slate-700, #3f4558)',
     encre: '#fff',
   },
 ];

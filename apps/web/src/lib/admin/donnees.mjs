@@ -931,6 +931,68 @@ export async function packsVendables() {
   });
 }
 
+/**
+ * Le dossier d'annexe d'une offre : ce que le client a retenu, en clair.
+ *
+ * On repart des **copies** posées sur l'offre — packs et modules — et non du
+ * catalogue : une offre partie doit rester lisible telle qu'elle a été
+ * signée, même si un pack a changé de composition depuis. Seuls le texte des
+ * fiches et les captures viennent du catalogue, parce qu'ils décrivent le
+ * produit et non le prix.
+ *
+ * La caisse est un cas à part : quand le réseau garde la sienne, le module de
+ * caisse n'est pas livré, et l'annexe ne doit pas le montrer.
+ */
+export async function dossierAnnexe(offre) {
+  const db = await connexion();
+  const parApi = offre.socle_pos === 'api';
+
+  const retenus = [];
+  for (const p of offre.packs || []) {
+    for (const m of p.modules || []) {
+      if (parApi && m.slug === 'pos') continue;
+      retenus.push({ slug: m.slug, pack: p.nom });
+    }
+  }
+  for (const m of offre.modules || []) retenus.push({ slug: m.slug, pack: null });
+  if (retenus.length === 0) return [];
+
+  const trous = retenus.map(() => '?').join(', ');
+  const fiches = await db.requete(
+    `SELECT id, slug, nom, accroche, problemes, benefices, leviers, groupe
+     FROM ${table('modules')} WHERE slug IN (${trous})`,
+    retenus.map((r) => r.slug),
+  );
+  const captures = fiches.length > 0
+    ? await db.requete(
+        `SELECT module_id, fichier, titre FROM ${table('captures')}
+         WHERE module_id IN (${fiches.map(() => '?').join(', ')}) ORDER BY module_id, ordre`,
+        fiches.map((f) => f.id),
+      )
+    : [];
+
+  const parSlug = new Map(fiches.map((f) => [f.slug, f]));
+  return retenus
+    .map(({ slug, pack }) => {
+      const f = parSlug.get(slug);
+      if (!f) return null;
+      return {
+        slug,
+        pack,
+        nom: f.nom || slug,
+        groupe: f.groupe,
+        accroche: f.accroche,
+        // Les trois premiers de chaque côté : au-delà, la page se lit comme
+        // un catalogue et non comme une proposition.
+        problemes: lireJson(f.problemes, []).slice(0, 3),
+        benefices: lireJson(f.benefices, []).slice(0, 3),
+        leviers: lireJson(f.leviers, []),
+        captures: captures.filter((c) => c.module_id === f.id),
+      };
+    })
+    .filter(Boolean);
+}
+
 /** Les modules vendus à l'unité : tout ce qui n'est dans aucun pack. */
 export async function modulesOptionnels() {
   return (await modulesVendables()).filter((m) => !m.pack);

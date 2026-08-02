@@ -987,6 +987,14 @@ const ETAT_STATUT = {
               <button class="bouton bouton--sobre bouton--sm" type="submit">Marquer {s}</button>
             </form>
           ))}
+          <a
+            class="bouton bouton--sobre bouton--sm"
+            href={`${BASE}/admin/offres/${offre.reference}/annexe?version=${offre.version}`}
+            target="_blank"
+            rel="noopener"
+          >
+            <Icone nom="file-text" taille={14} /> Annexe imprimable
+          </a>
           <form method="post">
             <input type="hidden" name="action" value="version" />
             <button class="bouton bouton--sobre bouton--sm" type="submit">
