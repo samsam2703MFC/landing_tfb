@@ -1,6 +1,8 @@
 import { Badge, Card, Icon } from '@/design-system';
 import { catalogueEntries, guardsFor } from '@/lib/data/catalogue';
 import { consumersOfResource } from '@/lib/config/store';
+import { listProposals, proposalCode } from '@/lib/data/proposals';
+import { CatalogueImport, CatalogueProposals } from '@/components/admin/CatalogueImport';
 
 /**
  * Catalogue de données — the library of resources a tenant's PWA may read.
@@ -11,13 +13,25 @@ import { consumersOfResource } from '@/lib/config/store';
  */
 export default async function CataloguePage() {
   const entries = catalogueEntries();
-  const consumers = await Promise.all(entries.map((e) => consumersOfResource(e.key)));
+  const [consumers, proposals] = await Promise.all([
+    Promise.all(entries.map((e) => consumersOfResource(e.key))),
+    listProposals(),
+  ]);
 
   const served = entries.filter((e) => !e.resource.deprecated).length;
   const deprecated = entries.length - served;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-4)', maxWidth: 1240 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)' }}>
+        <span style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>
+          {entries.length} ressources servies · {proposals.length} proposition(s) en attente de revue
+        </span>
+        <span style={{ marginInlineStart: 'auto' }}>
+          <CatalogueImport />
+        </span>
+      </div>
+
       <div role="status" style={infoStyle}>
         <Icon name="info" size={17} style={{ marginTop: 1, flex: 'none' }} />
         <span style={{ font: 'var(--type-body-sm)' }}>
@@ -32,6 +46,8 @@ export default async function CataloguePage() {
         <Tile label="Contrats dépréciés" value={deprecated} unit="encore servis" />
         <Tile label="Profils consommateurs" value={new Set(consumers.flat()).size} unit="tenants" />
       </div>
+
+      <CatalogueProposals proposals={proposals.map((p) => ({ ...p, code: proposalCode(p) }))} />
 
       {entries.map(({ key, resource }, i) => {
         const guards = guardsFor(resource);

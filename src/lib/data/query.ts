@@ -123,7 +123,34 @@ export async function runQueryResource(
   values.push(options.limit);
 
   const rows = await prisma.$queryRawUnsafe<Record<string, unknown>[]>(sql, ...values);
-  return rows;
+  return rows.map(normaliseRow);
+}
+
+/**
+ * MySQL's driver hands back BIGINT as a JS bigint and DATE as a Date, neither of
+ * which JSON.stringify can be trusted with — a bigint makes it throw outright, which
+ * turned every resource with an id column into a 503. Normalising here rather than in
+ * the route keeps the catalogue's output shape the same for every caller.
+ *
+ * A bigint beyond Number.MAX_SAFE_INTEGER becomes a string rather than a silently
+ * rounded number: a wrong id is worse than an inconvenient one.
+ */
+function normaliseRow(row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(row)) {
+    if (typeof value === 'bigint') {
+      out[key] = value >= BigInt(Number.MIN_SAFE_INTEGER) && value <= BigInt(Number.MAX_SAFE_INTEGER)
+        ? Number(value)
+        : value.toString();
+    } else if (value instanceof Date) {
+      out[key] = value.toISOString();
+    } else if (Buffer.isBuffer(value)) {
+      out[key] = value.toString('base64');
+    } else {
+      out[key] = value;
+    }
+  }
+  return out;
 }
 
 /**

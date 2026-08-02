@@ -160,6 +160,19 @@ The catalogue is code, so it is reviewed in a pull request. `/admin/catalogue` i
 read-only and shows the guarantees per resource, computed rather than asserted:
 tenant column, column allowlist, sortable columns, row ceiling, writes refused.
 
+**The import wizard proposes, it does not publish.** *Importer depuis une table* reads
+`information_schema` (scoped to `DATABASE()`, so it cannot enumerate another database
+on the same server) and writes a *proposal*: a declaration stored in `tfb_settings`,
+listed on the catalogue screen, and served by no route. Making it real means pasting
+the generated entry into `catalogue.ts` and putting it through review.
+
+Its defaults are opt-in, not opt-out. Columns matching a margin, HR, personal-data or
+secret pattern start unchecked; the tenant column is excluded from the exposed set
+(it filters, it does not leave); sorting is only offered on columns that carry an
+index; and the last step refuses to produce anything without a tenant column. When the
+source is a bare table it says so first and offers the `CREATE VIEW` — as text, to run
+yourself. This app never issues DDL.
+
 **Reading rows needs a tenant identity that this app does not have yet.**
 `/api/data/:resource` never infers a tenant from `?tenant=` for an anonymous caller —
 that is exactly how one customer reads another's rows. It currently resolves the
@@ -253,15 +266,27 @@ reachable from the machine it was built on, so the migration, the seed and the r
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
 
-The per-tenant configuration layer was additionally checked by running its pure logic
-directly — registry validation, the three-layer resolution chain, and the request
-parsing that the `/api/data` safety argument rests on (undeclared column, disallowed
-operator, unindexed sort and over-large `limit` are each refused; SQL identifiers
-reject injection). Those checks are not committed: the repo has no test runner, and
-adding one was outside this change. The database-backed halves — reading and writing
-`tfb_settings`, publishing, and executing a `query` resource against a view — are
-**unverified**, and the views the catalogue names (`v_sales_daily`,
-`v_loyalty_members`) do not exist yet.
+The per-tenant configuration layer **was** run end to end, against a real MySQL-family
+database (MariaDB 10.11) with the migration and seed applied: registry validation, the
+three-layer resolution chain, draft/publish and version increment, override counting,
+introspection over `information_schema`, proposal validation, and executing a `query`
+resource through a view. The refusals were exercised too — undeclared column,
+disallowed operator, unindexed sort, over-large `limit`, missing tenant column,
+unauthenticated `/api/data` (401), `POST` to a generated resource (405), and an
+injection attempt through the tenant value (0 rows, bound parameter).
+
+The console was then driven in a browser against that database: logging in, editing a
+profile, publishing, and running the import wizard through to a stored proposal. Two
+things that only a live run surfaces were found and fixed this way — see the
+BIGINT note in `src/lib/data/query.ts`.
+
+Still unverified: the `proxy` half of the catalogue, which needs a reachable
+`BILLING_SERVICE_URL` (it refuses explicitly rather than guessing while unset), and the
+views the shipped catalogue names — `v_sales_daily` and `v_loyalty_members` — which do
+not exist in your schema yet. Create them, or replace those entries with your own.
+
+The check scripts are not committed: the repo has no test runner, and adding one was
+outside this change.
 
 ## Known gaps
 
