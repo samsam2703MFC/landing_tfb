@@ -337,17 +337,22 @@ const RUBRIQUES = TOUTES
          pas sur ce qu'on dépose directement entre les deux : un champ, une
          grille, une barre de filtres s'y collaient contre la bordure. On les
          rentre tous d'un coup, plutôt que de citer un à un les écrans où le
-         cas se présente — le prochain formulaire ajouté sera bon d'office. */
+         cas se présente — le prochain formulaire ajouté sera bon d'office.
+      
+         C'est une **marge**, et le mot compte : un padding rentre le contenu
+         sans déplacer la bordure, si bien qu'une bande encadrée — la saisie
+         des points de vente, un encadré d'alerte — venait buter contre le
+         bord du bloc alors que son texte, lui, était bien rentré. */
       .bloc > :not(.bloc__tete):not(.bloc__pied):not(.bloc__corps):not(.roule) {
-        padding-inline: 16px;
+        margin-inline: 16px;
       }
       /* …sauf une table, qui doit aller d'une bordure à l'autre. Quand elle
          vit dans un formulaire déjà rentré, elle en ressort. */
       .bloc > form > .roule, .bloc > fieldset > .roule { margin-inline: -16px; }
       /* Le dernier élément ne doit pas non plus toucher le fond du bloc. */
       .bloc > :last-child:not(.bloc__pied):not(.roule) { padding-block-end: 16px; }
-      /* Un fieldset nu ne redouble pas le padding de ses enfants. */
-      .bloc > fieldset.nu > :not(.roule) { padding-inline: 0; }
+      /* Un fieldset nu ne redouble pas la marge de ses enfants. */
+      .bloc > fieldset.nu > :not(.roule) { margin-inline: 0; }
       /* Dans une table, les actions d'une ligne tiennent sur une ligne. */
       td .actions { flex-wrap: nowrap; }
       td .actions form { margin: 0; }
@@ -378,6 +383,36 @@ const RUBRIQUES = TOUTES
       /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
          mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
       .champ__requis { color: var(--plum-600); }
+
+      /* ── Vignettes ─────────────────────────────────────────────────────
+         Une case à cocher ou un bouton radio dans un encadré cliquable : un
+         pack, une option, une formule. Ces styles vivaient dans la fiche
+         d'offre, donc les vignettes des autres écrans s'affichaient nues —
+         un `<strong>` collé à son aide, sans bordure ni respiration. Elles
+         appartiennent à la console, pas à un écran. */
+      .cases { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr)); }
+      .case, .formule {
+        display: flex; align-items: start; gap: 10px;
+        padding: 13px 15px; min-block-size: 52px;
+        border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+        cursor: pointer; transition: var(--transition-control);
+      }
+      .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
+      .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
+      .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+      .case__prix { font-size: var(--text-sm); color: var(--slate-600); }
+      .case__tete { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+      .case__tete .case__prix { margin-inline-start: auto; white-space: nowrap; }
+      /* Ce que le module rapporte, dit en une ligne : c'est l'argument de
+         vente, il mérite d'être lisible sans survoler quoi que ce soit. */
+      .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--teal-700); }
+      .case--module { align-items: start; }
+      .case--seule { inline-size: 100%; }
+
+      /* La version nue : une case à cocher et son mot, sans encadré. Dans une
+         cellule de table ou une liste dense, la vignette est trop grande. */
+      .coche { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+      .coche input { inline-size: auto; margin: 0; cursor: pointer; }
 
       /* Dans une rangée de champs, une vignette occupe toute la hauteur de sa
          case : sinon elle flotte au-dessus des saisies voisines, plus courte

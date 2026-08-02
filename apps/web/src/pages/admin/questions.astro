@@ -141,9 +141,9 @@ const muettes = questions.filter((q) => (q.slugs || []).length === 0);
 
           <div class="champ">
             <span class="legende">Modules déclenchés ({(q.slugs || []).length})</span>
-            <div class="cases">
+            <div class="coches">
               {modules.map((m) => (
-                <label class="case">
+                <label class="coche">
                   <input type="checkbox" name="slugs" value={m.slug} checked={(q.slugs || []).includes(m.slug)} />
                   <span>{m.nom || m.slug}</span>
                 </label>
@@ -197,9 +197,9 @@ const muettes = questions.filter((q) => (q.slugs || []).length === 0);
 
           <div class="champ">
             <span class="legende">Modules déclenchés</span>
-            <div class="cases">
+            <div class="coches">
               {modules.map((m) => (
-                <label class="case">
+                <label class="coche">
                   <input type="checkbox" name="slugs" value={m.slug} />
                   <span>{m.nom || m.slug}</span>
                 </label>
@@ -232,8 +232,11 @@ const muettes = questions.filter((q) => (q.slugs || []).length === 0);
   .question-ligne__tag, .question-ligne__ordre { display: grid; gap: 5px; }
   .question-ligne__ordre :global(input) { inline-size: 6rem; }
 
-  /* Treize modules : une grille de cases, pas une colonne interminable. */
-  .cases { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 6px 14px; }
-  .case { display: flex; align-items: center; gap: 8px; font: var(--type-body-sm); cursor: pointer; }
-  .case :global(input) { inline-size: auto; margin: 0; cursor: pointer; }
+  /* Treize modules : une grille de cases à cocher, pas une colonne
+     interminable. Nom distinct de la vignette `.case` de la console : ce sont
+     deux objets différents, et partager le nom faisait hériter ces cases d'un
+     encadré qui n'a rien à faire ici. */
+  .coches { display: grid; grid-template-columns: repeat(auto-fill, minmax(13rem, 1fr)); gap: 6px 14px; }
+  .coche { display: flex; align-items: center; gap: 8px; font: var(--type-body-sm); cursor: pointer; }
+  .coche :global(input) { inline-size: auto; margin: 0; cursor: pointer; }
 </style>

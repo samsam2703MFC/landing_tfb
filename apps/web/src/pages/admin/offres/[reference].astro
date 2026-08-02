@@ -1015,24 +1015,6 @@ const ETAT_STATUT = {
   .nu { border: 0; margin: 0; padding: 0; min-inline-size: 0; }
   .nu:disabled { opacity: 0.75; }
 
-  .cases { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(19rem, 100%), 1fr)); }
-  .case, .formule {
-    display: flex; align-items: start; gap: 10px;
-    padding: 13px 15px; min-block-size: 52px;
-    border: 1px solid var(--slate-200); border-radius: var(--radius-control);
-    cursor: pointer; transition: var(--transition-control);
-  }
-  .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
-  .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
-  .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
-  .case__prix { font-size: var(--text-sm); color: var(--slate-600); }
-  .case__tete { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
-  .case__tete .case__prix { margin-inline-start: auto; white-space: nowrap; }
-  /* Ce que le module rapporte, dit en une ligne : c'est l'argument de vente,
-     il mérite d'être lisible sans survoler quoi que ce soit. */
-  .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--teal-700); }
-  .case--module { align-items: start; }
-  .case--seule { inline-size: 100%; }
 
   /* Les packs, en cartes de même hauteur. Elles le sont parce qu'elles sont
      seules dans la grille : le choix de la caisse vivait dans la colonne du

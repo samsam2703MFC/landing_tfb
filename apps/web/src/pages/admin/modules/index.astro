@@ -231,9 +231,11 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   />
                 </td>
                 <td>
-                  <label class="case case--seule">
+                  {/* Dans une cellule étroite, la vignette encadrée se pliait
+                      sur trois lignes : une case et son mot suffisent. */}
+                  <label class="coche">
                     <input form={`pack-${p.cle}`} type="checkbox" name="base" value="1" checked={p.base} />
-                    <span><span class="champ__aide">modèle de base</span></span>
+                    <span class="champ__aide">modèle de base</span>
                   </label>
                 </td>
                 <td>
