@@ -26,6 +26,7 @@ import {
 import { REGISTRE, controlerCharte, resoudreTout, valeursResolues } from '../../../lib/charte/registre.mjs';
 import { cleCharte } from '../../../lib/admin/session.mjs';
 import { lireFeuille, tailleFeuille } from '../../../lib/charte/import.mjs';
+import { cssCharte, facesCharte } from '../../../lib/charte/theme.mjs';
 import {
   GRAISSES, ROLES, STYLES, TYPES_ACCEPTES,
   ajouterPolice, listerPolices, supprimerPolice,
@@ -48,13 +49,25 @@ if (Astro.request.method === 'POST') {
   const qui = session.nom || session.identifiant || (session.secours ? 'clé de secours' : null);
 
   if (action === 'import-css') {
+    // Deux entrées, un seul analyseur. Le collage passe en premier : quand les
+    // deux champs sont remplis, c'est celui qu'on vient de taper qui compte.
     const fichier = form.get('feuille');
-    if (!fichier || typeof fichier === 'string' || !fichier.size) {
-      erreur = 'Aucun fichier choisi.';
-    } else if (fichier.size > 2 * 1024 * 1024) {
+    const colle = String(form.get('colle') || '').trim();
+    const trop = 2 * 1024 * 1024;
+
+    let texte = null;
+    if (colle) {
+      if (colle.length > trop) erreur = 'Texte trop long — deux mégaoctets suffisent largement à une charte.';
+      else texte = colle;
+    } else if (!fichier || typeof fichier === 'string' || !fichier.size) {
+      erreur = 'Collez du CSS ou choisissez un fichier.';
+    } else if (fichier.size > trop) {
       erreur = 'Feuille trop lourde — deux mégaoctets suffisent largement à une charte.';
     } else {
-      const texte = await fichier.text();
+      texte = await fichier.text();
+    }
+
+    if (texte !== null) {
       const lu = lireFeuille(texte);
       if (Object.keys(lu.valeurs).length === 0) {
         erreur = 'Aucune variable reconnue dans cette feuille. Les valeurs attendues sont des propriétés personnalisées (--brand, --primary, …).';
@@ -121,6 +134,14 @@ const nom = estMaison ? 'Charte maison' : (prospect?.raison_sociale || `Prospect
 const lienClient = estMaison ? null : lien(`/charte/${id}?cle=${cleCharte(id)}`);
 
 const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'registre' };
+
+// La charte du brouillon telle qu'elle sortira, pour qui veut la relire ou la
+// reprendre ailleurs. C'est le pendant du collage : on entre du CSS, on en
+// ressort — sans quoi la charte serait un aller sans retour.
+const feuilleProduite = [
+  facesCharte(polices),
+  `:root {\n  ${cssCharte(valeursResolues(brouillon.donnees, maison.donnees), polices)}\n}`,
+].filter(Boolean).join('\n');
 ---
 
 <Console titre={nom} actif="charte" compteurs={chiffres}>
@@ -233,18 +254,23 @@ const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'regis
     <h3>Importer une charte existante</h3>
     <p class="note">
       La feuille est <strong>lue</strong>, pas installée. On y cherche les variables qui décrivent
-      une marque et on les reporte ci-dessus ; rien de son contenu n'atteint une balise
-      <span class="mono">&lt;style&gt;</span>. Le CSS n'est pas inerte — un
+      une marque et on les reporte ci-dessus ; rien de son contenu n'atteint une balise{' '}
+      <span class="mono">&lt;style&gt;</span>. Le CSS n'est pas inerte — un{' '}
       <span class="mono">url()</span> dans un sélecteur d'attribut exfiltre ce qu'un utilisateur
       tape, et une règle <span class="mono">content</span> réécrit ce qu'un client lit. Ce qui n'a
       pas pu être repris est affiché, jamais ignoré en silence.
     </p>
-    <form method="post" enctype="multipart/form-data" class="enligne">
+    <form method="post" enctype="multipart/form-data">
       <input type="hidden" name="action" value="import-css" />
-      <input type="file" name="feuille" accept=".css,text/css" required />
-      <button class="bouton bouton--sobre" type="submit">
-        <Icone nom="download" taille={15} /> Lire la feuille
-      </button>
+      <textarea name="colle" rows="7" class="colle" spellcheck="false"
+                placeholder={':root {\n  --brand: #7A1F3D;\n  --accent: rgb(212, 160, 23);\n  --radius-card: 8px;\n}'}></textarea>
+      <div class="enligne">
+        <button class="bouton bouton--sobre" type="submit">
+          <Icone nom="download" taille={15} /> Lire ce CSS
+        </button>
+        <span class="ou">ou depuis un fichier</span>
+        <input type="file" name="feuille" accept=".css,text/css" />
+      </div>
     </form>
 
     {rapport && (
@@ -282,13 +308,23 @@ const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'regis
     )}
   </div>
 
+  <details class="cellule import">
+    <summary>Le CSS que produit cette charte</summary>
+    <p class="aide">
+      Ce que le client reçoit, à l'instant, brouillon compris. À relire, ou à reprendre dans un
+      autre outil — l'import n'est pas un aller sans retour.
+    </p>
+    <textarea class="colle colle--sortie" rows="10" readonly spellcheck="false"
+              onclick="this.select()">{feuilleProduite}</textarea>
+  </details>
+
   <div class="cellule import">
     <h3>Les polices du client</h3>
     <p class="note">
       Un fichier de police est un binaire inerte : il se dessine, il ne s'exécute pas. C'est
-      pourquoi il est accepté tel quel là où le CSS ne l'est pas. Le
+      pourquoi il est accepté tel quel là où le CSS ne l'est pas. Le{' '}
       <span class="mono">@font-face</span> est fabriqué à partir de ce que vous déclarez ici, jamais
-      repris du fichier. Pour les utiliser, choisissez
+      repris du fichier. Pour les utiliser, choisissez{' '}
       <em>« Les polices importées du client »</em> dans les réglages de police ci-dessus.
     </p>
 
@@ -413,4 +449,10 @@ const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'regis
   .mini input, .mini select { font-size: var(--text-sm); }
   .fichier { flex: 1 1 220px; }
   .fin { text-align: end; }
+  .colle { inline-size: 100%; font: 12px / 1.6 var(--font-mono); padding: 10px 12px;
+           border: 1px solid var(--slate-200); border-radius: var(--radius-control);
+           resize: vertical; margin-block: 8px; }
+  .colle--sortie { background: var(--slate-50); color: var(--slate-600); }
+  .ou { color: var(--slate-500); font-size: var(--text-xs); }
+  summary { cursor: pointer; font: 600 var(--text-base) / 1.3 var(--font-display); }
 </style>
