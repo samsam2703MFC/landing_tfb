@@ -1,0 +1,346 @@
+---
+/**
+ * La dernière étape — tout est en place.
+ *
+ * Un écran de fin n'est pas une politesse. C'est le seul endroit où l'on
+ * vérifie que ce qu'on vient de brancher **fonctionne vraiment** : que les
+ * ventes sont arrivées, qu'il y en a autant que de boutiques, et que la
+ * prochaine synchronisation est bien programmée. Une mise en route qu'on
+ * déclare finie sans regarder ces trois chiffres se découvre vide un mois
+ * plus tard, quand le client ouvre son tableau de bord pour la première fois.
+ *
+ * Elle ne se déclare donc pas terminée toute seule : le bouton refuse tant
+ * qu'une caisse n'est pas active. Et si le client veut arrêter là malgré
+ * tout, il le peut — mais l'écran dit ce qui restera éteint.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { connexion, table } from '../../../../lib/db.mjs';
+import {
+  etatParcours,
+  journaliserParcours,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { bilanConnexion, listerTaches } from '../../../../lib/admin/sync.mjs';
+import { avancement } from '../../../../lib/onboarding/moteur.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const qui = (Astro.locals.session || {}).id || null;
+    const parcours = await ouvrirParcours(prospectId);
+    const db = await connexion();
+
+    if (String(f.get('action')) === 'rouvrir') {
+      await db.executer(
+        `UPDATE ${table('parcours')} SET statut = ?, fin_le = ? WHERE id = ?`,
+        ['en_cours', null, parcours.id],
+      );
+      await journaliserParcours(parcours.id, {
+        type: 'fin', utilisateurId: qui,
+        texte: 'Mise en route rouverte : il restait quelque chose à brancher.',
+      });
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/fin?ok=${encodeURIComponent('Mise en route rouverte.')}`, 303,
+      );
+    }
+
+    await marquerEtape(parcours.id, 'fin', { utilisateurId: qui });
+    await db.executer(
+      `UPDATE ${table('parcours')} SET statut = ?, fin_le = ? WHERE id = ?`,
+      ['termine', new Date(), parcours.id],
+    );
+    await journaliserParcours(parcours.id, {
+      type: 'fin', utilisateurId: qui, texte: 'Mise en route déclarée terminée.',
+    });
+    return Astro.redirect(
+      `${BASE}/admin/onboarding/${prospectId}?ok=${encodeURIComponent('Mise en route terminée.')}`, 303,
+    );
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let etat = null;
+let chiffres = {};
+let caisses = [];
+try {
+  prospect = await chargerProspect(prospectId);
+  if (prospect) {
+    etat = await etatParcours(prospect.id);
+    // Pour chaque caisse : ce qui est réellement entré, et ce qui est prévu.
+    // Les deux ensemble — sans le second, une caisse qui a importé son
+    // historique puis ne s'est jamais reprogrammée aurait l'air en ordre.
+    caisses = await Promise.all(etat.connexions.map(async (c) => ({
+      connexion: c,
+      chiffre: await bilanConnexion(c.id).catch(() => null),
+      taches: await listerTaches(c.id).catch(() => []),
+    })));
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || err.message;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const suivi = etat ? avancement(etat.plan.etapes, etat.faites) : null;
+const actives = caisses.filter((c) => c.connexion.statut === 'active');
+const muettes = caisses.filter((c) => !c.chiffre || !Number(c.chiffre.lignes));
+const sansTache = caisses.filter((c) => c.taches.length === 0);
+
+/**
+ * Ce qui empêche de dire « c'est fini ».
+ *
+ * Une seule chose bloque vraiment : zéro caisse active. Tout le reste est un
+ * avertissement — un réseau peut légitimement finir sa mise en route avec une
+ * caisse encore muette parce qu'elle ouvre la semaine prochaine.
+ */
+const empechements = [];
+if (caisses.length === 0) {
+  empechements.push("Aucune caisse n'est branchée : il n'y a rien à terminer.");
+} else if (actives.length === 0) {
+  empechements.push('Aucune caisse n’est active. Terminez au moins une synchronisation.');
+}
+
+const termine = etat?.parcours?.statut === 'termine';
+const message = Astro.url.searchParams.get('ok');
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const nombre = (n) => new Intl.NumberFormat('fr-BE').format(Number(n) || 0);
+---
+
+<Console
+  titre="Tout est en place"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && etat && (
+    <>
+      {/*
+        Le formulaire enveloppe la barre, il ne s'y glisse pas : un `<form>`
+        posé entre le lien et le bouton ajoute un niveau de boîte que la
+        barre ne sait pas aligner, et le bouton remonte de vingt-cinq pixels
+        au-dessus de son voisin. C'est ce que font les autres étapes.
+
+        Chaque bouton porte son action, et il n'y a pas de champ caché
+        « action » : les deux seraient envoyés, et c'est le caché qui
+        gagnerait.
+      */}
+      <form method="post">
+        <div class="barre-actions">
+          <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}`}>
+            <Icone nom="arrow-left" taille={16} /> Le parcours
+          </a>
+          {termine ? (
+            <button class="bouton bouton--sobre" type="submit" name="action" value="rouvrir">
+              Rouvrir la mise en route
+            </button>
+          ) : (
+            <button
+              class="bouton bouton--marque"
+              type="submit"
+              name="action"
+              value="clore"
+              disabled={empechements.length > 0}
+            >Déclarer la mise en route terminée</button>
+          )}
+          <span class="barre-actions__note">
+            {termine
+              ? `Terminée le ${jourHeure(etat.parcours.fin_le)}.`
+              : empechements.length > 0
+                ? empechements[0]
+                : `${actives.length} caisse(s) active(s) sur ${caisses.length}.`}
+          </span>
+        </div>
+      </form>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Ce qui tourne maintenant</h2>
+            <p>
+              Les trois chiffres qui disent qu'une mise en route a vraiment abouti : des ventes
+              sont entrées, elles couvrent les boutiques attendues, et la prochaine
+              synchronisation est programmée. Sans eux, « terminée » ne veut rien dire.
+            </p>
+          </div>
+          <span class={termine ? 'etat etat--on' : suivi?.fini ? 'etat etat--on' : 'etat etat--manque'}>
+            {termine ? 'terminée' : suivi?.fini ? 'prête à clore' : 'en cours'}
+          </span>
+        </div>
+
+        <div class="bloc__corps">
+          <div class="chiffres">
+            <div class="chiffre">
+              <b class={actives.length > 0 ? 'etat etat--on' : 'etat etat--manque'}>{actives.length}</b>
+              <span>caisse(s) active(s) sur {caisses.length}</span>
+            </div>
+            <div class="chiffre">
+              <b class="fb-num">{nombre(caisses.reduce((n, c) => n + Number(c.chiffre?.lignes || 0), 0))}</b>
+              <span>vente(s) importée(s)</span>
+            </div>
+            <div class="chiffre">
+              <b class="fb-num">{nombre(caisses.reduce((n, c) => n + Number(c.chiffre?.boutiques || 0), 0))}</b>
+              <span>boutique(s) qui ont vendu</span>
+            </div>
+            <div class="chiffre">
+              {/*
+                Zéro sur zéro n'est pas un bon score. Sans la première
+                condition, un parcours sans aucune caisse affichait
+                « 0 synchronisation programmée » en vert — le chiffre le plus
+                inquiétant de l'écran, habillé en réussite.
+              */}
+              <b class={caisses.length > 0 && sansTache.length === 0 ? 'etat etat--on' : 'etat etat--manque'}>
+                {caisses.length - sansTache.length}
+              </b>
+              <span>synchronisation(s) programmée(s)</span>
+            </div>
+          </div>
+        </div>
+
+        {caisses.length > 0 && (
+          <div class="roule">
+            <table class="bilan">
+              <thead>
+                <tr>
+                  <th>Caisse</th><th>État</th>
+                  <th class="nombre">Ventes</th><th>Première</th><th>Dernière</th>
+                  <th>Prochaine synchro</th>
+                </tr>
+              </thead>
+              <tbody>
+                {caisses.map((c) => (
+                  <tr>
+                    <td>
+                      <strong>{c.connexion.libelle || c.connexion.connecteur_nom}</strong>
+                      <code class="slug">{c.connexion.connecteur_nom}</code>
+                    </td>
+                    <td>
+                      <span class={c.connexion.statut === 'active' ? 'etat etat--on'
+                        : c.connexion.statut === 'erreur' ? 'etat etat--manque' : 'etat'}>
+                        {c.connexion.statut}
+                      </span>
+                    </td>
+                    <td class="nombre fb-num">
+                      {c.chiffre?.lignes
+                        ? nombre(c.chiffre.lignes)
+                        : <span class="etat etat--manque">rien</span>}
+                    </td>
+                    <td class="fb-num champ__aide">{jourHeure(c.chiffre?.premiere)}</td>
+                    <td class="fb-num champ__aide">{jourHeure(c.chiffre?.derniere)}</td>
+                    <td class="fb-num champ__aide">
+                      {c.taches[0]
+                        ? jourHeure(c.taches[0].prochain_le)
+                        : <span class="etat etat--manque">aucune</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <div class="bloc__pied">
+          Une caisse à zéro vente n'est pas forcément en panne — une boutique qui ouvre la
+          semaine prochaine n'a rien vendu. Mais c'est la seule explication acceptable, et
+          il vaut mieux la vérifier maintenant qu'au premier reporting.
+        </div>
+      </section>
+
+      {(muettes.length > 0 || sansTache.length > 0) && !termine && (
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Ce qui restera éteint</h2>
+              <p>Rien de tout cela n'empêche de clore. Mais le client le découvrira, lui.</p>
+            </div>
+          </div>
+          <div class="bloc__corps">
+            <div class="cases">
+              {muettes.map((c) => (
+                <div class="case">
+                  <span>
+                    <strong>{c.connexion.libelle || c.connexion.connecteur_nom} n'a rien importé</strong>
+                    <span class="champ__aide">
+                      Aucune vente en base pour cette caisse. Reprenez l'import de l'historique,
+                      ou vérifiez que la boutique a bien ouvert.
+                    </span>
+                    <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/historique?connexion=${c.connexion.id}`}>
+                      Reprendre l'historique
+                    </a>
+                  </span>
+                </div>
+              ))}
+              {sansTache.map((c) => (
+                <div class="case">
+                  <span>
+                    <strong>{c.connexion.libelle || c.connexion.connecteur_nom} ne se synchronisera pas</strong>
+                    <span class="champ__aide">
+                      Aucune tâche programmée : ce qui est en base restera figé au jour de
+                      l'import. C'est le défaut qu'on remarque le plus tard.
+                    </span>
+                    <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/synchro?connexion=${c.connexion.id}`}>
+                      Programmer la synchro
+                    </a>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Et ensuite</h2>
+            <p>Ce que {prospect.raison_sociale} peut ouvrir dès maintenant.</p>
+          </div>
+        </div>
+        <div class="bloc__corps">
+          <div class="cases">
+            {etat.retenus.map((m) => (
+              <div class="case">
+                <span>
+                  <strong>{m.nom}</strong>
+                  {m.quoi && <span class="champ__aide">{m.quoi}</span>}
+                </span>
+              </div>
+            ))}
+            {etat.retenus.length === 0 && (
+              <div class="case">
+                <span>
+                  <strong>Aucun module retenu</strong>
+                  <span class="champ__aide">
+                    Les données arrivent, mais rien ne les affiche. Repassez par l'étape
+                    « Ce que vous voulez piloter ».
+                  </span>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div class="bloc__pied">
+          La synchronisation tourne toute seule à partir de maintenant. Ce qui se surveille,
+          c'est <a href={`${BASE}/admin/connexions`}>l'écran Connexions</a> : une caisse qui
+          passe en erreur y apparaît le jour même, pas au reporting du mois.
+        </div>
+      </section>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  .bilan { min-inline-size: 62rem; }
+  .bilan td, .bilan th { white-space: nowrap; }
+</style>

@@ -327,6 +327,21 @@ const RUBRIQUES = TOUTES
       .bouton--marque:hover { background: var(--plum-600); border-color: var(--plum-600); color: #fff; text-decoration: none; }
       .bouton--sobre { background: #fff; border-color: var(--slate-200); color: var(--slate-600); }
       .bouton--sobre:hover { background: var(--slate-50); border-color: var(--slate-300); color: var(--navy-900); text-decoration: none; }
+      /* Un bouton refusé doit en avoir l'air.
+         La console en compte plusieurs — envoyer une offre incomplète, clore
+         une mise en route sans caisse — et aucun ne se distinguait d'un
+         bouton actif : on cliquait, rien ne se passait, et l'on cherchait la
+         panne au lieu de lire la phrase juste à côté qui disait pourquoi.
+         `pointer-events` reste actif exprès : le curseur barré est le seul
+         retour qu'un bouton mort puisse encore donner. */
+      .bouton[disabled], .bouton:disabled {
+        opacity: 0.45; cursor: not-allowed; filter: grayscale(0.7);
+      }
+      .bouton[disabled]:hover, .bouton:disabled:hover {
+        background: var(--plum-500); border-color: var(--plum-500);
+      }
+      .bouton--sobre[disabled]:hover { background: #fff; border-color: var(--slate-200); }
+
       /* Le vert de la validation : c'est le geste qui met en ligne. */
       .bouton--valider { background: var(--teal-500); border-color: var(--teal-700); color: #fff; }
       .bouton--valider:hover { background: var(--teal-700); border-color: var(--teal-700); color: #fff; text-decoration: none; }
@@ -447,6 +462,18 @@ const RUBRIQUES = TOUTES
       .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
       .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
       .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+      /* Quand la case porte sa coche à côté du texte, le texte descend d'un
+         cran — il vit dans un `span` imbriqué, que la règle du dessus ne
+         touche pas. Sans celle-ci, le nom du module et sa description se
+         suivent au fil du texte : « Console marqueL'écran du franchiseur ».
+         C'est la même famille de piège que les vignettes nues : une règle
+         écrite pour un niveau, appliquée à une structure qui en a deux. */
+      .case > .ligne-serree > span, .formule > .ligne-serree > span {
+        display: flex; flex-direction: column; gap: 3px; min-inline-size: 0;
+      }
+      /* Le nom porte seul le repérage : c'est lui qu'on cherche en balayant
+         la grille, la description ne se lit qu'après s'être arrêté. */
+      .case > .ligne-serree > span > strong { font-size: var(--text-sm); }
       .case__prix { font-size: var(--text-sm); color: var(--slate-600); }
       .case__tete { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
       .case__tete .case__prix { margin-inline-start: auto; white-space: nowrap; }

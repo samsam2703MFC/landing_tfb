@@ -282,3 +282,38 @@ export async function chiffreImporte(prospectId, { de, a }) {
     [Number(prospectId), de, a],
   );
 }
+
+/**
+ * Le bilan d'une caisse : ce qui est réellement entré, depuis le début.
+ *
+ * Sert à l'écran de fin, et à lui seul. Sans borne de date, contrairement au
+ * contrôle de cohérence : la question n'est pas « le mois dernier
+ * correspond-il ? » mais « y a-t-il quelque chose ? ». Une caisse branchée
+ * qui n'a jamais rien rendu est le défaut le plus fréquent d'une mise en
+ * route, et le plus tardif à se voir — le client l'apprend en ouvrant son
+ * tableau de bord vide, un mois après.
+ *
+ * Le compte de boutiques distinctes est celui qui trahit le mieux un mapping
+ * incomplet : trois caisses branchées, une seule boutique qui vend, et c'est
+ * le rapprochement des boutiques qu'il faut reprendre.
+ */
+export async function bilanConnexion(connexionId) {
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT COUNT(*) AS lignes,
+            COUNT(DISTINCT boutique_externe_id) AS boutiques,
+            MIN(jour_exploitation) AS premiere,
+            MAX(jour_exploitation) AS derniere,
+            SUM(total_ttc) AS total
+     FROM ${table('ventes')} WHERE connexion_id = ?`,
+    [Number(connexionId)],
+  );
+  const l = lignes[0] || {};
+  return {
+    lignes: Number(l.lignes || 0),
+    boutiques: Number(l.boutiques || 0),
+    premiere: l.premiere || null,
+    derniere: l.derniere || null,
+    total: Number(l.total || 0),
+  };
+}
