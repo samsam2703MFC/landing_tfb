@@ -161,6 +161,25 @@ export function ProfileEditor({ data }: { data: ProfileData }) {
             <span style={{ font: 'var(--type-caption)', color: 'var(--text-tertiary)' }}> / {data.variables.length}</span>
           </Stat>
         </div>
+
+        {/* The link the client actually receives. Two of them, because showing a
+            customer an unpublished draft by accident is the obvious way to promise
+            something that is not live. */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-3)', flexWrap: 'wrap', marginTop: 'var(--space-4)', paddingTop: 'var(--space-4)', borderTop: '1px solid var(--border-subtle)' }}>
+          <Icon name="external-link" size={15} color="var(--text-tertiary)" />
+          <span style={{ font: 'var(--type-label)' }}>Page charte du client</span>
+          <a href={`/preview/${data.tenant.slug}`} target="_blank" rel="noreferrer" className="fb-num" style={linkStyle}>
+            /preview/{data.tenant.slug}
+          </a>
+          <Badge tone="success" size="sm">publié · v{data.publishedVersion}</Badge>
+          <a href={`/preview/${data.tenant.slug}?draft=1`} target="_blank" rel="noreferrer" className="fb-num" style={linkStyle}>
+            ?draft=1
+          </a>
+          <Badge tone="warning" size="sm">brouillon · session requise</Badge>
+          <span style={{ font: 'var(--type-caption)', color: 'var(--text-tertiary)', marginInlineStart: 'auto' }}>
+            Tout le produit rendu à sa charte — à envoyer tel quel.
+          </span>
+        </div>
       </Card>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 360px', gap: 'var(--space-4)', alignItems: 'start' }}>

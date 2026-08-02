@@ -36,6 +36,17 @@ export type Variable =
   /** Picks one entry of the data catalogue. Never a raw URL — see catalogue.ts. */
   | (BaseVariable & { type: 'source'; default: ResourceKey; allowed: ResourceKey[] });
 
+/**
+ * The families a tenant may pick from — exactly the ones the app already loads.
+ * An open text field here would mean a client's theme pulling a font from a host
+ * nobody vetted, on every page of their PWA.
+ */
+const FONT_OPTIONS = [
+  { value: 'manrope', label: 'Manrope — display' },
+  { value: 'plex-sans', label: 'IBM Plex Sans — UI' },
+  { value: 'system', label: 'Système — sans téléchargement' },
+];
+
 export const REGISTRY: readonly Variable[] = [
   {
     key: 'theme.primary',
@@ -45,12 +56,99 @@ export const REGISTRY: readonly Variable[] = [
     hint: 'Appliquée en custom property — aucun CSS n’est buildé par client.',
   },
   {
+    key: 'theme.primary_ink',
+    label: 'Encre sur la primaire',
+    type: 'select',
+    default: 'white',
+    options: [
+      { value: 'white', label: 'Blanc' },
+      { value: 'ink', label: 'Encre foncée' },
+    ],
+    hint: 'Le contraste du couple est vérifié à la publication, pas à l’œil.',
+  },
+  {
+    key: 'theme.accent',
+    label: 'Couleur d’accent (CTA)',
+    type: 'color',
+    default: '#f0912a',
+    hint: 'La couleur de conversion. Distincte de la primaire, qui structure l’interface.',
+  },
+  {
+    key: 'theme.accent_ink',
+    label: 'Encre sur l’accent',
+    type: 'select',
+    default: 'ink',
+    options: [
+      { value: 'white', label: 'Blanc' },
+      { value: 'ink', label: 'Encre foncée' },
+    ],
+  },
+  {
+    key: 'theme.surface_page',
+    label: 'Fond de page',
+    type: 'color',
+    default: '#f5f6f9',
+  },
+  {
+    key: 'theme.surface_card',
+    label: 'Fond des cartes',
+    type: 'color',
+    default: '#ffffff',
+  },
+  {
+    key: 'theme.text_primary',
+    label: 'Texte principal',
+    type: 'color',
+    default: '#0c1329',
+  },
+  {
+    key: 'theme.text_secondary',
+    label: 'Texte secondaire',
+    type: 'color',
+    default: '#565d73',
+  },
+  {
+    key: 'theme.border',
+    label: 'Bordures',
+    type: 'color',
+    default: '#dddfe8',
+  },
+  {
     key: 'theme.logo',
     label: 'Logo de l’enseigne',
     type: 'file',
     default: null,
     accept: 'image/png,image/svg+xml',
     hint: 'Chemin relatif servi par /api/storage. La base ne stocke jamais le binaire.',
+  },
+  {
+    key: 'theme.logo_inverse',
+    label: 'Logo sur fond sombre',
+    type: 'file',
+    default: null,
+    accept: 'image/png,image/svg+xml',
+  },
+  {
+    key: 'theme.favicon',
+    label: 'Favicon',
+    type: 'file',
+    default: null,
+    accept: 'image/png,image/svg+xml',
+    hint: 'L’icône de l’onglet et de l’app installée.',
+  },
+  {
+    key: 'theme.font_display',
+    label: 'Police des titres',
+    type: 'select',
+    default: 'manrope',
+    options: FONT_OPTIONS,
+  },
+  {
+    key: 'theme.font_sans',
+    label: 'Police de l’interface',
+    type: 'select',
+    default: 'plex-sans',
+    options: FONT_OPTIONS,
   },
   {
     key: 'theme.radius',
@@ -64,6 +162,33 @@ export const REGISTRY: readonly Variable[] = [
       { value: '16', label: 'Très doux — 16px' },
     ],
   },
+  {
+    key: 'theme.shadow',
+    label: 'Profondeur',
+    type: 'select',
+    default: 'soft',
+    options: [
+      { value: 'none', label: 'Aucune — à plat' },
+      { value: 'soft', label: 'Douce' },
+      { value: 'strong', label: 'Marquée' },
+    ],
+  },
+  {
+    key: 'theme.density',
+    label: 'Densité',
+    type: 'select',
+    default: 'normal',
+    options: [
+      { value: 'compact', label: 'Compacte — terrain' },
+      { value: 'normal', label: 'Normale' },
+      { value: 'comfortable', label: 'Confortable — tablette' },
+    ],
+    hint: 'Met l’échelle d’espacement à l’échelle. Une caisse tactile n’a pas les mêmes cibles qu’un back-office.',
+  },
+  { key: 'status.success', label: 'Succès', type: 'color', default: '#157f5a' },
+  { key: 'status.warning', label: 'Avertissement', type: 'color', default: '#b77500' },
+  { key: 'status.danger', label: 'Erreur', type: 'color', default: '#c0304a' },
+  { key: 'status.info', label: 'Information', type: 'color', default: '#2a5fd0' },
   {
     key: 'nav.modules',
     label: 'Modules dans la barre',
@@ -173,15 +298,11 @@ export function validate(key: string, value: ConfigValue): string | null {
   if (value === null) return v.type === 'file' ? null : 'Valeur vide — supprimez la surcharge pour hériter.';
 
   switch (v.type) {
-    case 'color': {
-      if (typeof value !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(value)) return 'Attendu : #RRGGBB.';
-      // The design system pins white on brand fills (--brand-on: var(--slate-0)), so
-      // that is what a primary has to be legible against. Checking it against the
-      // navy ink instead would reject the house plum itself.
-      const ratio = contrastWith(value, '#ffffff');
-      if (ratio < 4.5) return `Contraste ${ratio.toFixed(1)}:1 avec le blanc posé dessus — sous AA (4.5:1).`;
-      return null;
-    }
+    // Shape only. Legibility is a property of a *pair* — a colour and whatever sits
+    // on it — so it is checked in validateTheme against the resolved set, where the
+    // other half of the pair is actually known.
+    case 'color':
+      return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? null : 'Attendu : #RRGGBB.';
     case 'text': {
       if (typeof value !== 'string') return 'Attendu : du texte.';
       if (v.maxLength && value.length > v.maxLength) return `${value.length} caractères — maximum ${v.maxLength}.`;
@@ -211,6 +332,68 @@ export function validate(key: string, value: ConfigValue): string | null {
       if (!(value in CATALOGUE)) return 'Ressource absente du catalogue.';
       return null;
   }
+}
+
+/** The two inks a tenant may put on a tinted fill. */
+export const INK = { white: '#ffffff', ink: '#0c1329' } as const;
+
+function hex(values: ConfigValues, key: string, fallback: string): string {
+  const value = values[key];
+  return typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+
+/**
+ * Legibility checks across the resolved theme.
+ *
+ * These are pair checks, so they cannot live in validate(): a colour is not readable
+ * or unreadable on its own. They are advisory while editing — otherwise you could not
+ * set a light primary *then* switch its ink — and blocking at publish, which is the
+ * last point where refusing is still cheap.
+ */
+export function validateTheme(values: ConfigValues): Record<string, string> {
+  const defaults = registryDefaults();
+  const resolved: ConfigValues = { ...defaults, ...values };
+  const errors: Record<string, string> = {};
+
+  const pairs: { key: string; fg: string; bg: string; label: string; min: number }[] = [
+    {
+      key: 'theme.primary',
+      fg: INK[resolved['theme.primary_ink'] === 'ink' ? 'ink' : 'white'],
+      bg: hex(resolved, 'theme.primary', '#7b4488'),
+      label: 'l’encre choisie sur la primaire',
+      min: 4.5,
+    },
+    {
+      key: 'theme.accent',
+      fg: INK[resolved['theme.accent_ink'] === 'ink' ? 'ink' : 'white'],
+      bg: hex(resolved, 'theme.accent', '#f0912a'),
+      label: 'l’encre choisie sur l’accent',
+      min: 4.5,
+    },
+    {
+      key: 'theme.text_primary',
+      fg: hex(resolved, 'theme.text_primary', '#0c1329'),
+      bg: hex(resolved, 'theme.surface_card', '#ffffff'),
+      label: 'le texte principal sur les cartes',
+      min: 4.5,
+    },
+    {
+      key: 'theme.text_secondary',
+      fg: hex(resolved, 'theme.text_secondary', '#565d73'),
+      bg: hex(resolved, 'theme.surface_card', '#ffffff'),
+      label: 'le texte secondaire sur les cartes',
+      // Secondary text is never the only carrier of meaning, so AA large is enough.
+      min: 3,
+    },
+  ];
+
+  for (const pair of pairs) {
+    const ratio = contrastWith(pair.fg, pair.bg);
+    if (ratio < pair.min) {
+      errors[pair.key] = `Contraste ${ratio.toFixed(1)}:1 pour ${pair.label} — sous ${pair.min}:1.`;
+    }
+  }
+  return errors;
 }
 
 /** Contrast ratio per WCAG 2.1 between two #RRGGBB colours. */

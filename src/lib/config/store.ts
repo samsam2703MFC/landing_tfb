@@ -14,7 +14,7 @@
  */
 
 import { prisma } from '@/lib/prisma';
-import { validate, variable, type ConfigValue, type ConfigValues } from './registry';
+import { validate, validateTheme, variable, type ConfigValue, type ConfigValues } from './registry';
 
 export interface Overlay {
   values: ConfigValues;
@@ -136,12 +136,19 @@ export async function patchDraft(slug: string, patch: Record<string, ConfigValue
 export async function publish(slug: string): Promise<WriteResult & { version?: number }> {
   if (!isSlug(slug)) return { ok: false, errors: { _: 'Slug de tenant invalide.' } };
 
-  const draft = await draftOverlay(slug);
+  const [draft, global] = await Promise.all([draftOverlay(slug), globalOverlay()]);
+
   const errors: Record<string, string> = {};
   for (const [key, value] of Object.entries(draft.values)) {
     const message = variable(key) ? validate(key, value) : `Variable absente du registre : ${key}.`;
     if (message) errors[key] = message;
   }
+  // Contrast is a property of a pair, so it is advisory while editing — you have to be
+  // able to set a light primary and *then* switch its ink — and blocking here, which
+  // is the last point where refusing costs nothing.
+  const resolved: ConfigValues = { ...global.values, ...draft.values };
+  for (const [key, message] of Object.entries(validateTheme(resolved))) errors[key] ??= message;
+
   if (Object.keys(errors).length > 0) return { ok: false, errors };
 
   const published = await read(publishedKey(slug));

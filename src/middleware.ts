@@ -44,6 +44,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // Everything except the API, the back office, and Next's own assets.
-  matcher: ['/((?!api|admin|_next|favicon.ico|icons|brand).*)'],
+  // Everything except the API, the back office, the per-tenant theme page, and Next's
+  // own assets. /preview/<slug> is a link handed to one client and is not localised —
+  // without this it would be redirected to /fr/preview/<slug>, which does not exist.
+  matcher: ['/((?!api|admin|preview|_next|favicon.ico|icons|brand).*)'],
 };

@@ -1,8 +1,8 @@
 import { NextResponse } from 'next/server';
 import { withAdmin, readJson, badRequest } from '@/lib/api';
 import { isSlug, draftOverlay, globalOverlay, publishedOverlay, patchDraft } from '@/lib/config/store';
-import { resolveAll, grantsFor } from '@/lib/config/resolve';
-import { REGISTRY, validate, type ConfigValue } from '@/lib/config/registry';
+import { resolveAll, grantsFor, configErrors } from '@/lib/config/resolve';
+import { REGISTRY, type ConfigValue } from '@/lib/config/registry';
 
 type Ctx = { params: Promise<{ tenant: string }> };
 
@@ -28,11 +28,7 @@ export async function GET(request: Request, ctx: Ctx) {
     const resolutions = resolveAll(draft, global);
     // Re-validated on read so a registry that tightened since the last write shows
     // the offending rows in red instead of failing only at publish time.
-    const errors: Record<string, string> = {};
-    for (const [key, value] of Object.entries(draft.values)) {
-      const message = validate(key, value);
-      if (message) errors[key] = message;
-    }
+    const errors = configErrors(draft, global);
 
     return NextResponse.json({
       tenant: slug,

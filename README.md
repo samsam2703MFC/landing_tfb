@@ -99,6 +99,7 @@ and IDs carry `.fb-num`, which pins them LTR inside Arabic text.
 | `GET /api/app-config?tenant=…` | One tenant's resolved configuration + grants, with an `ETag` |
 | `GET /api/app-config/schema` | The variable registry — what drives the console's forms |
 | `GET /api/data/:resource` | One catalogue resource. Refuses an unauthenticated caller |
+| `GET /preview/:slug` | The client's whole interface in their theme — the link you send them |
 
 The admin API lives under `/api/admin/*` and is gated by `withAdmin` — brands, sections,
 modules (+ screenshots), plans, subscriptions, contact messages, translations, uploads,
@@ -141,6 +142,40 @@ Publishing is refused while any value fails validation.
 stops being paid for disappears without anyone touching the profile. Ticking
 entitlements in the console would give two sources of truth about what a customer
 bought, and they diverge at the first Stripe webhook.
+
+### A client's whole theme, and the link you send them
+
+A tenant's card holds its **complete stylesheet**, not just an accent colour: brand and
+CTA colours with the ink that sits on each, surfaces, text, borders, the four status
+colours, fonts, corner radius, shadow depth and spacing density. `src/lib/config/theme.ts`
+turns those into the CSS custom properties the design system already reads, so a client
+theme is a list of property overrides — no CSS is built, shipped or duplicated per
+tenant, and changing a colour needs no deploy.
+
+**Why a token set and not a stylesheet field.** Letting the console hold raw CSS would
+be simpler and is a bad trade: CSS is not inert. Attribute selectors with
+`background-image: url(...)` exfiltrate what a user types, and one `content` rule
+rewrites what a customer reads. Tokens express every legitimate theme and none of
+that — every value emitted into a `<style>` comes from a validated enum or a
+`#RRGGBB` checked on write.
+
+**Contrast is checked as a pair.** A colour is not legible on its own, so
+`validateTheme` compares the resolved set — the chosen ink against the primary and the
+accent, the text colours against the card surface. Those checks are advisory while
+editing (you have to be able to set a light primary and *then* switch its ink) and
+**blocking at publish**.
+
+**`/preview/<slug>` is the link you hand the client.** Every component the product is
+built from, rendered with their theme: all button variants, sizes and states, the
+dropdowns, fields, checkboxes, switches and radios, tabs, cards, badges, stat tiles,
+the data table, dialogs and toasts, and all 75 icons — read from `public/icons` at
+request time so the page cannot drift from the folder. Nothing is styled for the
+preview: if a colour reads badly there, it reads badly in the app.
+
+The page needs no session — it shows branding, never customer data — and is `noindex`.
+`?draft=1` renders what the console is editing instead of what is published, and that
+one does require an admin session, so a customer is never shown something that is not
+live.
 
 ### The data catalogue
 
@@ -225,7 +260,7 @@ src/
     i18n/                  locales + the translation resolver
     landing/               the GET /api/landing payload builder
     billing/               the billing-service client, types and fixtures
-    config/                registry (the only hard-coded part), tfb_settings store, resolver
+    config/                registry (the only hard-coded part), tfb_settings store, resolver, theme
     data/                  the catalogue of readable resources and its query executor
     auth/                  session (JWT cookie) and scrypt passwords
     storage.ts             uploads, path safety
@@ -235,6 +270,7 @@ src/
   app/
     (site)/[locale]/       the landing — root layout #1, lang + dir per locale
     (admin)/admin/         the back office — root layout #2, fr-only LTR
+    (preview)/preview/     the per-tenant theme page — root layout #3, noindex
     api/                   public and admin routes
   middleware.ts            bare paths → a locale
 public/
@@ -242,8 +278,8 @@ public/
   brand/                   the supplied mark, 4 variants
 ```
 
-Two root layouts in route groups, because the landing mirrors across 8 locales and the
-console does not.
+Three root layouts in route groups: the landing mirrors across 8 locales, the console
+does not, and the theme page belongs to neither — it is a link handed to one client.
 
 ## Design decisions carried over from the handoff
 

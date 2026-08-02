@@ -13,7 +13,7 @@
 
 import { getBillingSnapshot } from '@/lib/billing/client';
 import type { Tenant } from '@/lib/billing/types';
-import { REGISTRY, registryDefaults, variable, type ConfigValue, type ConfigValues } from './registry';
+import { REGISTRY, registryDefaults, validate, validateTheme, variable, type ConfigValue, type ConfigValues } from './registry';
 import { globalOverlay, publishedOverlay, draftOverlay, type Overlay } from './store';
 
 /** Licence statuses that entitle a tenant to a package. */
@@ -44,6 +44,28 @@ export interface AppConfig {
   grants: string[];
   /** True when the billing service was unreachable and grants come from fixtures. */
   fixture: boolean;
+}
+
+/**
+ * Every error the console should show for one tenant: per-value shape errors, plus
+ * the pair checks that only make sense once the whole theme is resolved.
+ *
+ * One function so the screen, the admin API and the publish gate cannot disagree
+ * about what counts as invalid.
+ */
+export function configErrors(tenant: Overlay, global: Overlay): Record<string, string> {
+  const errors: Record<string, string> = {};
+  for (const [key, value] of Object.entries(tenant.values)) {
+    const message = variable(key) ? validate(key, value) : `Variable absente du registre : ${key}.`;
+    if (message) errors[key] = message;
+  }
+  // Pair checks run on the resolved set — an inherited surface still decides whether
+  // an overridden text colour is legible on it.
+  const resolved: ConfigValues = { ...global.values, ...tenant.values };
+  for (const [key, message] of Object.entries(validateTheme(resolved))) {
+    errors[key] ??= message;
+  }
+  return errors;
 }
 
 /** One key resolved across the three layers. */

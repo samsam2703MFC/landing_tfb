@@ -1,8 +1,8 @@
 import { notFound } from 'next/navigation';
 import { getBillingSnapshot } from '@/lib/billing/client';
-import { REGISTRY, validate } from '@/lib/config/registry';
+import { REGISTRY } from '@/lib/config/registry';
 import { draftOverlay, globalOverlay, publishedOverlay, isSlug } from '@/lib/config/store';
-import { resolveAll, grantsFor } from '@/lib/config/resolve';
+import { resolveAll, grantsFor, configErrors } from '@/lib/config/resolve';
 import { ProfileEditor, type ProfileData } from '@/components/admin/ProfileEditor';
 
 /** One tenant's configuration profile. Everything is resolved server-side. */
@@ -26,12 +26,6 @@ export default async function ProfilePage({ params }: { params: Promise<{ tenant
   const licences = snapshot.licenses.filter((l) => l.tenant === tenant.name);
   const licenceStatus = licences.find((l) => l.store === null)?.status ?? licences[0]?.status ?? null;
 
-  const errors: Record<string, string> = {};
-  for (const [key, value] of Object.entries(draft.values)) {
-    const message = validate(key, value);
-    if (message) errors[key] = message;
-  }
-
   const data: ProfileData = {
     tenant: {
       slug: tenant.slug,
@@ -42,7 +36,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ tenant
     },
     variables: [...REGISTRY],
     resolutions: resolveAll(draft, global),
-    errors,
+    errors: configErrors(draft, global),
     dirty: draft.updatedAt !== null,
     publishedVersion: published.version,
     publishedAt: published.updatedAt,
