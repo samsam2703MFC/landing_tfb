@@ -501,8 +501,19 @@ empêcher un correctif de partir, et un build raté ne doit pas figer le contenu
 
 ### 11.1 Le service applicatif
 
-Le §7 lance `npm start` à la main. C'est bon pour vérifier, pas pour un serveur :
-rien ne relance l'application au reboot ni après un plantage.
+**Commencez par vérifier qu'il n'existe pas déjà :**
+
+```bash
+systemctl status tfb-landing
+systemctl show tfb-landing -p WorkingDirectory -p User -p ExecStart
+```
+
+S'il tourne déjà, **ne copiez pas** `deploy/tfb-landing.service` : vous écraseriez
+une unité qui fonctionne. Notez simplement son `WorkingDirectory` et son `User`,
+et passez au §11.2.
+
+Sinon, le §7 lance `npm start` à la main — bon pour vérifier, insuffisant pour un
+serveur où rien ne relance l'application au reboot :
 
 ```bash
 sudo cp deploy/tfb-landing.service /etc/systemd/system/
@@ -512,6 +523,12 @@ systemctl status tfb-landing
 ```
 
 Adaptez `User=`, `WorkingDirectory=` et les `ReadWritePaths=` à votre installation.
+
+**Un dépôt peut porter plusieurs applications.** Sur un serveur où la vitrine et
+le back-office cohabitent, deux services tournent, avec des noms proches et des
+dossiers différents — par exemple `landing-tfb.service` pour la vitrine et
+`tfb-landing.service` pour le back-office. Vérifiez à quel dossier vous parlez
+avant chaque commande : `systemctl show <service> -p WorkingDirectory`.
 
 ### 11.2 La mise à jour
 

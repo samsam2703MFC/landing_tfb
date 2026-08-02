@@ -1,6 +1,4 @@
-# Met le code à jour puis redémarre la landing. Déclenché à la main, ou par la
-# clé de déploiement via /usr/local/bin/tfb-update-trigger (§9.3 pour le montage
-# SSH, identique à celui de la sync).
+# Met le code du back-office à jour puis redémarre son service.
 #
 #   sudo cp deploy/tfb-update.service /etc/systemd/system/
 #   sudo systemctl daemon-reload
@@ -9,18 +7,25 @@
 #   sudo systemctl start tfb-update.service && journalctl -u tfb-update -f
 
 [Unit]
-Description=TFB — met le code de la landing à jour et redémarre le service
+Description=TFB — met le code du back-office à jour et redémarre son service
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=oneshot
 
-# root, contrairement à la sync : ce service fait `systemctl restart` et écrit
-# dans node_modules. Le script, lui, refuse de travailler sur un dépôt modifié.
-User=root
-WorkingDirectory=/var/www/landing_tfb
-EnvironmentFile=/etc/tfb/landing.env
+# Le compte qui possède le dépôt, et pas root : `npm ci` en root laisserait des
+# fichiers que ce compte ne pourrait plus réécrire à la mise à jour suivante.
+# Le seul geste privilégié est le redémarrage, autorisé par tfb-update.sudoers.
+User=tfb
+WorkingDirectory=/srv/tfb-landing
+
+# À adapter si votre installation diffère. Ces valeurs sont celles d'un serveur
+# où le back-office vit dans /srv/tfb-landing sous le service tfb-landing.
+Environment=TFB_APP_DIR=/srv/tfb-landing
+Environment=TFB_APP_SERVICE=tfb-landing.service
+Environment=TFB_BRANCH=feat/landing-and-back-office
+Environment=TFB_HEALTH_URL=http://127.0.0.1:3000/api/languages
 
 ExecStart=/usr/local/bin/tfb-update
 
