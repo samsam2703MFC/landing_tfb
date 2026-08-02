@@ -19,6 +19,11 @@ const POLICES = [
   { valeur: 'manrope', libelle: 'Manrope — titres' },
   { valeur: 'plex-sans', libelle: 'IBM Plex Sans — interface' },
   { valeur: 'systeme', libelle: 'Système — aucun téléchargement' },
+  // « Les polices importées » plutôt qu'un nom de famille : le registre est
+  // statique, et il ne peut pas connaître ce qu'un client déposera demain. La
+  // famille est résolue au moment de fabriquer la feuille, avec un repli si
+  // rien n'a été importé.
+  { valeur: 'client', libelle: 'Les polices importées du client' },
 ];
 
 export const REGISTRE = [

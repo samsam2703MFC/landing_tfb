@@ -25,12 +25,19 @@ import {
 } from '../../../lib/admin/charte.mjs';
 import { REGISTRE, controlerCharte, resoudreTout, valeursResolues } from '../../../lib/charte/registre.mjs';
 import { cleCharte } from '../../../lib/admin/session.mjs';
+import { lireFeuille, tailleFeuille } from '../../../lib/charte/import.mjs';
+import {
+  GRAISSES, ROLES, STYLES, TYPES_ACCEPTES,
+  ajouterPolice, listerPolices, supprimerPolice,
+} from '../../../lib/charte/polices.mjs';
 
 const id = Number(Astro.params.prospect);
 const estMaison = id === MAISON;
 
 let erreur = null;
 let message = null;
+/** Ce que l'import a repris et ce qu'il a laissé — affiché après la bascule. */
+let rapport = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -40,7 +47,39 @@ if (Astro.request.method === 'POST') {
   const session = Astro.locals.session || {};
   const qui = session.nom || session.identifiant || (session.secours ? 'clé de secours' : null);
 
-  if (action === 'publier') {
+  if (action === 'import-css') {
+    const fichier = form.get('feuille');
+    if (!fichier || typeof fichier === 'string' || !fichier.size) {
+      erreur = 'Aucun fichier choisi.';
+    } else if (fichier.size > 2 * 1024 * 1024) {
+      erreur = 'Feuille trop lourde — deux mégaoctets suffisent largement à une charte.';
+    } else {
+      const texte = await fichier.text();
+      const lu = lireFeuille(texte);
+      if (Object.keys(lu.valeurs).length === 0) {
+        erreur = 'Aucune variable reconnue dans cette feuille. Les valeurs attendues sont des propriétés personnalisées (--brand, --primary, …).';
+        rapport = { ...lu, taille: tailleFeuille(texte) };
+      } else {
+        const r = await modifierBrouillon(id, lu.valeurs, qui);
+        if (r.ok) {
+          message = `${lu.repris.length} valeur(s) reprises dans le brouillon. Rien de la feuille n’est servi — elle a été lue, pas installée.`;
+          rapport = { ...lu, taille: tailleFeuille(texte) };
+        } else {
+          erreur = Object.values(r.erreurs)[0] || 'Valeurs refusées.';
+        }
+      }
+    }
+  } else if (action === 'police') {
+    const r = await ajouterPolice(id, {
+      famille: form.get('famille'), role: form.get('role'),
+      graisse: form.get('graisse'), style: form.get('style'),
+    }, form.get('fichier'));
+    if (r.ok) message = `Police « ${r.famille} » importée. Choisissez « Les polices importées » dans les réglages de police pour l’utiliser.`;
+    else erreur = r.erreur;
+  } else if (action === 'police-suppression') {
+    await supprimerPolice(Number(form.get('police_id')));
+    message = 'Police retirée.';
+  } else if (action === 'publier') {
     const r = await publierCharte(id, qui);
     if (r.ok) message = `Publiée en v${r.version}.`;
     else erreur = Object.values(r.erreurs)[0] || 'Publication refusée.';
@@ -60,13 +99,14 @@ if (Astro.request.method === 'POST') {
   }
 }
 
-const [prospect, brouillon, publie, maison, journal, chiffres] = await Promise.all([
+const [prospect, brouillon, publie, maison, journal, chiffres, polices] = await Promise.all([
   estMaison ? Promise.resolve(null) : chargerProspect(id),
   charteBrouillon(id),
   chartePubliee(id),
   estMaison ? Promise.resolve({ donnees: {} }) : charteMaison(),
   journalCharte(id),
   compteurs(),
+  listerPolices(id).catch(() => []),
 ]);
 
 const resolutions = resoudreTout(brouillon.donnees, maison.donnees);
@@ -188,6 +228,120 @@ const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'regis
     </div>
   )}
 
+
+  <div class="cellule import">
+    <h3>Importer une charte existante</h3>
+    <p class="note">
+      La feuille est <strong>lue</strong>, pas installée. On y cherche les variables qui décrivent
+      une marque et on les reporte ci-dessus ; rien de son contenu n'atteint une balise
+      <span class="mono">&lt;style&gt;</span>. Le CSS n'est pas inerte — un
+      <span class="mono">url()</span> dans un sélecteur d'attribut exfiltre ce qu'un utilisateur
+      tape, et une règle <span class="mono">content</span> réécrit ce qu'un client lit. Ce qui n'a
+      pas pu être repris est affiché, jamais ignoré en silence.
+    </p>
+    <form method="post" enctype="multipart/form-data" class="enligne">
+      <input type="hidden" name="action" value="import-css" />
+      <input type="file" name="feuille" accept=".css,text/css" required />
+      <button class="bouton bouton--sobre" type="submit">
+        <Icone nom="download" taille={15} /> Lire la feuille
+      </button>
+    </form>
+
+    {rapport && (
+      <div class="rapport">
+        <p class="aide">
+          {rapport.taille.blocs} bloc(s) lus · {Math.round(rapport.taille.octets / 1024)} ko
+          {rapport.taille.fontFaces > 0 && ` · ${rapport.taille.fontFaces} @font-face non repris — importez les fichiers ci-dessous`}
+          {rapport.taille.imports > 0 && ` · ${rapport.taille.imports} @import ignoré(s) : ils feraient charger depuis un hôte que personne n'a vérifié`}
+        </p>
+
+        {rapport.repris.length > 0 && (
+          <>
+            <h4>Repris</h4>
+            <div class="jetons">
+              {rapport.repris.map((r) => (
+                <span class="jeton jeton--client">
+                  <span class="mono">{r.depuis}</span> → {r.libelle} <b class="mono">{r.valeur}</b>
+                </span>
+              ))}
+            </div>
+          </>
+        )}
+
+        {rapport.ignores.length > 0 && (
+          <>
+            <h4>Vu, non repris — {rapport.ignores.length} variable(s)</h4>
+            <div class="jetons">
+              {rapport.ignores.map((v) => (
+                <span class="jeton jeton--herite mono">{v.nom}</span>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    )}
+  </div>
+
+  <div class="cellule import">
+    <h3>Les polices du client</h3>
+    <p class="note">
+      Un fichier de police est un binaire inerte : il se dessine, il ne s'exécute pas. C'est
+      pourquoi il est accepté tel quel là où le CSS ne l'est pas. Le
+      <span class="mono">@font-face</span> est fabriqué à partir de ce que vous déclarez ici, jamais
+      repris du fichier. Pour les utiliser, choisissez
+      <em>« Les polices importées du client »</em> dans les réglages de police ci-dessus.
+    </p>
+
+    {polices.length > 0 && (
+      <table class="polices">
+        <tbody>
+          {polices.map((p) => (
+            <tr>
+              <td><b>{p.famille}</b></td>
+              <td class="mono">{p.graisse} · {p.style === 'italic' ? 'italique' : 'normal'} · {p.format}</td>
+              <td>{ROLES.find((r) => r.valeur === p.role)?.libelle || p.role}</td>
+              <td class="mono">{Math.round(p.octets / 1024)} ko</td>
+              <td class="fin">
+                <form method="post" class="enligne">
+                  <input type="hidden" name="action" value="police-suppression" />
+                  <input type="hidden" name="police_id" value={p.id} />
+                  <button class="reinit" type="submit">Retirer</button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+
+    <form method="post" enctype="multipart/form-data" class="ajout">
+      <input type="hidden" name="action" value="police" />
+      <label class="mini"><span>Famille</span>
+        <input type="text" name="famille" placeholder="Belleville Sans" required />
+      </label>
+      <label class="mini"><span>Rôle</span>
+        <select name="role">{ROLES.map((r) => <option value={r.valeur}>{r.libelle}</option>)}</select>
+      </label>
+      <label class="mini"><span>Graisse</span>
+        <select name="graisse">{GRAISSES.map((g) => <option value={g} selected={g === '400'}>{g}</option>)}</select>
+      </label>
+      <label class="mini"><span>Style</span>
+        <select name="style">{STYLES.map((s) => <option value={s.valeur}>{s.libelle}</option>)}</select>
+      </label>
+      <label class="mini fichier"><span>Fichier</span>
+        <input type="file" name="fichier" accept={TYPES_ACCEPTES} required />
+      </label>
+      <button class="bouton bouton--sobre" type="submit">
+        <Icone nom="upload" taille={15} /> Importer
+      </button>
+    </form>
+    <p class="aide">
+      woff2, woff, otf ou ttf — reconnu aux premiers octets, pas à l'extension. 2 Mo maximum : une
+      woff2 latine en pèse une trentaine de kilo-octets, et une caisse en 3G ne télécharge pas
+      davantage.
+    </p>
+  </div>
+
   {journal.length > 0 && (
     <div class="cellule">
       <h3>Publications</h3>
@@ -244,4 +398,19 @@ const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'regis
   .journal__cles { display: flex; gap: 6px; flex-wrap: wrap; }
   .puce { background: var(--slate-100); border-radius: 4px; padding: 1px 7px; font-size: var(--text-xs); }
   .mono { font-family: var(--font-mono); }
+  .import { padding: 16px; margin-block-start: var(--space-4); }
+  .import h3 { margin: 0 0 6px; }
+  .import h4 { margin: var(--space-3) 0 6px; font-size: var(--text-sm); }
+  .enligne { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+  .aide { color: var(--slate-600); font-size: var(--text-xs); max-inline-size: 78ch; }
+  .rapport { margin-block-start: var(--space-3); border-block-start: 1px solid var(--slate-200); padding-block-start: var(--space-3); }
+  .jetons { display: flex; flex-wrap: wrap; gap: 6px; }
+  .jetons .jeton { font-weight: 400; }
+  .polices { inline-size: 100%; border-collapse: collapse; margin-block: var(--space-3); }
+  .polices td { padding: 7px 10px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm); }
+  .ajout { display: flex; gap: var(--space-3); align-items: flex-end; flex-wrap: wrap; }
+  .mini { display: flex; flex-direction: column; gap: 3px; font-size: var(--text-xs); color: var(--slate-600); }
+  .mini input, .mini select { font-size: var(--text-sm); }
+  .fichier { flex: 1 1 220px; }
+  .fin { text-align: end; }
 </style>

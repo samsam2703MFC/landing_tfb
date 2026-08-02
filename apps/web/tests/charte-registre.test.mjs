@@ -20,7 +20,9 @@ import {
   valeursResolues,
   variable,
 } from '../src/lib/charte/registre.mjs';
-import { cssCharte, logoCharte } from '../src/lib/charte/theme.mjs';
+import { cssCharte, facesCharte, logoCharte } from '../src/lib/charte/theme.mjs';
+import { arrondiNormalise, lireFeuille, tailleFeuille } from '../src/lib/charte/import.mjs';
+import { familleSaine, reconnaitre } from '../src/lib/charte/polices.mjs';
 import { clesModifiees } from '../src/lib/admin/charte.mjs';
 import { cleCharte, cleCharteValide } from '../src/lib/admin/session.mjs';
 
@@ -202,5 +204,122 @@ describe('logo', () => {
     assert.equal(logoCharte({ 'theme.logo': 'https://ailleurs.example/a.svg' }), null);
     assert.equal(logoCharte({ 'theme.logo': '/media/../secret' }), null);
     assert.equal(logoCharte({}), null);
+  });
+});
+
+/**
+ * L'import d'une charte existante.
+ *
+ * Le fichier est lu, jamais servi — le CSS n'est pas inerte, et un `url()` dans
+ * un sélecteur d'attribut exfiltre ce qu'un utilisateur tape. Ces tests portent
+ * donc sur la seule chose qui traverse : les valeurs extraites, qui repassent
+ * par le contrôle du registre comme si elles avaient été saisies à la main.
+ */
+describe('import d’une feuille', () => {
+  const FEUILLE = `
+    /* --brand: #000000; commenté, donc ignoré */
+    :root {
+      --brand: #0F766E;
+      --accent: rgb(240, 145, 42);
+      --body-bg: #fff;
+      --text: #123;
+      --radius-card: 0.875rem;
+      --shadow-lg: 0 2px 4px rgba(0,0,0,.2);
+      --font-family-base: Comic Sans;
+    }
+  `;
+
+  it('reprend les couleurs quelle qu’en soit l’écriture', () => {
+    const { valeurs } = lireFeuille(FEUILLE);
+    assert.equal(valeurs['theme.primaire'], '#0f766e');
+    assert.equal(valeurs['theme.accent'], '#f0912a', 'rgb() converti');
+    assert.equal(valeurs['theme.fond_page'], '#ffffff', 'hexa court étendu');
+    assert.equal(valeurs['theme.texte'], '#112233');
+  });
+
+  it('ramène un arrondi à une valeur que le registre déclare', () => {
+    assert.equal(lireFeuille(FEUILLE).valeurs['theme.arrondi'], '12', '0,875 rem = 14 px, à égalité on descend');
+    assert.equal(arrondiNormalise('5px'), '4');
+    assert.equal(arrondiNormalise('énorme'), null);
+  });
+
+  // Une variable commentée n'est pas une variable : la reprendre ferait livrer
+  // au client une couleur que son auteur avait justement retirée.
+  it('ignore ce qui est en commentaire', () => {
+    assert.notEqual(lireFeuille(FEUILLE).valeurs['theme.primaire'], '#000000');
+  });
+
+  // Ce qui n'est pas repris doit se voir. Sans cela on croirait la charte
+  // complète alors qu'il en manque la moitié.
+  it('dit ce qu’il a vu et laissé', () => {
+    const { ignores } = lireFeuille(FEUILLE);
+    assert.ok(ignores.some((v) => v.nom === '--shadow-lg'));
+    assert.ok(ignores.some((v) => v.nom === '--font-family-base'));
+  });
+
+  it('ne laisse pas passer une valeur que le registre refuserait', () => {
+    const { valeurs } = lireFeuille(':root { --brand: linear-gradient(red, blue); }');
+    assert.equal(valeurs['theme.primaire'], undefined);
+  });
+
+  it('compte les règles qu’il n’a pas lues', () => {
+    const t = tailleFeuille('@import url(x); @font-face { font-family: A; } a { color: red }');
+    assert.equal(t.imports, 1);
+    assert.equal(t.fontFaces, 1);
+    assert.equal(t.blocs, 2);
+  });
+
+  it('ne rapporte rien d’une feuille sans variable', () => {
+    const { valeurs, repris } = lireFeuille('body { color: #0f766e }');
+    assert.deepEqual(valeurs, {});
+    assert.equal(repris.length, 0);
+  });
+});
+
+describe('polices importées', () => {
+  const POLICE = { id: 7, famille: 'Belleville Sans', role: 'les_deux', graisse: '600',
+                   style: 'normal', format: 'woff2' };
+
+  it('reconnaît un format aux premiers octets, pas à l’extension', () => {
+    assert.equal(reconnaitre(Buffer.from([0x77, 0x4f, 0x46, 0x32]))?.format, 'woff2');
+    assert.equal(reconnaitre(Buffer.from([0x4f, 0x54, 0x54, 0x4f]))?.format, 'opentype');
+    assert.equal(reconnaitre(Buffer.from('<?php echo 1;')), null);
+  });
+
+  // Le nom finit entre guillemets dans `font-family` : une apostrophe y
+  // refermerait la déclaration et ouvrirait la suivante.
+  it('restreint le nom de famille au lieu de l’échapper', () => {
+    assert.equal(familleSaine('Belleville Sans'), 'Belleville Sans');
+    const propre = familleSaine('a"; } body { display:none } .x {');
+    // Ce qui compte n'est pas la chaîne exacte mais ce qui n'y est plus : rien
+    // qui puisse refermer la déclaration `font-family: "…"`.
+    assert.ok(!/["'{};:]/.test(propre), propre);
+    assert.equal(propre, 'a body display none x');
+    assert.equal(familleSaine('   '), null);
+  });
+
+  it('fabrique le @font-face depuis la déclaration, pas depuis le fichier', () => {
+    const face = facesCharte([POLICE], '/landing_tfb');
+    assert.match(face, /font-family: "Belleville Sans";/);
+    assert.match(face, /url\("\/landing_tfb\/polices\/7"\) format\("woff2"\)/);
+    assert.match(face, /font-weight: 600;/);
+    assert.match(face, /font-display: swap;/);
+  });
+
+  it('écarte une famille qui aurait échappé au contrôle en amont', () => {
+    assert.equal(facesCharte([{ ...POLICE, famille: 'a"; }' }]), '');
+  });
+
+  it('sert la police du client quand elle est choisie', () => {
+    const css = cssCharte({ 'theme.police_titres': 'client' }, [POLICE]);
+    assert.match(css, /--font-display: "Belleville Sans", "Manrope"/);
+  });
+
+  // Une police manquante — réseau coupé, format refusé — ne doit pas laisser
+  // une caisse sans texte.
+  it('retombe sur la pile par défaut quand rien n’a été importé', () => {
+    const css = cssCharte({ 'theme.police_titres': 'client' }, []);
+    assert.match(css, /--font-display: "Manrope"/);
+    assert.ok(!css.includes('undefined'));
   });
 });
