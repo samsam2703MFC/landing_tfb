@@ -11,11 +11,22 @@
  * mais elle empêche de parcourir les offres des autres en changeant un numéro
  * dans l'URL. Sans clé valable, la page répond 404 et non 403 : confirmer
  * qu'une référence existe serait déjà en dire trop.
+ *
+ * C'est aussi ici que le client donne son bon pour accord sur les écrans sur
+ * mesure. La même clé sert, et c'est cohérent : celui qui peut lire l'annexe
+ * est celui à qui l'offre a été envoyée, et c'est précisément lui qu'on veut
+ * faire signer. La console, elle, montre les mêmes maquettes sans le
+ * formulaire — un commercial qui signerait à la place de son client
+ * produirait un accord sans valeur, et personne ne s'en apercevrait avant le
+ * litige.
  */
 import Annexe from '../../components/Annexe.astro';
 import { chargerOffre } from '../../lib/admin/donnees.mjs';
+import { dernierVisa, listerMaquettes, poserVisa } from '../../lib/admin/maquettes.mjs';
 import { cleAnnexeValide } from '../../lib/admin/session.mjs';
+import { visaAJour } from '../../lib/offres/visa.mjs';
 
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const { reference } = Astro.params;
 const version = Astro.url.searchParams.get('version') || '1';
 const cle = Astro.url.searchParams.get('cle');
@@ -25,6 +36,52 @@ if (!cleAnnexeValide(reference, version, cle)) return introuvable();
 
 const offre = await chargerOffre(reference, version);
 if (!offre) return introuvable();
+
+let souci = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    await poserVisa(offre.id, {
+      vues: offre.vues || [],
+      version: offre.version,
+      nom: f.get('nom'),
+      email: f.get('email'),
+      role: f.get('role'),
+      commentaire: f.get('commentaire'),
+      trace: f.get('trace'),
+      // Derrière un proxy, l'adresse vue par Node est celle du proxy. On
+      // préfère l'en-tête quand il est là. C'est indicatif et rien de plus —
+      // ce qui fait la valeur de l'accord est l'empreinte, pas l'adresse IP.
+      ip: Astro.request.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+        || Astro.clientAddress || null,
+      agent: Astro.request.headers.get('user-agent'),
+    });
+    // POST-redirection-GET : sans lui, recharger la page resignerait, et le
+    // client verrait deux accords sans comprendre d'où vient le second.
+    return Astro.redirect(
+      `${BASE}/annexe/${reference}?version=${version}&cle=${encodeURIComponent(cle)}&merci=1`,
+      303,
+    );
+  } catch (err) {
+    souci = err.message;
+  }
+}
+
+// L'accord en place, et s'il couvre encore ce qui est à l'écran.
+const visa = await dernierVisa(offre.id);
+const etat = visaAJour(visa, offre.vues || [], await listerMaquettes(offre.id));
+
+const merci = Astro.url.searchParams.get('merci')
+  ? 'Merci — votre accord est enregistré. Nous partons là-dessus.'
+  : null;
 ---
 
-<Annexe offre={offre} />
+<Annexe
+  offre={offre}
+  signature={`${Astro.url.pathname}${Astro.url.search}`}
+  visa={visa}
+  perime={etat.perime}
+  dit={merci}
+  souci={souci}
+/>

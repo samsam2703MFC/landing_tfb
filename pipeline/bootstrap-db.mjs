@@ -204,6 +204,75 @@ function modele(pg) {
         ['logo_type', t.chaine(40)],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['ordre', 'INT DEFAULT 100'],
+        // L'identité réelle du réseau, derrière le nom d'enseigne du bandeau.
+        //
+        // « L'Atelier By » est une marque ; ce qui signe et ce qui paie est
+        // une société avec un numéro. Les saisir ici évite de retaper la même
+        // chose sur la fiche prospect, et l'import VIES les remplit d'un
+        // bouton — un nom recopié à la main d'un registre étranger contient
+        // une faute une fois sur trois.
+        ['tva', t.chaine(20)],
+        ['pays', t.chaine(2)],
+        ['adresse', t.texte],
+        ['site_web', t.chaine(255)],
+        ['tva_verifiee_le', t.horodatage],
+        ['tva_verifiee_ref', t.chaine(60)],
+        ['tva_verifiee_nom', t.chaine(255)],
+      ],
+    },
+    {
+      // La société qui facture.
+      //
+      // Une table, et non des variables d'environnement : ces valeurs ne sont
+      // pas des secrets, elles s'impriment sur chaque document, et elles
+      // changent — un déménagement, un changement de compte bancaire. Les
+      // mettre en base les rend modifiables sans redéploiement, et une
+      // deuxième ligne suffira le jour où une entité belge facturera les
+      // clients belges.
+      //
+      // Ce qui **est** secret n'est pas ici : la clé Stripe reste en variable
+      // d'environnement. La table ne garde que l'identifiant du compte
+      // connecté, qui n'ouvre rien tout seul.
+      nom: table('societes'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(40)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(200)} NOT NULL`],
+        ['forme_juridique', t.chaine(120)],
+        // Le registre du commerce : KRS en Pologne, BCE en Belgique, SIREN en
+        // France. Une seule colonne, le libellé change avec le pays.
+        ['numero_registre', t.chaine(60)],
+        ['numero_registre_nom', `${t.chaine(20)} DEFAULT 'Registre'`],
+        // Le numéro de TVA — NIP en Pologne. C'est lui que VIES vérifie.
+        ['tva', t.chaine(20)],
+        // Le numéro statistique, quand le pays en a un : REGON en Pologne.
+        // Il ne sert à rien fiscalement mais figure sur les documents polonais.
+        ['numero_stat', t.chaine(40)],
+        ['adresse', t.texte],
+        ['code_postal', t.chaine(20)],
+        ['ville', t.chaine(120)],
+        ['pays', `${t.chaine(2)} DEFAULT 'PL'`],
+        ['email', t.chaine(200)],
+        ['telephone', t.chaine(40)],
+        ['site_web', t.chaine(255)],
+        ['iban', t.chaine(40)],
+        ['bic', t.chaine(20)],
+        ['banque', t.chaine(160)],
+        ['devise', `${t.chaine(3)} DEFAULT 'EUR'`],
+        // Le compte Stripe connecté : « acct_… ». Ce n'est pas une clé — il
+        // ne permet rien sans la clé secrète de la plateforme, qui reste en
+        // variable d'environnement.
+        ['stripe_compte', t.chaine(60)],
+        ['stripe_verifie_le', t.horodatage],
+        ['stripe_etat', t.chaine(40)],
+        // La mention en pied de facture : conditions de paiement, tribunal
+        // compétent. Elle change plus souvent que l'adresse.
+        ['mention_pied', t.texte],
+        ['defaut', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['tva_verifiee_le', t.horodatage],
+        ['tva_verifiee_ref', t.chaine(60)],
+        ['maj_le', t.horodatage],
       ],
     },
     {
@@ -292,7 +361,19 @@ function modele(pg) {
         // reprennent sur chaque boutique, qui peut les redéfinir.
         ['devise', `${t.chaine(3)} DEFAULT 'EUR'`],
         ['fuseau', `${t.chaine(60)} DEFAULT 'Europe/Brussels'`],
+        // La langue dans laquelle ce client lit ses documents. Une offre la
+        // reprend à sa création, puis vit sa vie : changer la langue du client
+        // ne retraduit pas une offre déjà partie.
+        ['langue', `${t.chaine(5)} DEFAULT 'fr'`],
         ['mandat_sepa', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        // La trace de la vérification VIES. Ce n'est pas de la décoration :
+        // en cas de contrôle, c'est ce qui prouve qu'on a vérifié le numéro
+        // **avant** de facturer hors taxes, et à quelle date. Un numéro
+        // valable aujourd'hui peut être radié demain — sans la date, la
+        // vérification ne vaut rien.
+        ['tva_verifiee_le', t.horodatage],
+        ['tva_verifiee_ref', t.chaine(60)],
+        ['tva_verifiee_nom', t.chaine(255)],
         // La demande de démonstration d'où vient le prospect, s'il en vient
         // une : de quoi éviter la ressaisie et garder le fil.
         ['lead_id', 'INT'],
@@ -403,6 +484,68 @@ function modele(pg) {
         // unique · mensuel · annuel
         ['recurrence', `${t.chaine(10)} DEFAULT 'unique'`],
         ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // La maquette d'une vue personnalisée.
+      //
+      // Une vue se vend une ligne de texte : « Tableau des marges par
+      // boutique ». Le commercial et le client n'imaginent pas le même écran,
+      // et l'écart n'apparaît qu'à la livraison — au moment le plus cher.
+      // Une capture, même approximative, coupe court.
+      //
+      // Elle se rattache au **rang** de la vue dans l'offre, pas à un
+      // identifiant : les vues sont un tableau JSON sur l'offre, sans clé
+      // propre. Réordonner les vues déplacerait donc les maquettes ; c'est le
+      // prix de ne pas avoir de table de vues, et l'écran prévient.
+      nom: table('vues_maquettes'),
+      colonnes: [
+        ['id', t.id],
+        ['offre_id', 'INT NOT NULL'],
+        ['rang', 'INT NOT NULL'],
+        ['titre', t.chaine(255)],
+        // En base64, comme les logos et les pièces : le dossier `public/` est
+        // figé au build et n'y survivrait pas.
+        ['contenu', t.texte],
+        ['type_mime', t.chaine(60)],
+        ['nom', t.chaine(255)],
+        ['taille', 'INT DEFAULT 0'],
+        // L'empreinte de l'image, qui entre dans ce que le client signe :
+        // sans elle, on pourrait remplacer la capture après la signature.
+        ['empreinte', t.chaine(64)],
+        ['depose_par', 'INT'],
+        ['depose_le', t.horodatage],
+      ],
+    },
+    {
+      // Le bon pour accord du client sur les vues.
+      //
+      // Ce n'est pas la signature du contrat — celle-là passe par le module
+      // contrats et, le jour venu, par DocuSign. C'est le visa de recette :
+      // « oui, ces écrans-là, dans cet ordre-là, c'est bien ce que j'attends ».
+      //
+      // Ce qui lui donne sa valeur n'est pas le nom tapé, c'est **l'empreinte**
+      // de ce qui était à l'écran au moment du clic : la liste des vues, leur
+      // description, et le condensé de chaque capture. Changer une capture
+      // après coup ne change pas l'empreinte enregistrée — la console voit
+      // alors que le visa ne correspond plus, et le dit.
+      nom: table('vues_visas'),
+      colonnes: [
+        ['id', t.id],
+        ['offre_id', 'INT NOT NULL'],
+        ['version', 'INT DEFAULT 1'],
+        ['signataire_nom', `${t.chaine(160)} NOT NULL`],
+        ['signataire_email', t.chaine(200)],
+        ['signataire_role', t.chaine(120)],
+        ['commentaire', t.texte],
+        // Le tracé manuscrit, en PNG base64, quand le navigateur l'a permis.
+        // Facultatif : la page marche sans JavaScript, et le nom tapé plus
+        // l'horodatage suffisent à faire un accord.
+        ['trace', t.texte],
+        ['empreinte', `${t.chaine(64)} NOT NULL`],
+        ['ip', t.chaine(45)],
+        ['agent', t.chaine(255)],
+        ['signe_le', t.horodatage],
       ],
     },
     {
@@ -1043,6 +1186,11 @@ const INDEX = [
   { suffixe: 'contrats_offre', table: 'contrats', colonnes: 'offre_id' },
   { suffixe: 'contrats_statut', table: 'contrats', colonnes: 'statut' },
   { suffixe: 'pieces_prospect', table: 'pieces', colonnes: 'prospect_id, type' },
+  // Une seule maquette par vue : redéposer remplace, il n'y a pas d'historique
+  // de captures à tenir. Ce qui compte est ce qui a été signé, et cela vit
+  // dans l'empreinte du visa.
+  { suffixe: 'maquettes_vue', table: 'vues_maquettes', colonnes: 'offre_id, rang', unique: true },
+  { suffixe: 'visas_offre', table: 'vues_visas', colonnes: 'offre_id, id' },
   // ── Onboarding ────────────────────────────────────────────────────────
   //
   // Les deux clés uniques qui portent toute l'idempotence : rejouer un import

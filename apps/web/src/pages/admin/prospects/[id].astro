@@ -21,8 +21,10 @@ import {
   enregistrerProspect,
   listerOffres,
   listerPieces,
+  noterViesProspect,
   supprimerPiece,
 } from '../../../lib/admin/donnees.mjs';
+import { serviceVies } from '../../../lib/onboarding/vies.mjs';
 import {
   CHAMPS_DOSSIER,
   GROUPES_DOSSIER,
@@ -52,6 +54,22 @@ if (Astro.request.method === 'POST') {
     } else if (action === 'piece-suppression') {
       await supprimerPiece(f.get('piece_id'));
       dit = 'Pièce retirée.';
+    } else if (action === 'vies') {
+      // On enregistre d'abord les coordonnées : vérifier un numéro qu'on
+      // vient de taper sans l'enregistrer vérifierait celui d'avant, et le
+      // message porterait sur autre chose que ce qui est à l'écran.
+      await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
+      const r = await serviceVies().verifier(f.get('tva'), f.get('pays'));
+      if (!r.ok) throw new Error(r.message);
+      // On ne recopie **jamais** le nom d'ici : la fiche d'un prospect porte
+      // souvent un nom d'usage — « Le Pain Quotidien » plutôt que « LPQ
+      // HOLDING SA » — et l'écraser sans le demander ferait perdre le nom que
+      // le commercial emploie au téléphone. L'étape « Votre entreprise » du
+      // parcours, elle, le propose avec une case à cocher.
+      await noterViesProspect(id, r);
+      dit = r.nom
+        ? `TVA vérifiée auprès de VIES — le registre dit « ${r.nom} ».`
+        : 'TVA vérifiée auprès de VIES : le numéro est valide. Cet État membre ne publie pas le nom.';
     } else {
       await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
     }
@@ -79,6 +97,7 @@ try {
 const etat = prospect ? dossierComplet(prospect, { pieces }) : { complet: false, manque: [] };
 const libellePiece = (cle) => (TYPES_PIECE.find((t) => t.cle === cle) || {}).libelle || cle;
 const poids = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(o / 1024)} ko`);
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
 
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
 
@@ -104,10 +123,31 @@ const message = Astro.url.searchParams.get('ok');
               Les montants d'une offre envoyée, eux, ne changent pas.
             </p>
           </div>
+          <span class={prospect.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
+            {prospect.tva_verifiee_le ? `TVA vérifiée le ${jour(prospect.tva_verifiee_le)}` : 'TVA non vérifiée'}
+          </span>
         </div>
 
+        {prospect.tva_verifiee_nom && prospect.tva_verifiee_nom !== prospect.raison_sociale && (
+          <div class="champ">
+            <span class="champ__aide">
+              Le registre européen connaît ce numéro sous le nom
+              <strong> {prospect.tva_verifiee_nom}</strong>. Ce n'est pas une erreur si vous employez
+              un nom d'usage — mais c'est le nom du registre qui doit figurer sur le contrat.
+            </span>
+          </div>
+        )}
+
+        {/*
+          Aucun champ caché « action » : un formulaire qui porte à la fois un
+          `<input type="hidden" name="action">` et un bouton `name="action"`
+          envoie **les deux**, et `formData.get()` rend le premier — donc
+          toujours le champ caché. « Vérifier la TVA » aurait alors enregistré
+          les coordonnées sans rien vérifier, en disant l'avoir fait. Le
+          bouton d'enregistrement n'en porte pas : sans action, on retombe
+          dessus.
+        */}
         <form method="post">
-          <input type="hidden" name="action" value="coordonnees" />
           <div class="duo">
             {CHAMPS_PROSPECT.map((c) => (
               <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
@@ -132,7 +172,16 @@ const message = Astro.url.searchParams.get('ok');
           </div>
           <div class="actions">
             <button class="bouton bouton--marque" type="submit">Enregistrer</button>
+            <button class="bouton bouton--sobre" type="submit" name="action" value="vies">
+              <Icone nom="search" taille={16} /> Vérifier la TVA
+            </button>
           </div>
+          <span class="champ__aide">
+            « Vérifier la TVA » enregistre les coordonnées, puis interroge VIES, le registre de la
+            Commission européenne. Il dit si le numéro existe et à quel nom — de quoi attraper une
+            faute de frappe avant qu'elle ne finisse sur une facture. La raison sociale n'est pas
+            remplacée : l'étape « Votre entreprise » du parcours le propose, avec une case à cocher.
+          </span>
         </form>
       </section>
 

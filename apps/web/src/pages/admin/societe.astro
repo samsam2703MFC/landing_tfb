@@ -1,0 +1,251 @@
+---
+/**
+ * La société qui facture.
+ *
+ * Ce qui s'imprime en tête de chaque offre, de chaque contrat, de chaque
+ * facture. Ces valeurs ne sont pas des constantes du code : une adresse
+ * change, un compte bancaire change, et les changer ne devrait pas demander
+ * un déploiement.
+ *
+ * Ce qui **n'est pas** ici : la clé secrète Stripe. Elle se pose sur le
+ * serveur, en variable d'environnement, et ne se saisit dans aucun écran.
+ * L'identifiant du compte connecté — « acct_… » — n'ouvre rien tout seul,
+ * c'est pourquoi il s'édite ici.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { compteurs } from '../../lib/admin/donnees.mjs';
+import {
+  CHAMPS_SOCIETE,
+  GROUPES_SOCIETE,
+  ajouterSociete,
+  chargerSociete,
+  designerSociete,
+  enregistrerSociete,
+  enTeteSociete,
+  listerSocietes,
+  noterStripe,
+  noterViesSociete,
+} from '../../lib/admin/facturation.mjs';
+import { ETATS_COMPTE, serviceStripe } from '../../lib/facturation/stripe.mjs';
+import { serviceVies } from '../../lib/onboarding/vies.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'enregistrer');
+    const id = f.get('id');
+    const valeurs = Object.fromEntries(CHAMPS_SOCIETE.map((c) => [c.nom, f.get(c.nom)]));
+    let dit = 'Société enregistrée.';
+
+    if (action === 'ajouter') {
+      await ajouterSociete(valeurs);
+      dit = 'Société créée.';
+    } else if (action === 'designer') {
+      await designerSociete(id);
+      dit = 'C’est désormais cette société qui facture.';
+    } else if (action === 'vies') {
+      // On enregistre d'abord : sans cela, vérifier un numéro qu'on vient de
+      // taper vérifierait l'ancien, et le message porterait sur autre chose
+      // que ce qui est à l'écran.
+      await enregistrerSociete(id, valeurs);
+      const r = await serviceVies().verifier(valeurs.tva);
+      if (!r.ok) throw new Error(r.message);
+      await noterViesSociete(id, r);
+      dit = `TVA vérifiée auprès de VIES : ${r.nom || 'numéro valide'}.`;
+    } else if (action === 'stripe') {
+      const societe = await chargerSociete(id);
+      const r = await serviceStripe().etatCompte(societe?.stripe_compte);
+      if (!r.ok) throw new Error(r.message);
+      await noterStripe(id, r.etat);
+      dit = `Stripe : ${r.dit}${r.manque.length ? ` Il manque : ${r.manque.join(', ')}.` : ''}`;
+    } else {
+      await enregistrerSociete(id, valeurs);
+    }
+    return Astro.redirect(`${BASE}/admin/societe?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let societes = [];
+let chiffres = {};
+try {
+  societes = await listerSocietes();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const stripe = serviceStripe();
+const message = Astro.url.searchParams.get('ok');
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
+---
+
+<Console
+  titre="Société qui facture"
+  fil="TFB Admin · Commercial · Société qui facture"
+  actif="societe"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {!stripe.branche && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Stripe n'est pas branché</h2>
+          <p>
+            Le compte connecté se saisit ici, mais la console ne peut pas dire où il en
+            est tant que <span class="jeton">STRIPE_CLE</span> n'est pas posée sur le
+            serveur. La clé ne se saisit dans aucun écran et n'entre pas dans le dépôt —
+            elle autorise à encaisser, un formulaire n'a pas à la connaître.
+          </p>
+        </div>
+      </div>
+    </section>
+  )}
+
+  {societes.map((s) => {
+    const enTete = enTeteSociete(s);
+    return (
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>{s.nom}</h2>
+            <p>{s.defaut ? 'C’est elle qui facture.' : 'Enregistrée, mais ce n’est pas elle qui facture aujourd’hui.'}</p>
+          </div>
+          {s.defaut
+            ? <span class="etat etat--on">émettrice</span>
+            : (
+              <form method="post" class="actions">
+                <input type="hidden" name="action" value="designer" />
+                <input type="hidden" name="id" value={s.id} />
+                <button class="bouton bouton--sobre bouton--sm" type="submit">Facturer avec celle-ci</button>
+              </form>
+            )}
+        </div>
+
+        <div class="bloc__corps">
+          <div class="promesse">
+            <div>
+              <span class="oeil">Tel qu'il s'imprimera</span>
+              <div class="entete-doc">
+                {enTete.map((l) => <div>{l}</div>)}
+              </div>
+            </div>
+            <div class="puces">
+              <span class={s.tva_verifiee_le ? 'puce puce--cap' : 'puce'}>
+                {s.tva_verifiee_le ? `TVA vérifiée le ${jour(s.tva_verifiee_le)}` : 'TVA jamais vérifiée'}
+              </span>
+              <span class={s.stripe_etat === 'complet' ? 'puce puce--cap' : 'puce'}>
+                {s.stripe_compte
+                  ? (s.stripe_etat ? ETATS_COMPTE[s.stripe_etat] || s.stripe_etat : 'Compte Stripe jamais interrogé')
+                  : 'Aucun compte Stripe'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <form method="post">
+          <input type="hidden" name="id" value={s.id} />
+          {GROUPES_SOCIETE.map((g) => (
+            <div class="groupe">
+              <span class="groupe__titre">{g.titre}</span>
+              <p class="champ__aide">{g.aide}</p>
+              <div class="duo">
+                {CHAMPS_SOCIETE.filter((c) => c.groupe === g.cle).map((c) => (
+                  <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
+                    <label for={`s${s.id}-${c.nom}`}>
+                      {c.libelle}{c.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
+                    </label>
+                    {c.zone ? (
+                      <textarea id={`s${s.id}-${c.nom}`} name={c.nom} rows="2" placeholder={c.exemple}>{s[c.nom] || ''}</textarea>
+                    ) : (
+                      <input
+                        id={`s${s.id}-${c.nom}`}
+                        type={c.type || 'text'}
+                        name={c.nom}
+                        value={s[c.nom] || ''}
+                        maxlength={c.taille}
+                        placeholder={c.exemple}
+                        required={c.requis}
+                      />
+                    )}
+                    {c.aide && <span class="champ__aide">{c.aide}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <div class="actions">
+            <button class="bouton bouton--marque" type="submit" name="action" value="enregistrer">Enregistrer</button>
+            <button class="bouton bouton--sobre" type="submit" name="action" value="vies">
+              <Icone nom="search" taille={16} /> Vérifier la TVA auprès de VIES
+            </button>
+            <button class="bouton bouton--sobre" type="submit" name="action" value="stripe">
+              <Icone nom="arrow-up-down" taille={16} /> Où en est le compte Stripe
+            </button>
+          </div>
+          <p class="champ__aide">
+            « Vérifier la TVA » enregistre d'abord, puis interroge le registre européen :
+            vérifier un numéro qu'on vient de taper sans l'enregistrer vérifierait l'ancien.
+          </p>
+        </form>
+      </section>
+    );
+  })}
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Ajouter une société</h2>
+        <p>
+          Utile le jour où une entité belge facturera les clients belges pendant que
+          l'entité polonaise facture les autres. Tant qu'il n'y en a qu'une, cette
+          section ne sert à rien — et c'est très bien.
+        </p>
+      </div>
+    </div>
+    <form method="post" class="bloc__corps">
+      <input type="hidden" name="action" value="ajouter" />
+      <div class="duo">
+        {CHAMPS_SOCIETE.filter((c) => c.groupe === 'identite' || c.groupe === 'adresse').map((c) => (
+          <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
+            <label for={`n-${c.nom}`}>
+              {c.libelle}{c.requis && <span class="champ__requis" aria-hidden="true"> *</span>}
+            </label>
+            {c.zone ? (
+              <textarea id={`n-${c.nom}`} name={c.nom} rows="2" placeholder={c.exemple}></textarea>
+            ) : (
+              <input id={`n-${c.nom}`} type="text" name={c.nom} maxlength={c.taille} placeholder={c.exemple} required={c.requis} />
+            )}
+          </div>
+        ))}
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--sobre bouton--sm" type="submit">
+          <Icone nom="plus" taille={14} /> Ajouter
+        </button>
+      </div>
+    </form>
+    <div class="bloc__pied">
+      Le reste — banque, Stripe, mention de pied — s'édite ensuite, sur la fiche.
+    </div>
+  </section>
+</Console>
+
+<style is:global>
+  /* Le bloc d'en-tête tel qu'il s'imprimera : même chasse fixe que les
+     montants, pour qu'un IBAN se relise chiffre par chiffre. */
+  .entete-doc {
+    margin-block-start: 6px;
+    font: 400 13px/1.55 var(--font-mono, ui-monospace, monospace);
+    color: var(--slate-700);
+  }
+  .entete-doc div:first-child { font-weight: 700; }
+</style>

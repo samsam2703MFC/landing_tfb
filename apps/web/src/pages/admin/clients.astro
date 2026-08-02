@@ -8,9 +8,11 @@
  * bandeau.
  */
 import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
 import { lien } from '../../lib/lien.mjs';
 import {
   ajouterClient,
+  appliquerViesClient,
   compteurs,
   enregistrerClient,
   enregistrerLogoClient,
@@ -19,6 +21,7 @@ import {
   supprimerLogoClient,
 } from '../../lib/admin/donnees.mjs';
 import { TAILLE_MAX, TYPES_ACCEPTES } from '../../lib/admin/images.mjs';
+import { serviceVies } from '../../lib/onboarding/vies.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -31,8 +34,43 @@ if (Astro.request.method === 'POST') {
     if (action === 'ajout') {
       const { avecLogo } = await ajouterClient({
         nom: f.get('nom'), note: f.get('note'), ordre: f.get('ordre'), logo: f.get('logo'),
+        tva: f.get('tva'), pays: f.get('pays'), adresse: f.get('adresse'), site_web: f.get('site_web'),
       });
       note = avecLogo ? 'Réseau ajouté, logo compris.' : 'Réseau ajouté.';
+    } else if (action === 'ajout-vies') {
+      // L'import à la création : on interroge d'abord, on crée ensuite avec ce
+      // que le registre a dit. C'est le seul endroit où l'on recopie le nom
+      // sans le demander — la ligne n'existe pas encore, il n'y a pas de nom
+      // d'usage à écraser, et il se corrige juste après si besoin.
+      const r = await serviceVies().verifier(f.get('tva'), f.get('pays'));
+      if (!r.ok) throw new Error(r.message);
+      const { id } = await ajouterClient({
+        nom: String(f.get('nom') || '').trim() || r.nom || r.tva,
+        note: f.get('note'),
+        ordre: f.get('ordre'),
+        logo: f.get('logo'),
+        tva: r.tva,
+        pays: r.pays === 'EL' ? 'GR' : r.pays,
+        adresse: r.adresse,
+        site_web: f.get('site_web'),
+      });
+      await appliquerViesClient(id, r);
+      note = r.nom
+        ? `Réseau ajouté depuis VIES — le registre dit « ${r.nom} ».`
+        : 'Réseau ajouté : le numéro est valide, mais cet État membre ne publie pas le nom.';
+    } else if (action === 'vies') {
+      // On enregistre d'abord : vérifier un numéro qu'on vient de taper sans
+      // l'enregistrer vérifierait celui d'avant.
+      await enregistrerClient(f.get('id'), {
+        nom: f.get('nom'), note: f.get('note'), actif: f.get('actif') === 'on', ordre: f.get('ordre'),
+        tva: f.get('tva'), pays: f.get('pays'), adresse: f.get('adresse'), site_web: f.get('site_web'),
+      });
+      const r = await serviceVies().verifier(f.get('tva'), f.get('pays'));
+      if (!r.ok) throw new Error(r.message);
+      await appliquerViesClient(f.get('id'), r);
+      note = r.nom
+        ? `TVA vérifiée — le registre dit « ${r.nom} ». Le nom du bandeau, lui, n'a pas bougé.`
+        : 'TVA vérifiée : le numéro est valide. Cet État membre ne publie pas le nom.';
     } else if (action === 'suppression') {
       await supprimerClient(f.get('id'));
       note = 'Réseau retiré.';
@@ -45,6 +83,10 @@ if (Astro.request.method === 'POST') {
         note: f.get('note'),
         actif: f.get('actif') === 'on',
         ordre: f.get('ordre'),
+        tva: f.get('tva'),
+        pays: f.get('pays'),
+        adresse: f.get('adresse'),
+        site_web: f.get('site_web'),
       });
       // Le champ de fichier laissé vide ne touche pas au logo en place : on
       // doit pouvoir corriger un nom sans redéposer l'image.
@@ -68,6 +110,8 @@ try {
 
 const message = Astro.url.searchParams.get('ok');
 const affiches = clients.filter((c) => c.actif).length;
+const identifies = clients.filter((c) => c.tva).length;
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
 ---
 
 <Console
@@ -101,8 +145,9 @@ const affiches = clients.filter((c) => c.actif).length;
             {clients.map((c) => (
               <tr>
                 <td colspan="6" style="padding:0">
-                  <form method="post" enctype="multipart/form-data" class="ligne-client">
+                  <form method="post" enctype="multipart/form-data">
                     <input type="hidden" name="id" value={c.id} />
+                    <div class="ligne-client">
                     <span class="logo-case">
                       {c.logo_type ? (
                         <img class="logo-vu" src={`${BASE}/logos/${c.id}`} alt="" width="64" height="32" loading="lazy" />
@@ -136,6 +181,48 @@ const affiches = clients.filter((c) => c.actif).length;
                         onclick="return confirm('Retirer ce réseau du bandeau ?')"
                       >Retirer</button>
                     </div>
+                    </div>
+
+                    <details class="identite" open={Boolean(c.tva)}>
+                      <summary>
+                        L'identité derrière l'enseigne
+                        {c.tva
+                          ? <span class={c.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
+                              {c.tva}{c.tva_verifiee_le ? ` · vérifiée le ${jour(c.tva_verifiee_le)}` : ' · non vérifiée'}
+                            </span>
+                          : <span class="etat">aucun numéro</span>}
+                      </summary>
+                      <div class="duo">
+                        <div class="champ">
+                          <label for={`c${c.id}-tva`}>Numéro de TVA</label>
+                          <input id={`c${c.id}-tva`} type="text" name="tva" value={c.tva || ''} maxlength="20" placeholder="BE0123456789" />
+                        </div>
+                        <div class="champ">
+                          <label for={`c${c.id}-pays`}>Pays</label>
+                          <input id={`c${c.id}-pays`} type="text" name="pays" value={c.pays || ''} maxlength="2" placeholder="BE" />
+                        </div>
+                        <div class="champ">
+                          <label for={`c${c.id}-web`}>Site web</label>
+                          <input id={`c${c.id}-web`} type="text" name="site_web" value={c.site_web || ''} maxlength="255" />
+                        </div>
+                        <div class="champ" style="grid-column:1/-1">
+                          <label for={`c${c.id}-adresse`}>Adresse du siège</label>
+                          <textarea id={`c${c.id}-adresse`} name="adresse" rows="2">{c.adresse || ''}</textarea>
+                        </div>
+                      </div>
+                      {c.tva_verifiee_nom && (
+                        <p class="champ__aide">
+                          Le registre européen connaît ce numéro sous le nom
+                          <strong> {c.tva_verifiee_nom}</strong>. Le bandeau, lui, garde l'enseigne —
+                          c'est elle que le visiteur reconnaît.
+                        </p>
+                      )}
+                      <div class="actions">
+                        <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="vies">
+                          <Icone nom="search" taille={14} /> Vérifier auprès de VIES
+                        </button>
+                      </div>
+                    </details>
                   </form>
                 </td>
               </tr>
@@ -146,8 +233,16 @@ const affiches = clients.filter((c) => c.actif).length;
     )}
 
     <div class="bloc__corps">
+      {/*
+        Aucun champ caché « action » ici, et c'est important : un formulaire
+        qui porte à la fois un `<input type="hidden" name="action">` et un
+        bouton `name="action"` envoie **les deux**, et `formData.get()` rend
+        le premier — c'est-à-dire toujours le champ caché. Le second bouton
+        semble alors marcher tout en faisant autre chose, ce qui est la pire
+        forme de panne. Chaque bouton porte donc son action, et le premier
+        est celui par défaut.
+      */}
       <form method="post" enctype="multipart/form-data" class="repet__item">
-        <input type="hidden" name="action" value="ajout" />
         <div class="duo">
           <div class="champ">
             <label for="cl-nom">Nom du réseau<span class="champ__requis" aria-hidden="true"> *</span></label>
@@ -169,16 +264,41 @@ const affiches = clients.filter((c) => c.actif).length;
               affiche le nom. Le SVG est refusé : il peut porter du JavaScript.
             </span>
           </div>
+          <div class="champ">
+            <label for="cl-tva">Numéro de TVA</label>
+            <input id="cl-tva" type="text" name="tva" maxlength="20" placeholder="BE0123456789" />
+            <span class="champ__aide">
+              Facultatif — mais avec lui, « Chercher dans VIES » remplit le nom légal et
+              l'adresse depuis le registre européen, sans ressaisie et sans faute.
+            </span>
+          </div>
+          <div class="champ">
+            <label for="cl-pays">Pays</label>
+            <input id="cl-pays" type="text" name="pays" maxlength="2" placeholder="BE" />
+          </div>
+          <div class="champ" style="grid-column:1/-1">
+            <label for="cl-adresse">Adresse du siège</label>
+            <textarea id="cl-adresse" name="adresse" rows="2"></textarea>
+          </div>
         </div>
         <div class="actions">
-          <button class="bouton bouton--marque bouton--sm" type="submit">Ajouter ce réseau</button>
+          <button class="bouton bouton--marque bouton--sm" type="submit" name="action" value="ajout">Ajouter ce réseau</button>
+          <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="ajout-vies">
+            <Icone nom="search" taille={14} /> Ajouter depuis VIES
+          </button>
         </div>
+        <p class="champ__aide">
+          « Ajouter depuis VIES » part du numéro de TVA : le nom et l'adresse arrivent du
+          registre, et le nom du bandeau se corrige ensuite si l'enseigne diffère de la
+          raison sociale — ce qui est le cas le plus souvent.
+        </p>
       </form>
     </div>
 
     <div class="bloc__pied">
       {clients.length} réseau(x), {affiches} affiché(s),
-      {' '}{clients.filter((c) => c.logo_type).length} avec logo.
+      {' '}{clients.filter((c) => c.logo_type).length} avec logo,
+      {' '}{identifies} avec un numéro de TVA.
       {clients.length === 0 && " Le bandeau reste masqué tant qu'aucun réseau n'est saisi."}
       {' '}Les logos sont stockés en base, pas dans un dossier : ils survivent au déploiement
       et sont sauvegardés avec le reste du contenu.
@@ -210,6 +330,23 @@ const affiches = clients.filter((c) => c.actif).length;
     font: 400 10px/1 var(--font-sans); color: var(--slate-400);
   }
   .logo-case input[type='file'] { font-size: 11px; padding: 4px; }
+
+  /* L'identité légale, repliée par défaut : le bandeau se règle en trois
+     champs, et faire cohabiter le nom d'enseigne avec une adresse de siège
+     sur la même ligne rendrait les deux illisibles. Elle s'ouvre d'office
+     quand un numéro est saisi — s'il est là, c'est qu'on s'en sert. */
+  .identite { padding: 0 16px 14px; border-block-start: 1px dashed var(--slate-200); }
+  .identite > summary {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    padding-block: 10px; cursor: pointer;
+    font: var(--type-body-sm); color: var(--slate-500);
+  }
+  .identite > summary::marker { color: var(--slate-400); }
+
+  /* Le formulaire d'ajout finit par une zone de texte pleine largeur : sans
+     cet air, ses boutons se collent dessous et « Ajouter » se lit comme la
+     dernière ligne de l'adresse. */
+  .repet__item > .actions { margin-block-start: 14px; }
 
   @media (max-width: 1100px) {
     /* En dessous, six colonnes deviennent illisibles : la ligne se replie. */

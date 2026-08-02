@@ -1,0 +1,367 @@
+---
+/**
+ * Étape 0 — votre entreprise.
+ *
+ * La première du parcours, et la seule qui ne parle pas de caisses. Elle
+ * existe pour deux raisons, dont une seule est évidente.
+ *
+ * L'évidente : il faut bien savoir qui l'on branche, et sous quel nom les
+ * documents partiront.
+ *
+ * L'autre : **la devise et le fuseau décident de tout ce qui suit.** Une
+ * caisse qui renvoie des ventes dans une autre devise que celle du réseau est
+ * refusée plutôt que silencieusement additionnée ; le fuseau et l'heure de
+ * coupure décident du jour d'exploitation auquel une vente de 2 h 30 est
+ * rattachée. Les demander ici, une fois, évite de les redemander à chaque
+ * connexion — et évite surtout de les deviner.
+ *
+ * L'import VIES remplit la raison sociale et l'adresse depuis le registre
+ * européen. Ce n'est pas un confort : un nom recopié à la main d'un registre
+ * étranger contient une faute une fois sur trois, et cette faute finit sur
+ * une facture, où elle coûte une régularisation.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import {
+  appliquerViesProspect,
+  chargerProspect,
+  compteurs,
+  enregistrerProspect,
+} from '../../../../lib/admin/donnees.mjs';
+import {
+  journaliserParcours,
+  marquerEtape,
+  ouvrirParcours,
+} from '../../../../lib/admin/onboarding.mjs';
+import { connexion, table } from '../../../../lib/db.mjs';
+import { serviceVies } from '../../../../lib/onboarding/vies.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const { prospect: prospectId } = Astro.params;
+let erreur = null;
+let vu = null;
+
+/**
+ * Les monnaies qu'on sait traiter.
+ *
+ * Une liste fermée, et non un champ libre : « € », « EUR » et « eur » se
+ * saisissent tous les trois, et trois écritures de la même devise donnent
+ * trois réseaux qu'on ne peut plus additionner.
+ */
+const DEVISES = [
+  ['EUR', 'Euro (EUR)'], ['PLN', 'Złoty polonais (PLN)'], ['CHF', 'Franc suisse (CHF)'],
+  ['GBP', 'Livre sterling (GBP)'], ['CZK', 'Couronne tchèque (CZK)'], ['RON', 'Leu roumain (RON)'],
+  ['SEK', 'Couronne suédoise (SEK)'], ['DKK', 'Couronne danoise (DKK)'], ['HUF', 'Forint hongrois (HUF)'],
+];
+
+/** Les fuseaux d'Europe où nos clients ouvrent des boutiques. */
+const FUSEAUX = [
+  'Europe/Brussels', 'Europe/Paris', 'Europe/Warsaw', 'Europe/Amsterdam', 'Europe/Madrid',
+  'Europe/Lisbon', 'Europe/Rome', 'Europe/Berlin', 'Europe/Zurich', 'Europe/Prague',
+  'Europe/Vienna', 'Europe/Bucharest', 'Europe/Budapest', 'Europe/Stockholm', 'Europe/London',
+];
+
+const LANGUES = [['fr', 'Français'], ['en', 'English'], ['nl', 'Nederlands'], ['de', 'Deutsch'],
+  ['it', 'Italiano'], ['es', 'Español'], ['pl', 'Polski']];
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || 'enregistrer');
+    const qui = (Astro.locals.session || {}).id || null;
+
+    // Les champs que cette étape possède, en plus de ceux du prospect. Ils ne
+    // passent pas par `enregistrerProspect`, qui ne connaît que les
+    // coordonnées : ce sont des réglages d'exploitation, pas une identité.
+    const exploitation = {
+      devise: String(f.get('devise') || 'EUR').slice(0, 3).toUpperCase(),
+      fuseau: String(f.get('fuseau') || 'Europe/Brussels').slice(0, 60),
+      langue: String(f.get('langue') || 'fr').slice(0, 5),
+    };
+    if (!DEVISES.some(([c]) => c === exploitation.devise)) {
+      throw new Error(`« ${exploitation.devise} » n’est pas une devise que la synchronisation sait traiter.`);
+    }
+
+    const courant = await chargerProspect(prospectId);
+    if (!courant) throw new Error('Client introuvable.');
+
+    if (action === 'vies') {
+      // On cherche sans rien enregistrer : le résultat s'affiche, et c'est le
+      // second bouton qui décide de le recopier. Écrire tout de suite
+      // remplacerait un nom d'usage soigneusement choisi par la raison
+      // sociale du registre, sans que personne ne l'ait demandé.
+      const r = await serviceVies().verifier(f.get('tva'), f.get('pays') || courant.pays);
+      if (!r.ok) throw new Error(r.message);
+      const url = new URLSearchParams({
+        vu: JSON.stringify({ nom: r.nom, adresse: r.adresse, ville: r.ville, code_postal: r.code_postal, tva: r.tva, pays: r.pays, reference: r.reference || '' }),
+      });
+      return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/entreprise?${url}`, 303);
+    }
+
+    if (action === 'vies-appliquer') {
+      const r = await serviceVies().verifier(f.get('tva'), f.get('pays') || courant.pays);
+      if (!r.ok) throw new Error(r.message);
+      await appliquerViesProspect(prospectId, r, {
+        nom: f.get('reprendre_nom') === '1',
+        adresse: f.get('reprendre_adresse') === '1',
+      });
+      const parcours = await ouvrirParcours(prospectId);
+      await journaliserParcours(parcours.id, {
+        type: 'entreprise',
+        texte: `TVA ${r.tva} vérifiée auprès de VIES : ${r.nom || 'numéro valide'}.`,
+        utilisateurId: qui,
+      });
+      return Astro.redirect(
+        `${BASE}/admin/onboarding/${prospectId}/entreprise?ok=${encodeURIComponent('Identité reprise du registre européen.')}`,
+        303,
+      );
+    }
+
+    // Les coordonnées d'abord — elles portent leurs propres contrôles.
+    await enregistrerProspect(prospectId, {
+      raison_sociale: f.get('raison_sociale'),
+      tva: f.get('tva'),
+      adresse: f.get('adresse'),
+      pays: f.get('pays'),
+      site_web: courant.site_web,
+      contact_nom: f.get('contact_nom') || courant.contact_nom,
+      contact_role: courant.contact_role,
+      contact_email: f.get('contact_email') || courant.contact_email,
+      contact_tel: f.get('contact_tel'),
+    });
+    const db = await connexion();
+    await db.executer(
+      `UPDATE ${table('prospects')} SET devise = ?, fuseau = ?, langue = ? WHERE id = ?`,
+      [exploitation.devise, exploitation.fuseau, exploitation.langue, Number(prospectId)],
+    );
+
+    const parcours = await ouvrirParcours(prospectId);
+    await marquerEtape(parcours.id, 'entreprise', { charge: exploitation, utilisateurId: qui });
+    await journaliserParcours(parcours.id, {
+      type: 'entreprise',
+      texte: `Identité enregistrée — ${exploitation.devise}, ${exploitation.fuseau}.`,
+      utilisateurId: qui,
+    });
+    return Astro.redirect(`${BASE}/admin/onboarding/${prospectId}/modules`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let prospect = null;
+let chiffres = {};
+try {
+  prospect = await chargerProspect(prospectId);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || err.message;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+// Ce que VIES vient de rendre, s'il vient de rendre quelque chose. Il transite
+// par l'URL et non par la base : rien n'est écrit tant qu'on n'a pas dit oui.
+try {
+  const brut = Astro.url.searchParams.get('vu');
+  if (brut) vu = JSON.parse(brut);
+} catch {
+  vu = null;
+}
+
+const service = serviceVies();
+const message = Astro.url.searchParams.get('ok');
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
+---
+
+<Console
+  titre="Votre entreprise"
+  fil={`TFB Admin · Onboarding · ${prospect?.raison_sociale || ''}`}
+  actif="onboarding"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <form method="post">
+        <div class="barre-actions">
+          <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}`}>
+            <Icone nom="arrow-left" taille={16} /> Le parcours
+          </a>
+          <button class="bouton bouton--marque" type="submit" name="action" value="enregistrer">Continuer</button>
+          <span class="barre-actions__note">
+            {prospect.tva_verifiee_le
+              ? `TVA vérifiée auprès de VIES le ${jour(prospect.tva_verifiee_le)}.`
+              : 'Le numéro de TVA n’a jamais été vérifié.'}
+          </span>
+        </div>
+
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Étape 0 — Qui vous êtes</h2>
+              <p>
+                Ce qui figurera sur les documents. Le bouton « Chercher dans VIES » interroge le
+                registre européen et propose le nom et l'adresse officiels — sans rien écrire tant
+                que vous n'avez pas dit oui.
+              </p>
+            </div>
+            <span class={prospect.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
+              {prospect.tva_verifiee_le ? 'TVA vérifiée' : 'non vérifiée'}
+            </span>
+          </div>
+
+          <div class="bloc__corps">
+            <div class="duo">
+              <div class="champ">
+                <label for="e-raison">Raison sociale<span class="champ__requis" aria-hidden="true"> *</span></label>
+                <input id="e-raison" type="text" name="raison_sociale" value={prospect.raison_sociale || ''} required maxlength="200" />
+              </div>
+              <div class="champ">
+                <label for="e-tva">Numéro de TVA</label>
+                <input id="e-tva" type="text" name="tva" value={prospect.tva || ''} placeholder="PL8971903536" maxlength="20" />
+                <span class="champ__aide">
+                  Avec le préfixe pays. La Grèce s'écrit « EL » et non « GR » — VIES ne connaît qu'elle.
+                </span>
+              </div>
+              <div class="champ">
+                <label for="e-pays">Pays</label>
+                <input id="e-pays" type="text" name="pays" value={prospect.pays || ''} maxlength="2" placeholder="BE" />
+              </div>
+              <div class="champ">
+                <label for="e-tel">Téléphone</label>
+                <input id="e-tel" type="text" name="contact_tel" value={prospect.contact_tel || ''} maxlength="40" />
+              </div>
+              <div class="champ" style="grid-column:1/-1">
+                <label for="e-adresse">Adresse du siège</label>
+                <textarea id="e-adresse" name="adresse" rows="3">{prospect.adresse || ''}</textarea>
+              </div>
+            </div>
+
+            <div class="actions">
+              <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="vies">
+                <Icone nom="search" taille={14} /> Chercher dans VIES
+              </button>
+            </div>
+            <p class="champ__aide">
+              VIES est le registre de la Commission européenne. Il dit si le numéro existe, à quel
+              nom et à quelle adresse — c'est ce qui attrape une faute de frappe avant qu'elle ne
+              finisse sur une facture.
+            </p>
+          </div>
+        </section>
+
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Comment vous comptez</h2>
+              <p>
+                Ces trois réglages ne sont pas décoratifs : ils décident de ce que la
+                synchronisation acceptera. Ils se reprennent ensuite sur chaque boutique, qui peut
+                les redéfinir — un réseau belge avec une boutique à Varsovie, cela arrive.
+              </p>
+            </div>
+          </div>
+          <div class="bloc__corps">
+            <div class="duo">
+              <div class="champ">
+                <label for="e-devise">Devise du réseau</label>
+                <select id="e-devise" name="devise">
+                  {DEVISES.map(([code, nom]) => (
+                    <option value={code} selected={(prospect.devise || 'EUR') === code}>{nom}</option>
+                  ))}
+                </select>
+                <span class="champ__aide">
+                  Une caisse qui renvoie une autre devise est <strong>refusée</strong>, pas convertie :
+                  additionner des euros et des złotys donne un chiffre d'affaires faux qui a l'air juste.
+                </span>
+              </div>
+              <div class="champ">
+                <label for="e-fuseau">Fuseau horaire</label>
+                <select id="e-fuseau" name="fuseau">
+                  {FUSEAUX.map((f) => (
+                    <option value={f} selected={(prospect.fuseau || 'Europe/Brussels') === f}>{f}</option>
+                  ))}
+                </select>
+                <span class="champ__aide">
+                  Il décide du jour auquel une vente de 2 h 30 est rattachée — la veille, pas le
+                  lendemain. L'heure de coupure se règle boutique par boutique.
+                </span>
+              </div>
+              <div class="champ">
+                <label for="e-langue">Langue des documents</label>
+                <select id="e-langue" name="langue">
+                  {LANGUES.map(([code, nom]) => (
+                    <option value={code} selected={(prospect.langue || 'fr') === code}>{nom}</option>
+                  ))}
+                </select>
+                <span class="champ__aide">
+                  Une offre reprend cette langue à sa création, puis vit sa vie : la changer ici ne
+                  retraduit pas une offre déjà partie.
+                </span>
+              </div>
+            </div>
+          </div>
+        </section>
+      </form>
+
+      {vu && (
+        <section class="bloc" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Ce que dit le registre européen</h2>
+              <p>Rien n'est encore écrit. Cochez ce que vous voulez reprendre.</p>
+            </div>
+            <span class="etat etat--on">{vu.tva}</span>
+          </div>
+          <form method="post" class="bloc__corps">
+            <input type="hidden" name="action" value="vies-appliquer" />
+            <input type="hidden" name="tva" value={vu.tva} />
+            <input type="hidden" name="pays" value={vu.pays} />
+
+            <div class="cases">
+              <label class="case">
+                <span class="ligne-serree" style="align-items:start">
+                  <input type="checkbox" name="reprendre_nom" value="1" checked={Boolean(vu.nom)} disabled={!vu.nom} />
+                  <span>
+                    <strong>Raison sociale</strong>
+                    <span class="champ__aide">{vu.nom || 'Cet État membre ne publie pas le nom.'}</span>
+                  </span>
+                </span>
+              </label>
+              <label class="case">
+                <span class="ligne-serree" style="align-items:start">
+                  <input type="checkbox" name="reprendre_adresse" value="1" checked={Boolean(vu.adresse)} disabled={!vu.adresse} />
+                  <span>
+                    <strong>Adresse</strong>
+                    <span class="champ__aide">
+                      {vu.adresse ? vu.adresse.split('\n').join(' · ') : 'Cet État membre ne publie pas l’adresse.'}
+                    </span>
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div class="actions">
+              <button class="bouton bouton--marque bouton--sm" type="submit">Reprendre ce qui est coché</button>
+              <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/onboarding/${prospect.id}/entreprise`}>Ne rien reprendre</a>
+            </div>
+            <p class="champ__aide">
+              Le numéro et le pays sont repris dans tous les cas, ainsi que la date de vérification :
+              c'est elle qui prouvera, le jour d'un contrôle, qu'on a vérifié avant de facturer.
+              {vu.reference && <> Référence de consultation : <code class="slug">{vu.reference}</code>.</>}
+            </p>
+          </form>
+        </section>
+      )}
+
+      <section class="bloc">
+        <div class="bloc__pied">
+          VIES tombe régulièrement, et certains États membres répondent « indisponible » pour eux
+          seuls. Un numéro non vérifié n'est pas un numéro invalide : l'étape laisse passer, en le
+          disant. Le service interrogé est <code class="slug">{service.nom}</code>.
+        </div>
+      </section>
+    </>
+  )}
+</Console>

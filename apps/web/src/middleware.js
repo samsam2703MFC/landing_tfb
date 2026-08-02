@@ -106,6 +106,16 @@ async function reglerLangue(contexte, chemin) {
 export async function onRequest(contexte, suivant) {
   const chemin = cheminInterne(contexte.url.pathname);
 
+  // Le contrôle d'origine s'applique à **toute** soumission, pas seulement à
+  // la console. L'annexe d'une offre en reçoit une : le client y donne son
+  // bon pour accord sur les écrans sur mesure, hors de `/admin`, sans
+  // session. Sans ce contrôle, un site tiers pourrait faire signer cet accord
+  // au client à son insu — et un accord obtenu ainsi ne vaudrait rien tout en
+  // ayant l'air valable, ce qui est pire que pas d'accord du tout.
+  if (origineEtrangere(contexte.request)) {
+    return new Response('Soumission refusée : origine étrangère au site.', { status: 403 });
+  }
+
   if (!chemin.startsWith('/admin')) {
     // La console reste en français : elle s'adresse à l'équipe, pas au marché.
     const { redirection, versChemin } = await reglerLangue(contexte, chemin);
@@ -114,10 +124,6 @@ export async function onRequest(contexte, suivant) {
     // middleware sur la nouvelle URL, qui n'a plus de préfixe — la langue
     // qu'on vient de poser serait aussitôt remise à « fr ».
     return versChemin ? suivant(versChemin) : suivant();
-  }
-
-  if (origineEtrangere(contexte.request)) {
-    return new Response('Soumission refusée : origine étrangère au site.', { status: 403 });
   }
 
   // Sans mot de passe configuré, la console n'existe pas. Mieux vaut la

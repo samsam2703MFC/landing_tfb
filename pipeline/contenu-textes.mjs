@@ -137,3 +137,38 @@ export const CLIENTS = [
   { nom: 'Sushi Loop', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
   { nom: 'Café Nord', note: 'Exemple repris de la maquette — à remplacer par un vrai réseau.' },
 ];
+
+/**
+ * La société qui facture.
+ *
+ * Elle est semée ici plutôt qu'écrite en dur dans les gabarits : une adresse
+ * ou un compte bancaire changent, et les changer devrait demander une
+ * connexion à la console, pas un déploiement.
+ *
+ * Ce qui n'y figure pas : la clé Stripe. Le compte connecté — « acct_… » —
+ * s'ajoutera dans la console ; la clé de la plateforme reste une variable
+ * d'environnement du serveur, et n'entre jamais dans le dépôt.
+ *
+ * Le seed ne réécrit jamais une société existante, pour la même raison que
+ * les tarifs : une adresse corrigée dans la console survit au déploiement.
+ */
+export const SOCIETES = [
+  {
+    cle: 'asima',
+    nom: 'ASIMA',
+    forme_juridique: 'Spółka z ograniczoną odpowiedzialnością',
+    numero_registre_nom: 'KRS',
+    numero_registre: '0000960478',
+    // Le NIP est le numéro de TVA polonais ; VIES le connaît préfixé « PL ».
+    tva: 'PL8971903536',
+    // Le REGON n'a pas d'usage fiscal, mais tout document polonais le porte.
+    numero_stat: '521501279',
+    adresse: 'Stanisława Leszczyńskiego 4/29',
+    code_postal: '50-078',
+    ville: 'Wrocław',
+    pays: 'PL',
+    devise: 'EUR',
+    defaut: true,
+    mention_pied: "Paiement à 30 jours date de facture. Tout retard fait courir les intérêts légaux polonais.",
+  },
+];

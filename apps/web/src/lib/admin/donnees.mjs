@@ -483,7 +483,9 @@ export async function supprimerLead(id) {
 export async function listerClients() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, nom, note, actif, ordre, logo_type FROM ${table('clients')} ORDER BY ordre, nom`,
+    `SELECT id, nom, note, actif, ordre, logo_type, tva, pays, adresse, site_web,
+            tva_verifiee_le, tva_verifiee_ref, tva_verifiee_nom
+     FROM ${table('clients')} ORDER BY ordre, nom`,
   );
   return lignes.map((c) => ({ ...c, actif: Boolean(c.actif) }));
 }
@@ -534,10 +536,13 @@ export async function ajouterClient(valeurs) {
   // aller supprimer.
   const image = await lireImage(valeurs.logo);
 
+  const identite = identiteClient(valeurs);
+
   const db = await connexion();
   const id = await insererEtRendreId(
     db,
-    `INSERT INTO ${table('clients')} (nom, note, logo, logo_type, actif, ordre) VALUES (?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${table('clients')} (nom, note, logo, logo_type, actif, ordre, tva, pays, adresse, site_web)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       nom.slice(0, 160),
       String(valeurs.note || '').trim().slice(0, 255) || null,
@@ -545,22 +550,80 @@ export async function ajouterClient(valeurs) {
       image?.type || null,
       vrai(true),
       Number(valeurs.ordre) || 100,
+      identite.tva, identite.pays, identite.adresse, identite.site_web,
     ],
   );
   viderCache();
   return { id, avecLogo: Boolean(image) };
 }
 
+/**
+ * L'identité réelle derrière le nom d'enseigne d'un réseau.
+ *
+ * Le bandeau affiche une marque ; ce qui signe et ce qui paie est une société
+ * avec un numéro. Les mêmes contrôles que sur un prospect, parce que c'est la
+ * même chose : un numéro de TVA mal formé reste mal formé, quel que soit
+ * l'écran où on l'a tapé.
+ */
+function identiteClient(valeurs) {
+  const tva = String(valeurs.tva || '').replace(/[\s.-]/g, '').toUpperCase();
+  const mauvais = tvaMalFormee(tva);
+  if (mauvais) {
+    throw new Error(`« ${mauvais} » ne ressemble pas à un numéro de TVA (deux lettres de pays puis 8 à 12 caractères).`);
+  }
+  return {
+    tva: tva || null,
+    pays: String(valeurs.pays || '').trim().slice(0, 2).toUpperCase() || null,
+    adresse: String(valeurs.adresse || '').trim() || null,
+    site_web: String(valeurs.site_web || '').trim().slice(0, 255) || null,
+  };
+}
+
 /** Enregistre un réseau existant. */
 export async function enregistrerClient(id, valeurs) {
   const db = await connexion();
+  const identite = identiteClient(valeurs);
+  const sets = ['nom = ?', 'note = ?', 'actif = ?', 'ordre = ?', 'tva = ?', 'pays = ?', 'adresse = ?', 'site_web = ?'];
+  const params = [
+    String(valeurs.nom || '').trim().slice(0, 160),
+    String(valeurs.note || '').trim().slice(0, 255) || null,
+    vrai(valeurs.actif),
+    Number(valeurs.ordre) || 100,
+    identite.tva, identite.pays, identite.adresse, identite.site_web,
+  ];
+  const avant = (await db.requete(`SELECT tva FROM ${table('clients')} WHERE id = ? LIMIT 1`, [Number(id)]))[0];
+  if (avant && (avant.tva || null) !== identite.tva) {
+    sets.push('tva_verifiee_le = ?', 'tva_verifiee_ref = ?', 'tva_verifiee_nom = ?');
+    params.push(null, null, null);
+  }
+  params.push(Number(id));
+  await db.executer(`UPDATE ${table('clients')} SET ${sets.join(', ')} WHERE id = ?`, params);
+  viderCache();
+}
+
+/**
+ * Applique une vérification VIES à un réseau.
+ *
+ * Le nom n'est **jamais** recopié ici, contrairement au prospect : le bandeau
+ * de la page d'accueil affiche une enseigne — « L'Atelier By » — et non la
+ * raison sociale du registre. Remplacer l'une par l'autre défigurerait la
+ * page d'accueil pour une bonne intention. Le nom légal se garde à part.
+ */
+export async function appliquerViesClient(id, resultat) {
+  if (!resultat?.ok) throw new Error('Rien à appliquer : la vérification n’a pas abouti.');
+  const db = await connexion();
   await db.executer(
-    `UPDATE ${table('clients')} SET nom = ?, note = ?, actif = ?, ordre = ? WHERE id = ?`,
+    `UPDATE ${table('clients')}
+     SET tva = ?, pays = ?, adresse = COALESCE(?, adresse),
+         tva_verifiee_le = ?, tva_verifiee_ref = ?, tva_verifiee_nom = ?
+     WHERE id = ?`,
     [
-      String(valeurs.nom || '').trim().slice(0, 160),
-      String(valeurs.note || '').trim().slice(0, 255) || null,
-      vrai(valeurs.actif),
-      Number(valeurs.ordre) || 100,
+      resultat.tva,
+      resultat.pays === 'EL' ? 'GR' : resultat.pays || null,
+      resultat.adresse || null,
+      new Date(),
+      String(resultat.reference || '').slice(0, 60) || null,
+      String(resultat.nom || '').slice(0, 255) || null,
       Number(id),
     ],
   );
@@ -1562,9 +1625,74 @@ export async function enregistrerProspect(id, valeurs) {
   const db = await connexion();
   const p = lireProspect(valeurs);
   const colonnes = CHAMPS_PROSPECT.map((c) => c.nom);
+  const sets = colonnes.map((c) => `${c} = ?`);
+  const params = colonnes.map((c) => p[c]);
+
+  // Changer le numéro de TVA périme la vérification. Garder la date d'une
+  // vérification faite sur un autre numéro serait le genre de preuve qui se
+  // retourne contre soi le jour d'un contrôle.
+  const avant = (await db.requete(`SELECT tva FROM ${table('prospects')} WHERE id = ? LIMIT 1`, [Number(id)]))[0];
+  if (avant && (avant.tva || null) !== (p.tva || null)) {
+    sets.push('tva_verifiee_le = ?', 'tva_verifiee_ref = ?', 'tva_verifiee_nom = ?');
+    params.push(null, null, null);
+  }
+  params.push(Number(id));
+  await db.executer(`UPDATE ${table('prospects')} SET ${sets.join(', ')} WHERE id = ?`, params);
+  viderCache();
+}
+
+/**
+ * Applique le résultat d'une vérification VIES à un client démarché.
+ *
+ * `champs` dit ce qu'on accepte de recopier. Par défaut, tout : c'est le
+ * registre qui a raison sur l'orthographe d'une raison sociale étrangère, et
+ * une adresse recopiée à la main d'un écran de VIES contient une faute une
+ * fois sur trois. Mais un commercial doit pouvoir garder le nom d'usage —
+ * « Le Pain Quotidien » plutôt que « LPQ HOLDING SA » — et la case existe.
+ *
+ * La trace, elle, s'écrit toujours : c'est elle qui prouve la vérification,
+ * et elle n'a rien à voir avec ce qu'on a choisi de recopier.
+ */
+export async function appliquerViesProspect(id, resultat, champs = {}) {
+  if (!resultat?.ok) throw new Error('Rien à appliquer : la vérification n’a pas abouti.');
+  const db = await connexion();
+  const sets = ['tva_verifiee_le = ?', 'tva_verifiee_ref = ?', 'tva_verifiee_nom = ?', 'tva = ?'];
+  const params = [
+    new Date(),
+    String(resultat.reference || '').slice(0, 60) || null,
+    String(resultat.nom || '').slice(0, 255) || null,
+    resultat.tva,
+  ];
+  if (champs.nom !== false && resultat.nom) {
+    sets.push('raison_sociale = ?');
+    params.push(resultat.nom.slice(0, 200));
+  }
+  if (champs.adresse !== false && resultat.adresse) {
+    sets.push('adresse = ?');
+    params.push(resultat.adresse);
+  }
+  if (resultat.pays) {
+    sets.push('pays = ?');
+    // VIES connaît la Grèce sous « EL » ; le reste du monde l'écrit « GR ».
+    // On range le code ISO, parce que c'est celui qui sert à tout le reste.
+    params.push(resultat.pays === 'EL' ? 'GR' : resultat.pays);
+  }
+  params.push(Number(id));
+  await db.executer(`UPDATE ${table('prospects')} SET ${sets.join(', ')} WHERE id = ?`, params);
+  viderCache();
+}
+
+/** Note une vérification qui a abouti sans qu'on recopie quoi que ce soit. */
+export async function noterViesProspect(id, resultat) {
+  const db = await connexion();
   await db.executer(
-    `UPDATE ${table('prospects')} SET ${colonnes.map((c) => `${c} = ?`).join(', ')} WHERE id = ?`,
-    [...colonnes.map((c) => p[c]), Number(id)],
+    `UPDATE ${table('prospects')} SET tva_verifiee_le = ?, tva_verifiee_ref = ?, tva_verifiee_nom = ? WHERE id = ?`,
+    [
+      new Date(),
+      String(resultat.reference || '').slice(0, 60) || null,
+      String(resultat.nom || '').slice(0, 255) || null,
+      Number(id),
+    ],
   );
   viderCache();
 }

@@ -23,6 +23,17 @@ const FORMATS = [
 /** Taille maximale, avant encodage. Un logo qui dépasse est une photo. */
 export const TAILLE_MAX = 512 * 1024;
 
+/**
+ * Taille maximale d'une capture d'écran de maquette.
+ *
+ * Huit fois celle d'un logo, parce que ce n'est pas la même chose : un logo
+ * est un dessin de quelques traits, une capture d'application est une page
+ * entière de texte et de tableaux. La réduire à 512 ko obligerait à
+ * recompresser jusqu'à rendre les libellés illisibles — et une maquette dont
+ * on ne lit pas les colonnes ne prévient aucun malentendu.
+ */
+export const TAILLE_MAX_CAPTURE = 4 * 1024 * 1024;
+
 /** Les types proposés à l'attribut `accept` du champ de fichier. */
 export const TYPES_ACCEPTES = FORMATS.map((f) => f.type).join(',');
 
@@ -42,17 +53,23 @@ export function reconnaitre(octets) {
  * Vérifie un fichier téléversé et rend de quoi le stocker.
  *
  * @param {File|null} fichier
+ * @param {{maxOctets?: number, pourquoi?: string}} [options]
+ *   `maxOctets` relève le plafond — une capture d'écran n'est pas un logo —
+ *   et `pourquoi` remplace la phrase qui l'explique. Sans eux, la limite du
+ *   bandeau s'applique, ce qui reste le cas le plus fréquent.
  * @returns {Promise<{base64: string, type: string, octets: number}|null>}
  *   `null` quand aucun fichier n'a été choisi — le champ vide n'est pas une
  *   erreur, il veut dire « ne change rien ».
  * @throws {Error} avec un message qui dit quoi faire, pas seulement ce qui ne va pas.
  */
-export async function lireImage(fichier) {
+export async function lireImage(fichier, options = {}) {
   if (!fichier || typeof fichier === 'string' || !fichier.size) return null;
 
-  if (fichier.size > TAILLE_MAX) {
+  const plafond = Number(options.maxOctets) || TAILLE_MAX;
+  if (fichier.size > plafond) {
     throw new Error(
-      `L'image fait ${Math.round(fichier.size / 1024)} ko, le maximum est ${TAILLE_MAX / 1024} ko. Un logo de bandeau n'a pas besoin de plus.`,
+      `L'image fait ${Math.round(fichier.size / 1024)} ko, le maximum est ${Math.round(plafond / 1024)} ko. `
+      + (options.pourquoi || "Un logo de bandeau n'a pas besoin de plus."),
     );
   }
 

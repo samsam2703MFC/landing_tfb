@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 
 import { MODULES, QUESTIONS, SITE } from './contenu-initial.mjs';
-import { CLIENTS, LANGUES, TEXTES } from './contenu-textes.mjs';
+import { CLIENTS, LANGUES, SOCIETES, TEXTES } from './contenu-textes.mjs';
 import { ETAPES, PACKS, PRESTATIONS, TARIFS } from './contenu-offres.mjs';
 import { BESOINS, CAPACITES, CONNECTEURS } from './contenu-onboarding.mjs';
 import { QUESTIONS_TRADUCTIONS, SITE_TRADUCTIONS, TRADUCTIONS } from './contenu-traductions.mjs';
@@ -505,6 +505,31 @@ async function ecrireEnBase({ siVide = false, aValider = false } = {}) {
       );
     }
     console.log(`✓ ${CLIENTS.length} réseaux d'exemple (non publiés)`);
+
+    // La société qui facture. Jamais réécrite si elle existe : une adresse
+    // corrigée dans la console doit survivre au déploiement suivant.
+    let societesEcrites = 0;
+    for (const societe of SOCIETES) {
+      const dejaLa = await db.requete(
+        `SELECT id FROM ${table('societes')} WHERE cle = ? LIMIT 1`,
+        [societe.cle],
+      );
+      if (dejaLa.length > 0) continue;
+      const colonnes = Object.keys(societe);
+      await db.executer(
+        `INSERT INTO ${table('societes')} (${colonnes.join(', ')}, actif, maj_le)
+         VALUES (${colonnes.map(() => '?').join(', ')}, ?, ?)`,
+        [
+          ...colonnes.map((c) => (typeof societe[c] === 'boolean'
+            ? (societe[c] ? VRAI() : FAUX())
+            : societe[c])),
+          VRAI(),
+          new Date(),
+        ],
+      );
+      societesEcrites += 1;
+    }
+    if (societesEcrites > 0) console.log(`✓ ${societesEcrites} société(s) qui facture(nt)`);
 
     // Les questions de l'onboarding, repérées par leur clé.
     for (const [rang, question] of QUESTIONS.entries()) {

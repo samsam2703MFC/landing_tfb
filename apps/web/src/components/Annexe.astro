@@ -22,11 +22,27 @@
  */
 import { LEVIERS, leviersDe, titreLevier } from '../lib/leviers.mjs';
 import { configDe, dossierAnnexe, tarifsEnVigueur } from '../lib/admin/donnees.mjs';
+import { listerMaquettes } from '../lib/admin/maquettes.mjs';
 import { calculerOffre, formater } from '../lib/offres/calcul.mjs';
 
-const { offre, retour = null } = Astro.props;
+const {
+  offre,
+  retour = null,
+  // Le client ne peut signer que depuis sa propre porte : la page de la
+  // console montre les mêmes maquettes, mais sans le formulaire. Un commercial
+  // qui signerait à la place de son client produirait un accord sans valeur —
+  // et personne ne s'en apercevrait avant le litige.
+  signature = null,
+  visa = null,
+  perime = false,
+  dit = null,
+  souci = null,
+} = Astro.props;
 
 const [dossier, vigueur] = [await dossierAnnexe(offre), await tarifsEnVigueur()];
+const maquettes = await listerMaquettes(offre.id);
+const parRang = new Map(maquettes.map((m) => [Number(m.rang), m]));
+const vues = (offre.vues || []).filter((v) => String(v.note || '').trim() || Number(v.nombre) > 0);
 const resultat = calculerOffre(configDe(offre));
 const sou = (c) => formater(c, offre.langue, offre.devise);
 
@@ -41,6 +57,23 @@ const pointsDeVente = Number(offre.nombre_postes) || 0;
 /** L'URL d'une capture, préfixée du chemin de montage. */
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const capture = (fichier) => `${BASE}/captures/${fichier}`;
+
+/**
+ * L'adresse d'une maquette, avec la clé qui a ouvert cette page.
+ *
+ * On réutilise la clé reçue plutôt que d'en refabriquer une : la page de la
+ * console n'en a pas dans son URL, et une clé forgée ici passerait outre le
+ * contrôle au lieu de s'y soumettre. Sans clé, pas d'image — et la vignette
+ * dit alors qu'il faut ouvrir le lien reçu par courriel.
+ */
+const cleRecue = Astro.url?.searchParams?.get('cle') || null;
+const lienMaquette = (m) => (cleRecue
+  ? `${BASE}/maquettes/${m.id}?reference=${offre.reference}&version=${offre.version}&cle=${cleRecue}`
+  : null);
+
+const jourHeure = (v) => (v
+  ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'long', timeStyle: 'short' })
+  : '—');
 ---
 
 <html lang={offre.langue || 'fr'} dir="ltr">
@@ -169,10 +202,72 @@ const capture = (fichier) => `${BASE}/captures/${fichier}`;
       }
       .imprimer a { color: var(--marque); }
 
+      /* ── Les écrans sur mesure, et leur bon pour accord ───────────────── */
+
+      .flux { margin-block-start: 26px; break-inside: avoid; }
+      .flux__grille {
+        display: grid; gap: 14px; margin-block-start: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(min(20rem, 100%), 1fr));
+      }
+      .flux__vue { margin: 0; break-inside: avoid; }
+      /* Cadrée en haut : une capture d'application se reconnaît à son en-tête,
+         pas à son pied. La rogner par le bas coûte moins que de la déformer. */
+      .flux__vue img {
+        inline-size: 100%; block-size: 13rem; object-fit: cover; object-position: top;
+        border: 1px solid var(--trait); border-radius: 8px; background: #fff;
+      }
+      .flux__sans {
+        display: flex; align-items: center; justify-content: center; text-align: center;
+        block-size: 13rem; padding: 12px; border: 1px dashed var(--trait); border-radius: 8px;
+        font-size: 12px; color: var(--gris);
+      }
+      .flux__vue figcaption { margin-block-start: 6px; font-size: 12px; color: var(--gris); }
+      .flux__vue figcaption b { color: var(--encre); }
+
+      .visa {
+        display: flex; flex-direction: column; gap: 2px;
+        margin-block-start: 14px; padding: 12px 14px; border-radius: 8px;
+        font-size: 13px; border: 1px solid var(--trait);
+      }
+      .visa--ok { background: #f2f9f4; border-color: #bcdfc7; }
+      .visa--perime { background: #fdf5f0; border-color: #efc9ae; }
+
+      /* Le formulaire ne s'imprime pas : un bon pour accord se donne en ligne,
+         daté par le serveur. Imprimé, il ferait croire qu'on peut le signer au
+         stylo — et cette signature-là ne remonterait jamais jusqu'ici. */
+      .visa-form {
+        margin-block-start: 16px; padding: 16px; border: 1px solid var(--trait);
+        border-radius: 10px; background: #fbfcfe; break-inside: avoid;
+      }
+      .visa-form h3 { margin: 0 0 4px; font-size: 15px; }
+      .visa-form__champs {
+        display: grid; gap: 12px; margin-block-start: 12px;
+        grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr));
+      }
+      .visa-form__large { grid-column: 1 / -1; }
+      .visa-form label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--gris); }
+      .visa-form input, .visa-form textarea {
+        font: inherit; font-size: 14px; color: var(--encre);
+        padding: 8px 10px; border: 1px solid var(--trait); border-radius: 6px; background: #fff;
+        inline-size: 100%; box-sizing: border-box;
+      }
+      .visa-form__trace { display: flex; flex-direction: column; gap: 6px; margin-block-start: 12px; font-size: 12px; color: var(--gris); }
+      .visa-form__trace canvas {
+        inline-size: 100%; max-inline-size: 520px; block-size: 150px; touch-action: none;
+        border: 1px dashed var(--trait); border-radius: 6px; background: #fff;
+      }
+      .visa-form__trace button { align-self: start; font: inherit; font-size: 12px; padding: 4px 10px; cursor: pointer; }
+      .visa-form__ok {
+        margin-block-start: 14px; font: inherit; font-size: 14px; font-weight: 700;
+        padding: 10px 18px; border: 0; border-radius: 8px; cursor: pointer;
+        color: #fff; background: var(--encre);
+      }
+
       @media print {
         body { padding: 0; background: #fff; }
         .feuille { max-inline-size: none; padding: 0; box-shadow: none; }
         .imprimer { display: none; }
+        .visa-form { display: none; }
       }
     </style>
   </head>
@@ -300,6 +395,106 @@ const capture = (fichier) => `${BASE}/captures/${fichier}`;
         ))
       )}
 
+      {vues.length > 0 && (
+        <section class="flux">
+          <h2>Vos écrans sur mesure</h2>
+          <p class="levier__quoi">
+            Voici à quoi ressembleront les {vues.length} écran(s) développés pour vous. Ce sont des
+            maquettes : les chiffres sont fictifs, la disposition ne l'est pas. Regardez-les
+            maintenant plutôt qu'à la livraison — c'est le moment où corriger ne coûte rien.
+          </p>
+
+          <div class="flux__grille">
+            {vues.map((v, i) => {
+              const m = parRang.get(i);
+              const src = m ? lienMaquette(m) : null;
+              return (
+                <figure class="flux__vue">
+                  {src
+                    ? <img src={src} alt={`Maquette : ${String(v.note || '').trim() || `vue ${i + 1}`}`} loading="lazy" />
+                    : <div class="flux__sans">
+                        {m ? 'Ouvrez le lien reçu par courriel pour voir cette maquette.' : 'Pas encore de maquette pour cet écran.'}
+                      </div>}
+                  <figcaption>
+                    <b>{i + 1}. {String(v.note || '').trim() || 'Vue'}</b>
+                    {Number(v.nombre) > 1 && <span> — {v.nombre} écrans de ce type</span>}
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+
+          {visa && (
+            <div class={perime ? 'visa visa--perime' : 'visa visa--ok'}>
+              {perime ? (
+                <>
+                  <b>Ces écrans ont changé depuis votre accord.</b>
+                  <span>
+                    Vous aviez validé le {jourHeure(visa.signe_le)}. Depuis, une vue ou une maquette
+                    a bougé — merci de redonner votre accord ci-dessous après avoir regardé.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <b>Bon pour accord reçu.</b>
+                  <span>
+                    Validé par {visa.signataire_nom} le {jourHeure(visa.signe_le)}.
+                    {visa.commentaire && <> Remarque notée : « {visa.commentaire} »</>}
+                  </span>
+                </>
+              )}
+            </div>
+          )}
+
+          {signature && (!visa || perime) && (
+            <form class="visa-form" method="post" action={signature}>
+              <h3>Votre bon pour accord</h3>
+              <p class="levier__quoi">
+                En signant, vous confirmez que ces écrans correspondent à ce que vous attendez.
+                Ce n'est pas la signature du contrat — c'est la recette des maquettes, et c'est
+                elle qui évite de découvrir un malentendu à la livraison.
+              </p>
+
+              {souci && <div class="visa visa--perime"><b>{souci}</b></div>}
+              {dit && <div class="visa visa--ok"><b>{dit}</b></div>}
+
+              <div class="visa-form__champs">
+                <label>
+                  <span>Votre nom complet <b aria-hidden="true">*</b></span>
+                  <input type="text" name="nom" required maxlength="160" autocomplete="name" />
+                </label>
+                <label>
+                  <span>Votre fonction</span>
+                  <input type="text" name="role" maxlength="120" placeholder="Gérant, directeur d'exploitation…" />
+                </label>
+                <label>
+                  <span>Votre courriel</span>
+                  <input type="email" name="email" maxlength="200" autocomplete="email" />
+                </label>
+                <label class="visa-form__large">
+                  <span>Une remarque ? Elle sera lue avant le développement.</span>
+                  <textarea name="commentaire" rows="3" maxlength="2000"></textarea>
+                </label>
+              </div>
+
+              <div class="visa-form__trace" data-trace hidden>
+                <span>Signez du doigt ou à la souris — facultatif.</span>
+                <canvas width="520" height="150" aria-label="Zone de signature"></canvas>
+                <button type="button" data-effacer>Effacer</button>
+              </div>
+              <input type="hidden" name="trace" data-trace-valeur />
+
+              <button class="visa-form__ok" type="submit">Je donne mon accord sur ces écrans</button>
+              <p class="levier__quoi">
+                La date, votre nom et une empreinte de ces maquettes sont enregistrés. Changer une
+                maquette après coup ne réécrit pas votre accord : il resterait attaché à ce que
+                vous avez vu aujourd'hui.
+              </p>
+            </form>
+          )}
+        </section>
+      )}
+
       <section class="leviers">
         <h2>Les six leviers de gestion</h2>
         <p class="levier__quoi">
@@ -332,5 +527,81 @@ const capture = (fichier) => `${BASE}/captures/${fichier}`;
           : ''}
       </p>
     </div>
+
+    {signature && (
+      <script is:inline>
+        /*
+         * La zone de signature, en amélioration progressive.
+         *
+         * Elle est masquée dans le HTML servi et ce script la révèle : sans
+         * JavaScript, le client ne voit pas un cadre où l'on ne peut rien
+         * dessiner. Son accord tient alors à son nom, à la date du serveur et
+         * à l'empreinte des maquettes — c'est déjà ce qui fait sa valeur. Le
+         * tracé n'est qu'un agrément.
+         *
+         * Aucune bibliothèque : trois évènements de pointeur et un trait.
+         */
+        (function () {
+          var zone = document.querySelector('[data-trace]');
+          var champ = document.querySelector('[data-trace-valeur]');
+          if (!zone || !champ) return;
+          var toile = zone.querySelector('canvas');
+          var ctx = toile && toile.getContext && toile.getContext('2d');
+          if (!ctx) return;
+          zone.hidden = false;
+
+          ctx.lineWidth = 2;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = '#0c1329';
+
+          var trace = false;
+          var vide = true;
+
+          /* Le canevas est étiré par la CSS : sans ce rapport, le trait suit
+             le doigt avec un décalage qui grandit vers la droite. */
+          function point(e) {
+            var r = toile.getBoundingClientRect();
+            return {
+              x: (e.clientX - r.left) * (toile.width / r.width),
+              y: (e.clientY - r.top) * (toile.height / r.height),
+            };
+          }
+
+          toile.addEventListener('pointerdown', function (e) {
+            trace = true;
+            vide = false;
+            toile.setPointerCapture(e.pointerId);
+            var p = point(e);
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            e.preventDefault();
+          });
+          toile.addEventListener('pointermove', function (e) {
+            if (!trace) return;
+            var p = point(e);
+            ctx.lineTo(p.x, p.y);
+            ctx.stroke();
+            e.preventDefault();
+          });
+          ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (nom) {
+            toile.addEventListener(nom, function () { trace = false; });
+          });
+
+          zone.querySelector('[data-effacer]').addEventListener('click', function () {
+            ctx.clearRect(0, 0, toile.width, toile.height);
+            vide = true;
+            champ.value = '';
+          });
+
+          /* Le tracé ne part qu'à l'envoi : le sérialiser à chaque trait
+             coûterait cher pour rien, et un champ caché qui grossit pendant
+             qu'on dessine finit par ralentir la page sur un téléphone. */
+          zone.closest('form').addEventListener('submit', function () {
+            champ.value = vide ? '' : toile.toDataURL('image/png');
+          });
+        })();
+      </script>
+    )}
   </body>
 </html>

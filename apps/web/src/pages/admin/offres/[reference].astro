@@ -45,6 +45,8 @@ import { aRelancer, prochaineRelance } from '../../../lib/offres/relances.mjs';
 import { construireCourriel, serviceCourriel } from '../../../lib/offres/courriel.mjs';
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
 import { cleAnnexe } from '../../../lib/admin/session.mjs';
+import { deposerMaquette, listerMaquettes, listerVisas, retirerMaquette } from '../../../lib/admin/maquettes.mjs';
+import { visaAJour, vuesSansMaquette } from '../../../lib/offres/visa.mjs';
 
 /**
  * Le lien d'annexe remis au client, signé et absolu.
@@ -246,6 +248,30 @@ if (Astro.request.method === 'POST') {
       return Astro.redirect(`${BASE}/admin/offres?ok=${encodeURIComponent('Brouillon supprimé.')}`, 303);
     }
 
+    // Les maquettes des vues. Elles se déposent à part de l'enregistrement de
+    // l'offre : un fichier de deux mégaoctets qui échoue ne doit pas emporter
+    // dix minutes de chiffrage avec lui.
+    if (action === 'maquette') {
+      const { octets } = await deposerMaquette(courante.id, f.get('rang'), f.get('capture'), {
+        titre: f.get('titre'),
+        par: session.id,
+      });
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${
+          encodeURIComponent(`Maquette déposée (${Math.round(octets / 1024)} ko).`)}#maquettes`,
+        303,
+      );
+    }
+
+    if (action === 'maquette-retrait') {
+      await retirerMaquette(courante.id, f.get('rang'));
+      return Astro.redirect(
+        `${BASE}/admin/offres/${reference}?version=${courante.version}&ok=${
+          encodeURIComponent('Maquette retirée.')}#maquettes`,
+        303,
+      );
+    }
+
     if (action === 'envoyer') {
       // Dernier filet avant la boîte du client : une ligne à moitié remplie
       // s'imprimerait sans nom, ou disparaîtrait sans que personne ne le voie.
@@ -351,6 +377,29 @@ if (offre && soumis) offre = { ...offre, ...soumis };
 if (offre) suivi = await listerSuivi(offre.id);
 const etapeCourante = offre ? await etapeParCle(offre.etape) : null;
 const contrat = offre ? await contratDeLOffre(offre.id) : null;
+
+// Les maquettes des vues, et l'accord du client dessus.
+const maquettes = offre ? await listerMaquettes(offre.id) : [];
+const parRang = new Map(maquettes.map((m) => [Number(m.rang), m]));
+const visas = offre ? await listerVisas(offre.id) : [];
+// L'état du dernier accord face au flux d'aujourd'hui. `perime` ne veut pas
+// dire « faux » : le client a bien signé quelque chose, c'est ce quelque
+// chose qui a changé depuis — une vue ajoutée, une capture redéposée.
+const accord = offre ? visaAJour(visas[0] || null, offre.vues || [], maquettes) : { signe: false };
+const orphelines = offre ? vuesSansMaquette(offre.vues || [], maquettes) : [];
+
+/**
+ * L'adresse d'une maquette.
+ *
+ * Elle passe par la même porte que celle du client — clé signée comprise —
+ * et non par une route d'administration parallèle. Deux routes qui servent le
+ * même fichier finiraient par diverger sur les en-têtes de sécurité,
+ * c'est-à-dire exactement là où il ne faut pas.
+ */
+function lienMaquette(m) {
+  const cle = cleAnnexe(offre.reference, String(offre.version));
+  return `${BASE}/maquettes/${m.id}?reference=${offre.reference}&version=${offre.version}&cle=${cle}`;
+}
 
 const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
@@ -975,6 +1024,127 @@ const ETAT_STATUT = {
         )}
       </form>
 
+      {(offre.vues || []).length > 0 && (
+        <section class="bloc" id="maquettes" style="margin-block-end:20px">
+          <div class="bloc__tete">
+            <div>
+              <h2>Les maquettes, et l'accord du client</h2>
+              <p>
+                Une vue se vend en une ligne de texte. Le commercial voit un tableau, le client
+                imagine un graphique, et l'écart se découvre à la livraison — au moment le plus
+                cher. Une capture, même faite dans un tableur, coupe court.
+              </p>
+            </div>
+            {accord.signe
+              ? <span class={accord.perime ? 'etat etat--manque' : 'etat etat--on'}>
+                  {accord.perime ? 'accord périmé' : 'accord signé'}
+                </span>
+              : <span class="etat">pas encore validé</span>}
+          </div>
+
+          {accord.signe && accord.perime && (
+            <div class="recap__alerte">
+              <strong>Le flux a changé depuis l'accord du client.</strong> {visas[0].signataire_nom}
+              {' '}a signé le {jourHeure(visas[0].signe_le)}, mais une vue ou une capture a bougé
+              depuis. L'accord reste vrai pour ce qu'il couvrait — il ne couvre plus ce qui est à
+              l'écran. Renvoyez le lien pour en obtenir un nouveau.
+            </div>
+          )}
+
+          {orphelines.length > 0 && (
+            <div class="champ">
+              <span class="champ__aide">
+                {orphelines.length} vue(s) sans capture : {orphelines.map((v) => v.note).join(', ')}.
+                Ce n'est pas bloquant — parfois un écran est trop évident pour mériter une maquette —
+                mais c'est exactement là que naissent les malentendus.
+              </span>
+            </div>
+          )}
+
+          <div class="bloc__corps">
+            <div class="maquettes">
+              {(offre.vues || []).map((v, i) => {
+                const m = parRang.get(i);
+                return (
+                  <div class="maquette">
+                    <div class="maquette__vue">
+                      <b>Vue {i + 1}</b>
+                      <span class="champ__aide">{String(v.note || '').trim() || 'sans description'}</span>
+                    </div>
+                    {m ? (
+                      <a href={lienMaquette(m)} target="_blank" rel="noopener">
+                        <img class="maquette__vu" src={lienMaquette(m)} alt={`Maquette de la vue ${i + 1}`} loading="lazy" />
+                      </a>
+                    ) : (
+                      <span class="maquette__vide">aucune capture</span>
+                    )}
+                    <form method="post" enctype="multipart/form-data" class="maquette__pose">
+                      <input type="hidden" name="action" value="maquette" />
+                      <input type="hidden" name="rang" value={i} />
+                      <input type="hidden" name="titre" value={String(v.note || '').trim()} />
+                      {/*
+                        Pas de `required` : il n'a pas d'étiquette visible à
+                        marquer, et le refus qui compte est de toute façon
+                        côté serveur — « Aucun fichier choisi : rien à
+                        déposer », qui dit ce qui s'est passé mieux que
+                        l'infobulle du navigateur. Une exigence qu'on ne voit
+                        pas à l'écran ne vaut pas mieux que pas d'exigence.
+                      */}
+                      <input type="file" name="capture" accept="image/png,image/jpeg,image/webp" aria-label={`Capture de la vue ${i + 1}`} />
+                      <div class="actions">
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">
+                          <Icone nom="upload" taille={14} /> {m ? 'Remplacer' : 'Déposer'}
+                        </button>
+                      </div>
+                    </form>
+                    {m && (
+                      <form method="post" onsubmit="return confirm('Retirer cette maquette ?')">
+                        <input type="hidden" name="action" value="maquette-retrait" />
+                        <input type="hidden" name="rang" value={i} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Retirer</button>
+                      </form>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {visas.length > 0 && (
+            <div class="roule">
+              <table>
+                <thead>
+                  <tr><th>Signé par</th><th>Le</th><th>Commentaire</th><th>Empreinte</th></tr>
+                </thead>
+                <tbody>
+                  {visas.map((v) => (
+                    <tr>
+                      <td>
+                        <strong>{v.signataire_nom}</strong>
+                        {v.signataire_email && <code class="slug">{v.signataire_email}</code>}
+                      </td>
+                      <td class="fb-num champ__aide">{jourHeure(v.signe_le)}</td>
+                      <td class="champ__aide">{v.commentaire || '—'}</td>
+                      <td><code class="slug">{String(v.empreinte).slice(0, 12)}…</code></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          <div class="bloc__pied">
+            Le client valide depuis l'annexe, avec le même lien que celui de l'offre :
+            {' '}<code class="slug">{lienAnnexe(offre, Astro.url.origin)}</code>
+            <br />
+            Ce qui donne sa valeur à l'accord n'est pas le nom tapé, c'est l'empreinte de ce qui
+            était à l'écran au moment du clic — les descriptions et le condensé de chaque capture.
+            Remplacer une capture ensuite ne réécrit pas l'accord : la console voit qu'il ne
+            correspond plus, et le dit.
+          </div>
+        </section>
+      )}
+
       <section class="bloc" style="margin-block-end:20px">
         <div class="bloc__tete">
           <div>
@@ -1297,6 +1467,44 @@ const ETAT_STATUT = {
   .socles .case__tete .case__prix { margin-inline-start: 0; white-space: normal; }
 
   .formules { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
+
+  /* Les maquettes : une vignette par vue, assez large pour qu'on reconnaisse
+     l'écran sans l'ouvrir, assez petite pour en voir quatre d'un coup. */
+  .maquettes {
+    display: grid; gap: 14px;
+    grid-template-columns: repeat(auto-fill, minmax(min(17rem, 100%), 1fr));
+  }
+  .maquette {
+    display: flex; flex-direction: column; gap: 8px; min-inline-size: 0;
+    border: 1px solid var(--slate-200); border-radius: 12px; padding: 12px; background: #fff;
+  }
+  .maquette__vue { display: flex; flex-direction: column; gap: 2px; }
+  /* Fond damé, comme les logos : une capture à fond blanc sur fond blanc se
+     lirait comme une case vide, et on ne saurait pas si elle est là. */
+  .maquette__vu {
+    inline-size: 100%; block-size: 9rem; object-fit: contain; object-position: top;
+    border-radius: var(--radius-sm); padding: 2px;
+    background:
+      linear-gradient(45deg, var(--slate-100) 25%, transparent 25%, transparent 75%, var(--slate-100) 75%),
+      linear-gradient(45deg, var(--slate-100) 25%, #fff 25%, #fff 75%, var(--slate-100) 75%);
+    background-size: 10px 10px;
+    background-position: 0 0, 5px 5px;
+  }
+  .maquette__vide {
+    display: flex; align-items: center; justify-content: center; block-size: 9rem;
+    border: 1px dashed var(--slate-200); border-radius: var(--radius-sm);
+    font: var(--type-body-sm); color: var(--slate-400);
+  }
+  .maquette__pose { display: flex; flex-direction: column; gap: 8px; }
+  .maquette__pose input[type='file'] { font-size: 11px; padding: 4px; inline-size: 100%; }
+
+  /* Un avertissement collé sous le titre de son bloc se lit comme la suite de
+     la phrase, et non comme l'alerte qu'il est. Même chose pour la note qui
+     précède le corps, et pour le pied qui suit un tableau : sans ce filet
+     d'air, les trois se fondent dans ce qui les précède. */
+  .bloc__tete + .recap__alerte { margin-block-start: 14px; }
+  #maquettes > .champ { margin-block: 12px 0; }
+  #maquettes > .roule + .bloc__pied { margin-block-start: 12px; }
 
   .vues { margin-block-start: 16px; display: flex; flex-direction: column; gap: 8px; }
   .vues__tete { display: flex; flex-direction: column; gap: 2px; }

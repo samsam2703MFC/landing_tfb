@@ -233,6 +233,10 @@ const OUVERT_AU_COMMERCIAL = [
   { chemin: '/admin/prospects', arbre: true },
   { chemin: '/admin/contrats', arbre: true },
   { chemin: '/admin/pieces', arbre: true },
+  // `/admin/societe` n'y est pas, et ce n'est pas un oubli : l'écran porte
+  // l'IBAN sur lequel les clients virent, et le compte Stripe qui encaisse.
+  // Un commercial les lit sur chaque document qu'il édite ; il n'a pas à
+  // pouvoir les changer. Le rail masque l'entrée de lui-même.
 ];
 
 /**
