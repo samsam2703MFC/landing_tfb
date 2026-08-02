@@ -4,7 +4,7 @@ import React from 'react';
 import { Button, Dialog, Input, Select, Toast } from '@/design-system';
 import type { LandingPayload } from '@/lib/landing/types';
 import { LandingHeader, LandingFooter } from './Chrome';
-import { Hero, BrandStrip, ModulesGrid, Steps, Differentiators, Pricing, ModuleDetail } from './Sections';
+import { Hero, BrandStrip, Pains, ModulesGrid, Steps, Differentiators, Pricing, ModuleDetail } from './Sections';
 import { ContactSection, type ContactResult } from './ContactSection';
 
 type ToastState = { tone: 'info' | 'success' | 'warning' | 'danger'; title: string; message: string } | null;
@@ -73,6 +73,7 @@ export function LandingApp({
   const renderers: Record<string, React.ReactNode> = {
     hero: <Hero key="hero" payload={payload} onDemo={() => setDemoOpen(true)} />,
     'logo-strip': <BrandStrip key="brands" payload={payload} />,
+    pains: <Pains key="pains" payload={payload} />,
     'module-grid': <ModulesGrid key="modules" payload={payload} />,
     steps: <Steps key="steps" payload={payload} />,
     'feature-grid': <Differentiators key="diff" payload={payload} />,

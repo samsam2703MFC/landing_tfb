@@ -12,7 +12,8 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "seed": "tsx prisma/seed.ts"
+    "seed": "tsx prisma/seed.ts",
+    "sync:modules": "tsx scripts/sync-modules.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
