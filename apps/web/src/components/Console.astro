@@ -357,6 +357,15 @@ const RUBRIQUES = TOUTES
       /* …ni coller au pied quand il y en a un. Une table, elle, s'y adosse :
          son dernier filet et le liseré du pied ne font qu'un trait. */
       .bloc > :not(.bloc__tete):not(.roule) + .bloc__pied { margin-block-start: 16px; }
+      /* Adossée ne veut pas dire collée : le texte du pied garde ses distances
+         avec la dernière ligne de la table, dont la cellule est peu rembourrée
+         par le bas. */
+      .roule + .bloc__pied { padding-block-start: 18px; }
+      /* Un bouton qui suit une table a besoin du même recul. */
+      .roule + .actions { margin-block-start: 20px; }
+      /* Deux champs empilés dans un corps de bloc ne se touchent pas : sans
+         grille pour les espacer, rien ne le fait à leur place. */
+      .bloc__corps > .champ + .champ { margin-block-start: 16px; }
       /* Un fieldset nu ne redouble pas la marge de ses enfants. */
       .bloc > fieldset.nu > :not(.roule) { margin-inline: 0; }
       /* Un champ et son bouton sur la même ligne, dans une cellule de table.

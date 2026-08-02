@@ -1,0 +1,7 @@
+{
+  "name": "tfb-audits-mise-en-page",
+  "private": true,
+  "type": "module",
+  "description": "Contrôles de mise en page de la console, joués dans un vrai navigateur.",
+  "devDependencies": { "playwright": "^1.49.0" }
+}
