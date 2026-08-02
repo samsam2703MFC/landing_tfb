@@ -96,10 +96,77 @@ and IDs carry `.fb-num`, which pins them LTR inside Arabic text.
 | `POST /api/stripe/webhook` | Keeps `tfb_subscriptions` in step. Signature verified first |
 | `GET /api/billing/portal` | Stripe customer portal link (session required) |
 | `GET /api/storage/[...path]` | Serves uploaded files |
+| `GET /api/app-config?tenant=…` | One tenant's resolved configuration + grants, with an `ETag` |
+| `GET /api/app-config/schema` | The variable registry — what drives the console's forms |
+| `GET /api/data/:resource` | One catalogue resource. Refuses an unauthenticated caller |
 
 The admin API lives under `/api/admin/*` and is gated by `withAdmin` — brands, sections,
 modules (+ screenshots), plans, subscriptions, contact messages, translations, uploads,
-and two billing actions that delegate to the billing service.
+two billing actions that delegate to the billing service, and
+`app-config/:tenant` (+ `/publish`) for the per-tenant overlay.
+
+## Per-tenant configuration
+
+The PWA is personalised per customer without forking an endpoint, a table or a
+schema. Customisation is **data**, stored in this app's database — never in the
+tenants' own containers.
+
+**The registry is the only hard-coded part.** `src/lib/config/registry.ts` declares
+every variable: key, type, default, validation. The console reads it and generates
+its own form, so adding a variable is one entry there — no admin screen, no
+migration. `GET /api/app-config/schema` exposes the same thing to any other client.
+
+**Resolution mirrors the locale fallback.** Registry default → `global.published` →
+`tenant.<slug>.published`, exactly as a missing `tfb_translations` row falls back to
+French. An absent entry is inheritance, and "Réinitialiser" **deletes** the override
+rather than storing a blank — the same rule, for the same reason.
+
+**Storage needs no migration.** Everything lives in `tfb_settings` (`key` /
+`value JSON`), which the init migration already created:
+
+| Key | Holds |
+| --- | --- |
+| `global.published` | house defaults, above the registry's |
+| `tenant.<slug>.published` | what the PWA is served right now |
+| `tenant.<slug>.draft` | what the console is editing |
+
+**Draft and publish are separate.** Editing changes nothing for the customer;
+`POST /api/admin/app-config/:tenant/publish` promotes the draft and increments
+`version`, which is what the service worker compares against its cached copy.
+Publishing is refused while any value fails validation.
+
+**Entitlements are derived, never edited.** What a tenant may see comes from
+`licenses` + `packages` in the billing service; the overlay only says how it looks.
+`nav.modules` is filtered against those grants at resolution time, so a module that
+stops being paid for disappears without anyone touching the profile. Ticking
+entitlements in the console would give two sources of truth about what a customer
+bought, and they diverge at the first Stripe webhook.
+
+### The data catalogue
+
+`src/lib/data/catalogue.ts` is the library of resources a PWA may read, served by one
+route — `GET /api/data/:resource`. Two kinds sit in the same list: `proxy` (an
+endpoint that already exists on the tenant's own service, host from
+`tenants.internal_api_url`) and `query` (generated from a declaration against a
+**view**, never a bare table — exposing a table makes its column names your public
+contract, and `CREATE VIEW` changes no table).
+
+A registry variable of type `source` *selects* a catalogue entry. It never authors a
+URL or a query: a URL typed into an admin form is an SSRF with no review and no
+history. A proxy's parameters are fed by other variables — `stock.low_items` takes
+its `threshold` from `stock.threshold`.
+
+The catalogue is code, so it is reviewed in a pull request. `/admin/catalogue` is
+read-only and shows the guarantees per resource, computed rather than asserted:
+tenant column, column allowlist, sortable columns, row ceiling, writes refused.
+
+**Reading rows needs a tenant identity that this app does not have yet.**
+`/api/data/:resource` never infers a tenant from `?tenant=` for an anonymous caller —
+that is exactly how one customer reads another's rows. It currently resolves the
+tenant from a back-office session (the console's preview) and refuses everything
+else, because the billing service holds the API keys and only exposes
+`api_key_hint`. Point `resolveTenant` at that check when it exists; nothing else in
+the file changes.
 
 ## The two external services
 
@@ -145,11 +212,13 @@ src/
     i18n/                  locales + the translation resolver
     landing/               the GET /api/landing payload builder
     billing/               the billing-service client, types and fixtures
+    config/                registry (the only hard-coded part), tfb_settings store, resolver
+    data/                  the catalogue of readable resources and its query executor
     auth/                  session (JWT cookie) and scrypt passwords
     storage.ts             uploads, path safety
   components/
     landing/               header, hero, brand strip, module grid, module page, steps, differentiators, pricing, contact, footer
-    admin/                 shell, billing tables, content screens, translation editor, module editor
+    admin/                 shell, billing tables, content screens, translation editor, module editor, profile editor
   app/
     (site)/[locale]/       the landing — root layout #1, lang + dir per locale
     (admin)/admin/         the back office — root layout #2, fr-only LTR
@@ -183,6 +252,16 @@ no database calls. **The app has not been run against a live MySQL** — no data
 reachable from the machine it was built on, so the migration, the seed and the rendered
 pages are unverified end to end. Run the four commands under [Getting started](#getting-started)
 first.
+
+The per-tenant configuration layer was additionally checked by running its pure logic
+directly — registry validation, the three-layer resolution chain, and the request
+parsing that the `/api/data` safety argument rests on (undeclared column, disallowed
+operator, unindexed sort and over-large `limit` are each refused; SQL identifiers
+reject injection). Those checks are not committed: the repo has no test runner, and
+adding one was outside this change. The database-backed halves — reading and writing
+`tfb_settings`, publishing, and executing a `query` resource against a view — are
+**unverified**, and the views the catalogue names (`v_sales_daily`,
+`v_loyalty_members`) do not exist yet.
 
 ## Known gaps
 

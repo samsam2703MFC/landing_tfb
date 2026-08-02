@@ -16,6 +16,9 @@ export interface AdminNavCounts {
   sync?: number;
   modules?: number;
   messages?: number;
+  profiles?: number;
+  variables?: number;
+  resources?: number;
 }
 
 /** Rail rows → routes. Order and grouping follow the design's ADMIN_NAV. */
@@ -31,6 +34,14 @@ export function buildNav(counts: AdminNavCounts): SidebarSection[] {
         { value: '/admin/packages', label: 'Packages & tarifs', icon: 'tag' },
         { value: '/admin/sync', label: 'File de sync', icon: 'arrow-up-down', count: counts.sync },
         { value: '/admin/events', label: 'Événements', icon: 'clock' },
+      ],
+    },
+    {
+      title: 'Personnalisation',
+      items: [
+        { value: '/admin/profiles', label: 'Profils clients', icon: 'settings', count: counts.profiles },
+        { value: '/admin/registry', label: 'Registre', icon: 'list-checks', count: counts.variables },
+        { value: '/admin/catalogue', label: 'Catalogue de données', icon: 'file-text', count: counts.resources },
       ],
     },
     {
@@ -67,6 +78,9 @@ const TITLES: Record<string, [string, string[]]> = {
   '/admin/packages': ['Packages & tarifs', ['TFB Admin', 'Facturation', 'Packages']],
   '/admin/sync': ['File de synchronisation', ['TFB Admin', 'Facturation', 'Sync']],
   '/admin/events': ['Événements de licence', ['TFB Admin', 'Facturation', 'Événements']],
+  '/admin/profiles': ['Profils clients', ['TFB Admin', 'Personnalisation', 'Profils']],
+  '/admin/registry': ['Registre des variables', ['TFB Admin', 'Personnalisation', 'Registre']],
+  '/admin/catalogue': ['Catalogue de données', ['TFB Admin', 'Personnalisation', 'Catalogue']],
   '/admin/sections': ['Sections', ['TFB Admin', 'Contenu', 'Sections']],
   '/admin/modules': ['Modules', ['TFB Admin', 'Contenu', 'Modules']],
   '/admin/brands': ['Enseignes', ['TFB Admin', 'Contenu', 'Enseignes']],
