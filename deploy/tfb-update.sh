@@ -103,7 +103,15 @@ log "migrations"
 npx prisma migrate deploy || fail "prisma migrate deploy"
 
 log "redémarrage de $SERVICE"
-systemctl restart "$SERVICE" || fail "redémarrage de $SERVICE"
+# Le script tourne sous le compte qui possède le dépôt — pas root, sinon npm ci
+# sèmerait des fichiers root que ce compte ne pourrait plus réécrire. Seul le
+# redémarrage a besoin de privilèges, et il passe par une ligne sudoers qui ne
+# permet que celui-là.
+if [ "$(id -u)" -eq 0 ]; then
+  systemctl restart "$SERVICE" || fail "redémarrage de $SERVICE"
+else
+  sudo -n systemctl restart "$SERVICE" || fail "redémarrage de $SERVICE (sudoers manquant ?)"
+fi
 
 # Le service revient avant d'écouter ; on laisse à Next le temps de démarrer avant
 # de conclure quoi que ce soit.
