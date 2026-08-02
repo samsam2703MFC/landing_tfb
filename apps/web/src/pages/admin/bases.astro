@@ -92,7 +92,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
   </p>
 
   {!coffre && (
-    <p class="cellule avert">
+    <p class="bloc avert">
       <Icone nom="triangle-alert" taille={16} />
       <span>
         <strong>Coffre fermé.</strong> Aucun mot de passe ne peut être enregistré tant que
@@ -103,7 +103,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
     </p>
   )}
 
-  <details class="cellule inventaire" open={bases.length === 0}>
+  <details class="bloc inventaire" open={bases.length === 0}>
     <summary>
       Ce qu'il y a sur le serveur — {inventaire.ok ? `${inventaire.bases.length} base(s)` : 'indisponible'}
     </summary>
@@ -143,7 +143,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
     )}
   </details>
 
-  <div class="cellule">
+  <div class="bloc">
     <table>
       <thead>
         <tr><th>Client</th><th>Base</th><th>État</th><th>Dernier test</th><th></th></tr>
@@ -188,7 +188,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
   </div>
 
   {ouvert > 0 && (
-    <form method="post" class="cellule edition">
+    <form method="post" class="bloc edition">
       <input type="hidden" name="prospect_id" value={ouvert} />
       <h3>{prospects.find((p) => Number(p.id) === ouvert)?.raison_sociale || `Client ${ouvert}`}</h3>
 

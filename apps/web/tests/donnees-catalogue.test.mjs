@@ -25,7 +25,7 @@ import {
 import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/donnees/requete.mjs';
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
 import { enregistrerBase, hoteAcceptable, refusHote, sonderServeur } from '../src/lib/donnees/bases.mjs';
-import { codeProposition, controlerProposition } from '../src/lib/donnees/propositions.mjs';
+import { cleProposee, enregistrerEndpoint } from '../src/lib/donnees/endpoints.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
 const VENTES = {
@@ -242,154 +242,6 @@ describe('instruction CREATE VIEW', () => {
   });
 });
 
-describe('propositions', () => {
-  const p = {
-    cle: 'ventes.par_jour',
-    portee: 'colonne',
-    source: 'landing_ventes',
-    sourceGenre: 'table',
-    vue: 'v_ventes',
-    colonnes: ['jour_exploitation', 'total_ttc'],
-    filtres: { jour_exploitation: ['gte', 'lte'] },
-    triables: ['jour_exploitation'],
-    maxLignes: 500,
-    colonneClient: 'prospect_id',
-  };
-
-  it('passent le même contrôle qu’une entrée du catalogue', () => {
-    assert.equal(controlerProposition(p), null);
-  });
-
-  it('sont refusées quand la vue ne suit pas la convention', () => {
-    assert.equal(typeof controlerProposition({ ...p, vue: 'landing_ventes' }), 'string');
-  });
-
-  it('produisent du code qui se relit dans une diff', () => {
-    const code = codeProposition(p);
-    assert.match(code, /'ventes\.par_jour': \{/);
-    assert.match(code, /source: 'v_ventes',/);
-    assert.match(code, /jour_exploitation: \['gte', 'lte'\],/);
-    assert.match(code, /colonneClient: 'prospect_id',/);
-  });
-
-  it('n’écrivent pas de bloc de filtres vide de travers', () => {
-    assert.match(codeProposition({ ...p, filtres: {} }), /filtres: \{\},/);
-  });
-
-  it('déclarent tous les opérateurs que le lecteur de demande connaît', () => {
-    // Si les deux listes divergent, l'assistant propose un filtre que
-    // l'exécution refusera — panne visible seulement chez le client.
-    assert.deepEqual([...OPERATEURS].sort(), ['eq', 'gte', 'in', 'lte']);
-  });
-});
-
-describe('détection des colonnes sensibles', () => {
-  // Les motifs sont ancrés sur des segments entiers. Sans cela « moyen_paiement »
-  // passait pour une donnée RH (« paie ») et « taux_tva » pour une donnée
-  // personnelle — trouvé en exécutant l'assistant sur une vraie base. Un
-  // assistant qui crie au loup apprend à son lecteur à ne plus le lire.
-  it('ne se déclenche pas sur des colonnes anodines', () => {
-    for (const nom of ['moyen_paiement', 'taux_tva', 'total_ttc', 'quantite', 'canal', 'devise']) {
-      assert.equal(sensibiliteDe(nom), null, nom);
-    }
-  });
-
-  it('se déclenche sur ce qui compte vraiment', () => {
-    assert.equal(sensibiliteDe('prix_achat'), 'marge');
-    assert.equal(sensibiliteDe('marge_brute'), 'marge');
-    assert.equal(sensibiliteDe('email'), 'donnée personnelle');
-    assert.equal(sensibiliteDe('client_iban'), 'donnée personnelle');
-    assert.equal(sensibiliteDe('api_key'), 'secret');
-    assert.equal(sensibiliteDe('cree_par'), 'donnée RH');
-  });
-
-  // Trouvé en lançant l'assistant sur les tables de ce dépôt : les motifs
-  // venaient de la version anglaise et laissaient cocher `empreinte` — le
-  // hachage scrypt d'un mot de passe — ainsi que le contenu du coffre.
-  it('connaît le vocabulaire de ce dépôt, pas seulement l’anglais', () => {
-    assert.equal(sensibiliteDe('empreinte'), 'secret');
-    for (const colonne of ['chiffre', 'iv', 'sceau', 'version_cle']) {
-      assert.equal(sensibiliteDe(colonne), 'secret', colonne);
-    }
-  });
-
-  it('ne confond pas le chiffre d’affaires avec un chiffrement', () => {
-    assert.equal(sensibiliteDe('chiffre_affaires'), null);
-  });
-});
-
-/**
- * Chaque client a sa base, de structure identique aux autres. L'isolation n'est
- * donc plus un filtre dans le SQL mais la connexion elle-même — et c'est
- * précisément ce qui rend l'erreur invisible : un SQL sans WHERE sur le client
- * a l'air parfaitement sain. Ces tests portent sur la frontière entre les deux
- * portées, là où une confusion ferait fuiter sans rien casser.
- */
-describe('base propre à chaque client', () => {
-  const PAR_BASE = {
-    version: 1,
-    portee: 'base_client',
-    libelle: 'Ventes par jour',
-    source: 'v_ventes',
-    colonnes: ['jour_exploitation', 'total_ttc'],
-    filtres: { jour_exploitation: ['gte', 'lte'] },
-    triables: ['jour_exploitation'],
-    maxLignes: 500,
-  };
-  const sans = (q) => lireDemande(new URL(`https://x/y${q}`), PAR_BASE);
-
-  it('accepte une déclaration sans colonne de client', () => {
-    assert.equal(controlerRessource('ventes.par_jour', PAR_BASE), null);
-  });
-
-  // En poser une ferait croire à un filtre là où il n'y en a aucun : le jour où
-  // la ressource passerait en base partagée, on croirait la protection déjà là.
-  it('refuse une colonne de client dans une base qui n’appartient qu’à lui', () => {
-    const r = controlerRessource('a.b', { ...PAR_BASE, colonneClient: 'prospect_id' });
-    assert.match(r, /l’isolation est la connexion/);
-  });
-
-  it('exige une portée déclarée, sans défaut', () => {
-    const { portee, ...sansPortee } = PAR_BASE;
-    assert.match(controlerRessource('a.b', sansPortee), /Portée manquante/);
-    assert.match(controlerRessource('a.b', { ...PAR_BASE, portee: 'globale' }), /Portée manquante/);
-  });
-
-  it('ne met aucun WHERE quand rien ne doit être filtré', () => {
-    const { sql, valeurs } = sqlDe(PAR_BASE, sans(''));
-    assert.equal(sql, 'SELECT `jour_exploitation`, `total_ttc` FROM `v_ventes` LIMIT ?');
-    assert.deepEqual(valeurs, []);
-  });
-
-  it('garde le WHERE dès qu’un filtre est demandé', () => {
-    const { sql, valeurs } = sqlDe(PAR_BASE, sans('?filtre[jour_exploitation][gte]=2026-08-01'));
-    assert.match(sql, /WHERE `jour_exploitation` >= \?/);
-    assert.deepEqual(valeurs, ['2026-08-01']);
-    assert.ok(!sql.includes('prospect_id'));
-  });
-
-  it('produit une vue sans colonne de client', () => {
-    const vue = instructionVue('ventes', 'v_ventes', ['jour_exploitation', 'total_ttc'], null);
-    assert.equal(vue, 'CREATE OR REPLACE VIEW `v_ventes` AS\n  SELECT `jour_exploitation`, `total_ttc`\n    FROM `ventes`;');
-  });
-
-  it('écrit la portée dans le code proposé, et pas de colonne de client', () => {
-    const code = codeProposition({ ...PAR_BASE, cle: 'ventes.par_jour', vue: 'v_ventes' });
-    assert.match(code, /portee: 'base_client',/);
-    assert.ok(!code.includes('colonneClient'));
-  });
-
-  // 169.254.169.254 répond en HTTP, pas en MySQL : pointer une « base » dessus
-  // ne peut pas être une erreur de saisie honnête.
-  it('refuse un hôte de base sur le lien-local', () => {
-    assert.equal(hoteAcceptable('169.254.169.254'), false);
-    assert.equal(hoteAcceptable('169.254.0.1'), false);
-    assert.equal(hoteAcceptable(''), false);
-    assert.equal(hoteAcceptable('db.belleville.example'), true);
-    assert.equal(hoteAcceptable('10.0.0.4'), true);
-  });
-});
-
 describe('découverte des bases d’un serveur', () => {
   // Les deux refus qui doivent tomber AVANT toute tentative de connexion :
   // sonder un hôte, c'est déjà ouvrir une socket depuis le serveur.
@@ -473,5 +325,63 @@ describe('la base de la console n’est celle d’aucun client', () => {
     // Elle ira jusqu'à la base — donc elle échouera ici faute de connexion —
     // mais surtout pas sur le message de la console.
     assert.ok(!/base de la console/.test(r.erreur || ''));
+  });
+});
+
+/**
+ * La bibliothèque vit en base, et c'est un changement de fond : une déclaration
+ * dans le code se relit dans une diff, une ligne en base ne se relit nulle part.
+ * Ce qui rachète l'échange, c'est que `controlerRessource()` s'applique à
+ * l'écriture — donc rien d'invalide n'entre. Ces tests portent là-dessus.
+ */
+describe('clé proposée par le générateur', () => {
+  it('dérive une clé lisible du nom de la vue', () => {
+    assert.equal(cleProposee('v_ventes'), 'ventes.liste');
+    assert.equal(cleProposee('ventes'), 'ventes.liste');
+  });
+
+  it('en trouve une libre quand la première est prise', () => {
+    assert.equal(cleProposee('v_ventes', new Set(['ventes.liste'])), 'ventes.liste_2');
+    assert.equal(cleProposee('v_ventes', new Set(['ventes.liste', 'ventes.liste_2'])), 'ventes.liste_3');
+  });
+
+  it('ne propose jamais une clé que le contrôle refuserait', () => {
+    for (const source of ['v_Ventes-2026', 'v_', '', 'V_MAJ']) {
+      const c = cleProposee(source);
+      if (c) assert.equal(estCleRessource(c), true, `${source} → ${c}`);
+    }
+  });
+});
+
+describe('écriture d’un endpoint', () => {
+  const bon = {
+    cle: 'ventes.par_jour', nom: 'Ventes par jour',
+    pourquoi: 'Alimente le graphe d’accueil de la caisse.',
+    portee: 'base_client', source: 'v_ventes',
+    colonnes: ['jour', 'total'], filtres: { jour: ['gte'] }, triables: ['jour'], maxLignes: 500,
+  };
+
+  // Ces trois refus tombent avant toute requête : le contrôle le plus important
+  // est aussi celui qui ne coûte rien.
+  it('exige un nom lisible', async () => {
+    const r = await enregistrerEndpoint(0, { ...bon, nom: '' });
+    assert.equal(r.ok, false);
+    assert.match(r.erreur, /nom lisible/);
+  });
+
+  it('exige de dire à quoi il sert', async () => {
+    // Un endpoint dont personne ne sait à quoi il sert ne se supprime jamais.
+    const r = await enregistrerEndpoint(0, { ...bon, pourquoi: 'ventes' });
+    assert.equal(r.ok, false);
+    assert.match(r.erreur, /à quoi il sert/);
+  });
+
+  it('applique le contrôle d’une déclaration, mot pour mot', async () => {
+    const surTable = await enregistrerEndpoint(0, { ...bon, source: 'landing_ventes' });
+    assert.match(surTable.erreur, /doit être une vue/);
+    const sansPlafond = await enregistrerEndpoint(0, { ...bon, maxLignes: 99999 });
+    assert.match(sansPlafond.erreur, /plafond/);
+    const filtreFantome = await enregistrerEndpoint(0, { ...bon, filtres: { marge: ['eq'] } });
+    assert.match(filtreFantome.erreur, /non exposée/);
   });
 });

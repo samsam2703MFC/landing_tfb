@@ -1231,6 +1231,67 @@ function modele(pg) {
       ],
     },
     {
+      // Les applications qui consomment les endpoints. Un endpoint sans
+      // application déclarée est un endpoint que personne ne réclame : la
+      // liaison est ce qui permet de savoir ce qu'on casse en le changeant.
+      nom: table('applications'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['description', t.texte],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['cree_le', t.chaine(40)],
+      ],
+    },
+    {
+      // La bibliothèque des endpoints.
+      //
+      // La déclaration vit en base et non dans le code, parce qu'on veut la
+      // chercher, la relier et l'essayer depuis la console. Ce que le code
+      // garantissait — vue et jamais table, colonnes en liste blanche, valeurs
+      // liées, plafond de lignes — est appliqué à l'écriture par
+      // controlerRessource(), donc rien d'invalide n'entre ici.
+      //
+      // Ce que la table doit rendre en échange de la relecture qu'offrait une
+      // diff : un auteur, une date, un état, et `pourquoi`. Un endpoint dont
+      // personne ne sait à quoi il sert ne se supprime jamais.
+      nom: table('endpoints'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(120)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(200)} NOT NULL`],
+        ['pourquoi', t.texte],
+        // base_client · colonne
+        ['portee', `${t.chaine(20)} DEFAULT 'base_client'`],
+        ['source', `${t.chaine(120)} NOT NULL`],
+        ['colonnes', t.objet],
+        ['filtres', t.objet],
+        ['triables', t.objet],
+        ['max_lignes', 'INT DEFAULT 500'],
+        ['colonne_client', t.chaine(120)],
+        // brouillon · actif · retire
+        ['statut', `${t.chaine(20)} DEFAULT 'brouillon'`],
+        ['version', 'INT DEFAULT 1'],
+        ['cree_le', t.chaine(40)],
+        ['cree_par', t.chaine(200)],
+        ['maj_le', t.chaine(40)],
+        ['maj_par', t.chaine(200)],
+      ],
+    },
+    {
+      // Quelles applications lisent quel endpoint. Sans cette table, la
+      // question « qui casse si je retire cette colonne » n'a pas de réponse.
+      nom: table('endpoint_applications'),
+      colonnes: [
+        ['id', t.id],
+        ['endpoint_id', 'INT NOT NULL'],
+        ['application_id', 'INT NOT NULL'],
+        ['note', t.chaine(255)],
+        ['cree_le', t.chaine(40)],
+      ],
+    },
+    {
       // Les propositions de l'assistant d'import du catalogue. Inertes : aucune
       // route ne les sert. Une proposition devient réelle quand quelqu'un colle
       // l'entrée générée dans catalogue.mjs et qu'elle passe en revue — c'est

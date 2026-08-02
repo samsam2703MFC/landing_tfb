@@ -1,14 +1,20 @@
 /**
- * Le catalogue de données — la bibliothèque des ressources qu'une application
- * cliente a le droit de lire.
+ * Ce qui contrôle une déclaration d'endpoint.
+ *
+ * La bibliothèque elle-même vit en base — voir `endpoints.mjs` — parce qu'on
+ * veut la chercher, la relier à des applications et l'essayer depuis un écran.
+ * Ce fichier garde ce qui ne se négocie pas : la forme d'un identifiant, ce
+ * qu'une déclaration doit contenir pour être servie, et les garanties qu'on en
+ * calcule. C'est la seule porte d'écriture, donc rien d'invalide n'atteint la
+ * table.
  *
  * Une ressource est une **déclaration**, pas une URL. Elle nomme une vue, la
  * liste des colonnes qui peuvent sortir, les filtres acceptés et leur plafond de
  * lignes. Le SQL est fabriqué à partir de ça et de rien d'autre : la requête ne
  * peut nommer qu'un filtre déjà déclaré, et sa valeur part toujours en
- * paramètre lié. C'est tout l'argument de sécurité, et c'est pour cela que le
- * catalogue est du code et non des lignes en base — une ressource se relit dans
- * une diff, une ligne en base ne se relit nulle part.
+ * paramètre lié. C'est tout l'argument de sécurité, et il ne dépend pas de
+ * l'endroit où vit la déclaration : il dépend de ce contrôle-ci, qui s'applique
+ * avant toute écriture.
  *
  * POURQUOI UNE VUE ET JAMAIS UNE TABLE. Exposer une table fait de ses noms de
  * colonnes votre contrat public : vous ne pourrez plus jamais en renommer une
@@ -17,7 +23,7 @@
  * base » tient toujours.
  *
  * CE QUI N'EST PAS ICI, ET POURQUOI. Les appels vers l'API d'un client ne
- * passent pas par le catalogue : cette application a déjà les connexions, les
+ * passent pas par les endpoints : cette application a déjà les connexions, les
  * manifests de connecteurs, le coffre à secrets et `verifierAdresse()` — avec
  * son contrôle du réattachement DNS. Redéclarer un hôte ici créerait un second
  * chemin pour joindre la caisse d'un client, avec ses propres garde-fous à
@@ -58,24 +64,6 @@ export const PORTEES = ['base_client', 'colonne'];
  * façon dont un client finit par lire les lignes d'un autre.
  */
 export const COLONNE_CLIENT = 'prospect_id';
-
-/**
- * Les ressources servies.
- *
- * La liste est volontairement vide au départ. Une entrée d'exemple pointant vers
- * une vue qui n'existe pas donnerait une console qui promet des données et une
- * erreur 500 à qui les demande. L'assistant d'import remplit cette liste :
- * il produit la déclaration et l'instruction `CREATE VIEW` qui va avec.
- */
-export const CATALOGUE = {};
-
-export function ressource(cle) {
-  return CATALOGUE[cle] || null;
-}
-
-export function entreesCatalogue() {
-  return Object.entries(CATALOGUE).map(([cle, r]) => ({ cle, ressource: r }));
-}
 
 /**
  * Un identifiant SQL nu. Tous les noms qui atteignent une requête sont vérifiés

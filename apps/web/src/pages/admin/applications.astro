@@ -1,0 +1,125 @@
+---
+/**
+ * Les applications qui consomment les endpoints.
+ *
+ * Une table de trois colonnes, et elle porte pourtant la seule réponse à la
+ * question qu'on se pose avant de toucher à un endpoint : **qui casse ?**
+ * Sans elle, on ne change rien, et la bibliothèque se fige.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { lien } from '../../lib/lien.mjs';
+import { compteurs } from '../../lib/admin/donnees.mjs';
+import { ajouterApplication, listerApplications, supprimerApplication } from '../../lib/donnees/endpoints.mjs';
+
+let message = null;
+let souci = null;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (String(f.get('action')) === 'supprimer') {
+    await supprimerApplication(Number(f.get('id')));
+    message = 'Application retirée, avec ses liaisons.';
+  } else {
+    const r = await ajouterApplication({
+      cle: f.get('cle'), nom: f.get('nom'), description: f.get('description'),
+    });
+    if (r.ok) message = 'Application déclarée.';
+    else souci = r.erreur;
+  }
+}
+
+const [chiffres, applications] = await Promise.all([
+  compteurs(),
+  listerApplications().catch((e) => { souci = e.message; return []; }),
+]);
+---
+
+<Console titre="Applications" actif="applications" compteurs={chiffres} message={message} erreur={souci}>
+  <p class="intro">
+    Ce qui lit vos endpoints : l'application d'un franchisé, une console de marque, un tableau de
+    bord. Les déclarer sert à une seule chose, mais elle est décisive — savoir <strong>qui
+    casse</strong> quand on change un endpoint.
+  </p>
+
+  <form method="post" class="bloc ajout">
+    <label class="champ">
+      <span>Clé</span>
+      <input type="text" name="cle" required pattern="[a-z][a-z0-9_-]{1,58}" placeholder="caisse-mobile" />
+      <em>Minuscules, sans espace. Elle identifie l'application partout.</em>
+    </label>
+    <label class="champ">
+      <span>Nom</span>
+      <input type="text" name="nom" required placeholder="Caisse mobile" />
+    </label>
+    <label class="champ champ--large">
+      <span>À quoi elle sert</span>
+      <input type="text" name="description" placeholder="La caisse tenue par les équipiers en salle." />
+    </label>
+    <button class="bouton bouton--marque" type="submit"><Icone nom="plus" taille={15} /> Déclarer</button>
+  </form>
+
+  {applications.length === 0 ? (
+    <p class="vide">Aucune application déclarée.</p>
+  ) : (
+    <div class="bloc">
+      <table>
+        <thead>
+          <tr><th>Clé</th><th>Nom</th><th>Rôle</th><th>Endpoints</th><th></th></tr>
+        </thead>
+        <tbody>
+          {applications.map((a) => (
+            <tr>
+              <td class="mono">{a.cle}</td>
+              <td>{a.nom}</td>
+              <td class="role">{a.description || <span class="rien">—</span>}</td>
+              <td class="chiffre">
+                {a.endpoints > 0
+                  ? <a href={lien(`/admin/endpoints?app=${a.id}`)}>{a.endpoints}</a>
+                  : <span class="rien">0</span>}
+              </td>
+              <td class="fin">
+                <form method="post" class="enligne">
+                  <input type="hidden" name="action" value="supprimer" />
+                  <input type="hidden" name="id" value={a.id} />
+                  <button class="reinit" type="submit">Retirer</button>
+                </form>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <p class="note">
+    Retirer une application retire aussi ses liaisons, pas les endpoints. Un endpoint que plus
+    aucune application ne lit apparaît en jaune dans la bibliothèque — c'est le signal qu'on peut
+    enfin le retirer sans rien casser.
+  </p>
+</Console>
+
+<style>
+  .intro, .note { max-inline-size: 78ch; color: var(--slate-600); }
+  .note { font-size: var(--text-sm); margin-block-start: var(--space-4); }
+  .ajout { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-4);
+           align-items: end; padding: 16px; margin-block-end: var(--space-4); }
+  .champ { display: flex; flex-direction: column; gap: 4px; }
+  .champ--large { grid-column: span 2; }
+  .champ > span { font: 500 var(--text-sm) / 1.3 var(--font-sans); }
+  .champ input { inline-size: 100%; }
+  .champ em { font-style: normal; font-size: var(--text-xs); color: var(--slate-500); }
+  .vide { color: var(--slate-500); }
+  .rien { color: var(--slate-500); }
+  .role { color: var(--slate-600); font-size: var(--text-sm); max-inline-size: 46ch; }
+  table { inline-size: 100%; border-collapse: collapse; }
+  th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
+       letter-spacing: .09em; color: var(--slate-500); padding: 10px 14px; }
+  td { padding: 10px 14px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm); }
+  .chiffre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .fin { text-align: end; }
+  .enligne { display: inline; }
+  .reinit { background: none; border: 0; padding: 0; cursor: pointer; font-size: var(--text-xs);
+            color: var(--slate-600); text-decoration: underline; text-underline-offset: 2px; }
+  .mono { font-family: var(--font-mono); }
+</style>

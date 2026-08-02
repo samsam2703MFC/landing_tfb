@@ -1,0 +1,181 @@
+---
+/**
+ * La bibliothèque des endpoints.
+ *
+ * Ce qu'on cherche dans une bibliothèque, ce n'est presque jamais un nom
+ * technique : c'est un usage. « Celui du réassort. » La recherche porte donc
+ * aussi sur le *pourquoi*, et l'écran le montre en clair sous chaque entrée
+ * plutôt que de le cacher derrière un clic.
+ *
+ * Les applications liées sont affichées pour la même raison : la question qu'on
+ * se pose avant de toucher un endpoint est « qui casse ? ». Sans la réponse
+ * sous les yeux, on ne touche à rien, et la bibliothèque se fige.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { lien } from '../../../lib/lien.mjs';
+import { compteurs } from '../../../lib/admin/donnees.mjs';
+import { STATUTS, chercherEndpoints, listerApplications, supprimerEndpoint } from '../../../lib/donnees/endpoints.mjs';
+import { garanties } from '../../../lib/donnees/catalogue.mjs';
+
+let message = null;
+let souci = null;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  if (String(f.get('action')) === 'supprimer') {
+    await supprimerEndpoint(Number(f.get('id')));
+    message = 'Endpoint supprimé.';
+  }
+}
+
+const q = Astro.url.searchParams.get('q') || '';
+const app = Number(Astro.url.searchParams.get('app') || 0);
+const statut = Astro.url.searchParams.get('statut') || '';
+
+const [chiffres, applications, endpoints] = await Promise.all([
+  compteurs(),
+  listerApplications().catch(() => []),
+  chercherEndpoints({ texte: q, application: app, statut }).catch((e) => { souci = e.message; return []; }),
+]);
+
+const filtre = q || app || statut;
+const lienFiltre = (params) => {
+  const p = new URLSearchParams();
+  if (q) p.set('q', q);
+  if (app) p.set('app', String(app));
+  if (statut) p.set('statut', statut);
+  for (const [k, v] of Object.entries(params)) v ? p.set(k, String(v)) : p.delete(k);
+  const s = p.toString();
+  return lien(`/admin/endpoints${s ? `?${s}` : ''}`);
+};
+---
+
+<Console titre="Endpoints" actif="endpoints" compteurs={chiffres} message={message} erreur={souci}>
+  <p class="intro">
+    La bibliothèque de ce qu'une application cliente a le droit de lire. Chaque endpoint dit{' '}
+    <strong>à quoi il sert</strong> et <strong>qui le lit</strong> — sans ces deux réponses, on
+    n'ose ni le changer ni le retirer, et la bibliothèque se fige.
+  </p>
+
+  <form class="chercheur" method="get" action={lien('/admin/endpoints')}>
+    <label class="recherche">
+      <Icone nom="search" taille={16} />
+      <input type="search" name="q" value={q} placeholder="Chercher : une clé, un nom, un usage, une vue…" />
+    </label>
+    <select name="app">
+      <option value="">Toutes les applications</option>
+      {applications.map((a) => <option value={a.id} selected={a.id === app}>{a.nom}</option>)}
+    </select>
+    <select name="statut">
+      <option value="">Tous les états</option>
+      {STATUTS.map((s) => <option value={s.valeur} selected={s.valeur === statut}>{s.libelle}</option>)}
+    </select>
+    <button class="bouton bouton--sobre" type="submit">Chercher</button>
+    {filtre && <a class="lien" href={lien('/admin/endpoints')}>Tout voir</a>}
+    <a class="bouton bouton--marque nouveau" href={lien('/admin/endpoints/nouveau')}>
+      <Icone nom="plus" taille={15} /> Générer un endpoint
+    </a>
+  </form>
+
+  {endpoints.length === 0 ? (
+    <div class="bloc vide">
+      {filtre ? (
+        <p>Aucun endpoint ne correspond. <a href={lien('/admin/endpoints')}>Voir toute la bibliothèque</a>.</p>
+      ) : (
+        <>
+          <p><strong>La bibliothèque est vide.</strong></p>
+          <p class="aide">
+            Le générateur lit la base d'un client, vous montre ses tables et ses colonnes, et écrit
+            la déclaration. Il ne crée aucune route tant que vous ne l'avez pas mise en « actif ».
+          </p>
+          <a class="bouton bouton--marque" href={lien('/admin/endpoints/nouveau')}>
+            <Icone nom="plus" taille={15} /> Générer le premier
+          </a>
+        </>
+      )}
+    </div>
+  ) : (
+    endpoints.map((e) => {
+      const g = garanties(e);
+      const souciant = g.filter((x) => !x.ok);
+      return (
+        <div class="bloc fiche">
+          <div class="fiche__tete">
+            <a class="mono cle" href={lien(`/admin/endpoints/${e.id}`)}>{e.cle}</a>
+            <span class="nom">{e.nom}</span>
+            <span class:list={['etat', `etat--${e.statut}`]}>{STATUTS.find((s) => s.valeur === e.statut)?.libelle}</span>
+            <span class="mono version">v{e.version}</span>
+          </div>
+
+          <p class="pourquoi">{e.pourquoi}</p>
+
+          <div class="meta">
+            <span class="jeton">
+              <Icone nom="scan-line" taille={12} />
+              <span class="mono">{e.source}</span> · {e.colonnes.length} colonne(s) · max {e.maxLignes}
+            </span>
+            <span class="jeton">
+              {e.portee === 'base_client' ? 'base propre au client' : `filtré sur ${e.colonneClient}`}
+            </span>
+            {e.applications.length === 0 ? (
+              <span class="jeton jeton--orphelin">
+                <Icone nom="triangle-alert" taille={12} /> aucune application déclarée
+              </span>
+            ) : (
+              e.applications.map((a) => (
+                <a class="jeton jeton--app" href={lienFiltre({ app: a.id })}>{a.nom}</a>
+              ))
+            )}
+            {souciant.length > 0 && (
+              <span class="jeton jeton--ko">
+                <Icone nom="circle-alert" taille={12} /> {souciant.map((x) => x.libelle).join(', ')}
+              </span>
+            )}
+          </div>
+        </div>
+      );
+    })
+  )}
+
+  <p class="note">
+    Un endpoint en <strong>brouillon</strong> ne se sert pas : il s'écrit et s'essaie. Le passer en
+    « actif » est le geste qui l'ouvre — c'est pour cela qu'il est séparé de l'enregistrement.
+  </p>
+</Console>
+
+<style>
+  .intro, .note { max-inline-size: 78ch; color: var(--slate-600); }
+  .note { font-size: var(--text-sm); margin-block-start: var(--space-4); }
+  .aide { color: var(--slate-600); font-size: var(--text-sm); max-inline-size: 78ch; }
+  .chercheur { display: flex; gap: var(--space-3); align-items: center; flex-wrap: wrap; }
+  /* La console met les champs à cent pour cent de leur conteneur — ce qui est
+     juste dans un formulaire en colonne, et fait passer chaque filtre à la
+     ligne dans une barre. On leur rend une largeur propre ici. */
+  .chercheur select { inline-size: auto; flex: 0 1 210px; }
+  .recherche { display: flex; align-items: center; gap: 8px; flex: 1 1 240px;
+               background: #fff; border: 1px solid var(--slate-200);
+               border-radius: var(--radius-control); padding: 0 12px; color: var(--slate-500); }
+  .recherche input { border: 0; outline: none; inline-size: 100%; padding: 9px 0; background: none; }
+  .nouveau { margin-inline-start: auto; }
+  .vide { padding: 18px; display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .fiche { padding: 14px 16px; }
+  .fiche__tete { display: flex; align-items: baseline; gap: var(--space-3); flex-wrap: wrap; }
+  .cle { font-weight: 600; }
+  .nom { color: var(--slate-600); }
+  .version { color: var(--slate-500); font-size: var(--text-xs); margin-inline-start: auto; }
+  .pourquoi { margin: 6px 0 0; max-inline-size: 82ch; font-size: var(--text-sm); }
+  .meta { display: flex; flex-wrap: wrap; gap: 6px; margin-block-start: 10px; }
+  .jeton { display: inline-flex; align-items: center; gap: 5px; font-size: var(--text-xs);
+           background: var(--slate-100); color: var(--slate-600); border-radius: 999px; padding: 3px 10px; }
+  .jeton--app { background: color-mix(in srgb, var(--plum-500, #7b4488) 12%, transparent);
+                color: var(--plum-600, #6a3a76); }
+  .jeton--app:hover { text-decoration: none; background: color-mix(in srgb, var(--plum-500, #7b4488) 22%, transparent); }
+  .jeton--orphelin { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  .jeton--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
+  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px;
+          background: var(--slate-100); color: var(--slate-600); }
+  .etat--actif { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
+  .etat--brouillon { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  .mono { font-family: var(--font-mono); }
+</style>
