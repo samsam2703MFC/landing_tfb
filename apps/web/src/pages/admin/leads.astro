@@ -10,7 +10,7 @@ import Console from '../../components/Console.astro';
 import Icone from '../../components/Icone.astro';
 import { compteurs, listerLeads, listerTarifs, marquerLead, supprimerLead } from '../../lib/admin/donnees.mjs';
 import { lireTarif } from '../../lib/offres/montants.mjs';
-import { sectionsDuGuide } from '../../lib/admin/guide.mjs';
+import { lignesDeSection, sectionsDuGuide } from '../../lib/admin/guide.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -97,7 +97,19 @@ function quand(valeur) {
           {fiches.map((f) => (
             <article class="fiche">
               {f.titre && <h3>{f.titre}</h3>}
-              <pre>{f.corps}</pre>
+              {lignesDeSection(f.corps).map((l) => {
+                if (l.type === 'question') {
+                  return (
+                    <p class="fiche__question">
+                      <span class="fiche__rang">{l.rang}</span>
+                      <span>{l.texte}</span>
+                    </p>
+                  );
+                }
+                if (l.type === 'note') return <p class="fiche__note">{l.texte}</p>;
+                if (l.type === 'citation') return <blockquote class="fiche__dit">{l.texte}</blockquote>;
+                return <p class="fiche__texte">{l.texte}</p>;
+              })}
             </article>
           ))}
         </div>
@@ -229,10 +241,37 @@ function quand(valeur) {
     letter-spacing: var(--tracking-wide); text-transform: uppercase;
     color: var(--plum-600, #6d3a79);
   }
-  .guide__fiches .fiche > pre {
-    margin: 0;
-    font: var(--text-sm) / 1.6 var(--font-sans);
-    white-space: pre-wrap; overflow-wrap: anywhere;
+  /* Le corps d'une fiche mêle quatre voix : une question, la précision qui la
+     suit, une réplique à dire mot pour mot, et de la prose. Rendues à
+     l'identique, elles se lisent toutes pareil — or c'est justement la
+     hiérarchie qu'on cherche du regard, un téléphone à la main. */
+  .guide__fiches .fiche p,
+  .guide__fiches .fiche blockquote { margin: 0; font-size: var(--text-sm); line-height: 1.6; }
+  .guide__fiches .fiche > * + * { margin-block-start: 8px; }
+
+  .fiche__question {
+    display: grid; grid-template-columns: 22px 1fr; gap: 8px; align-items: start;
+    font-weight: 600;
+  }
+  .fiche__rang {
+    display: inline-flex; align-items: center; justify-content: center;
+    inline-size: 22px; block-size: 22px; border-radius: 50%;
+    background: var(--plum-50, #f5eef7); color: var(--plum-600, #6d3a79);
+    font: 600 var(--text-xs) / 1 var(--font-sans);
+  }
+  /* La précision se range sous sa question, alignée sur son texte et non sur
+     sa pastille : c'est une conséquence, pas une nouvelle question. */
+  .fiche__note {
+    margin-inline-start: 30px;
+    color: var(--slate-600);
+  }
+  .fiche__question + .fiche__note { margin-block-start: 4px; }
+  .fiche__dit {
+    padding: 10px 14px;
+    border-inline-start: 3px solid var(--plum-500, #7b4488);
+    border-radius: 0 8px 8px 0;
+    background: var(--slate-50);
+    font-style: italic;
   }
   .guide__pied { margin: 10px 2px 0; }
 

@@ -56,3 +56,83 @@ export function sectionsDuGuide(texte) {
     // Une section sans titre ni corps est un reliquat de lignes vides.
     .filter((s) => s.titre || s.corps.trim());
 }
+
+/**
+ * Les lignes d'une section, chacune avec ce qu'elle est.
+ *
+ * Le corps d'une fiche n'est pas de la prose continue : il mêle des questions
+ * numérotées, la précision qui suit chacune derrière une flèche, une réplique
+ * entre guillemets, et des phrases ordinaires. Rendu en bloc préformaté,
+ * tout cela a la même voix — or c'est justement la hiérarchie qu'on cherche
+ * du regard pendant qu'on tient un téléphone.
+ *
+ * Quatre formes reconnues, et une cinquième qui ramasse le reste : un guide
+ * réécrit librement reste lisible, en paragraphes.
+ */
+export function lignesDeSection(corps) {
+  const sortie = [];
+  let paragraphe = [];
+
+  const viderParagraphe = () => {
+    if (paragraphe.length > 0) {
+      sortie.push({ type: 'paragraphe', texte: paragraphe.join(' ') });
+      paragraphe = [];
+    }
+  };
+
+  for (const brute of String(corps || '').split(/\r?\n/)) {
+    const l = brute.trim();
+    // Une ligne vide referme tout, y compris une réplique dont personne n'a
+    // écrit le guillemet fermant : sans cela elle avalerait la suite.
+    if (!l) {
+      viderParagraphe();
+      const ouvert = sortie[sortie.length - 1];
+      if (ouvert && ouvert.ouverte) ouvert.ouverte = false;
+      continue;
+    }
+
+    // « 1. Combien de points de vente ? »
+    const numerotee = l.match(/^(\d+)\.\s+(.*)$/);
+    if (numerotee) {
+      viderParagraphe();
+      sortie.push({ type: 'question', rang: Number(numerotee[1]), texte: numerotee[2] });
+      continue;
+    }
+
+    // « → C'est le nombre qui chiffre l'offre. » — la précision qui suit.
+    const flechee = l.match(/^[→>]\s*(.*)$/);
+    if (flechee) {
+      viderParagraphe();
+      sortie.push({ type: 'note', texte: flechee[1] });
+      continue;
+    }
+
+    const dernier = sortie[sortie.length - 1];
+
+    // Une réplique : ce qu'on dit au téléphone, mot pour mot. Elle court
+    // jusqu'au guillemet fermant, quelle que soit l'indentation de ses lignes
+    // suivantes — une citation coupée en deux au milieu d'une phrase se lit
+    // comme si le commercial avait été interrompu.
+    if (l.startsWith('«')) {
+      viderParagraphe();
+      sortie.push({ type: 'citation', texte: l, ouverte: !l.endsWith('»') });
+      continue;
+    }
+    if (dernier && dernier.type === 'citation' && dernier.ouverte && paragraphe.length === 0) {
+      dernier.texte = `${dernier.texte} ${l}`;
+      if (l.endsWith('»')) dernier.ouverte = false;
+      continue;
+    }
+
+    // La suite d'une note ou d'une question, indentée sous elle.
+    if (paragraphe.length === 0 && /^\s{2,}/.test(brute) && dernier
+        && (dernier.type === 'note' || dernier.type === 'question')) {
+      dernier.texte = `${dernier.texte} ${l}`;
+      continue;
+    }
+
+    paragraphe.push(l);
+  }
+  viderParagraphe();
+  return sortie.map(({ ouverte, ...ligne }) => ligne);
+}
