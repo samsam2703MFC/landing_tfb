@@ -8,7 +8,13 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { calculerOffre, formater, formaterTaux, lignesDe } from '../src/lib/offres/calcul.mjs';
+import {
+  calculerOffre,
+  formater,
+  formaterTaux,
+  lignesDe,
+  lignesIncompletes,
+} from '../src/lib/offres/calcul.mjs';
 
 /** Les tarifs par défaut, tels qu'ils seront semés en base. */
 const TARIFS = {
@@ -380,5 +386,62 @@ describe("l'affichage", () => {
     assert.equal(formaterTaux(2100), '21 %');
     assert.equal(formaterTaux(500), '5 %');
     assert.equal(formaterTaux(750), '7.5 %');
+  });
+});
+
+describe('les lignes à moitié remplies', () => {
+  it('ne dit rien d’une offre entièrement remplie', () => {
+    assert.deepEqual(
+      lignesIncompletes({
+        vues: [{ nombre: 3, note: 'Tableau de bord' }],
+        prestations: [{ nom: 'Design', prix_cents: 50_000 }],
+      }),
+      [],
+    );
+  });
+
+  it('ignore une ligne entièrement vide — c’est la ligne de réserve', () => {
+    assert.deepEqual(lignesIncompletes({ vues: [{ nombre: 0, note: '' }], prestations: [] }), []);
+    assert.deepEqual(lignesIncompletes({ vues: [{ nombre: '', note: '   ' }] }), []);
+  });
+
+  it('signale une vue comptée mais sans description', () => {
+    // Sans description, `lignesDe` l’imprime « Vue » : le client reçoit une
+    // ligne facturée dont personne ne sait ce qu’elle est.
+    const manques = lignesIncompletes({ vues: [{ nombre: 2, note: '' }] });
+    assert.deepEqual(manques, [{ ou: 'vue', rang: 1, nom: null, manque: 'description' }]);
+  });
+
+  it('signale une vue décrite mais comptée zéro', () => {
+    // Celle-là est pire : `lignesDe` la saute, elle disparaît sans un mot.
+    const manques = lignesIncompletes({ vues: [{ nombre: 0, note: 'Agenda' }] });
+    assert.deepEqual(manques, [{ ou: 'vue', rang: 1, nom: 'Agenda', manque: 'nombre' }]);
+  });
+
+  it('numérote la vue fautive telle qu’elle s’affiche', () => {
+    const manques = lignesIncompletes({
+      vues: [
+        { nombre: 1, note: 'Accueil' },
+        { nombre: 4, note: '' },
+        { nombre: 0, note: '' },
+        { nombre: 0, note: 'Stock' },
+      ],
+    });
+    assert.deepEqual(manques.map((m) => m.rang), [2, 4]);
+  });
+
+  it('signale une ligne libre sans intitulé, numérotée parmi les libres', () => {
+    const manques = lignesIncompletes({
+      prestations: [
+        { nom: 'Design', prix_cents: 50_000 },
+        { nom: 'Reprise', prix_cents: 20_000, libre: true },
+        { nom: '  ', prix_cents: 30_000, libre: true },
+      ],
+    });
+    assert.deepEqual(manques, [{ ou: 'libre', rang: 2, nom: null, manque: 'intitulé' }]);
+  });
+
+  it('tient sans vues ni prestations', () => {
+    assert.deepEqual(lignesIncompletes({}), []);
   });
 });

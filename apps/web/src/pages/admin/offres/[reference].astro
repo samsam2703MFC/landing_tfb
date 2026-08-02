@@ -32,7 +32,7 @@ import {
   supprimerOffre,
   tarifsEnVigueur,
 } from '../../../lib/admin/donnees.mjs';
-import { calculerOffre, formater } from '../../../lib/offres/calcul.mjs';
+import { calculerOffre, formater, lignesIncompletes } from '../../../lib/offres/calcul.mjs';
 import { construireCourriel, serviceCourriel } from '../../../lib/offres/courriel.mjs';
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
 
@@ -40,9 +40,50 @@ const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const { reference } = Astro.params;
 const versionDemandee = Astro.url.searchParams.get('version');
 let erreur = null;
+// Ce qui vient d'être soumis mais n'a pas pu être enregistré : le formulaire
+// se réaffiche avec, plutôt qu'avec ce que la base contient encore.
+let soumis = null;
 
-/** Lit la configuration soumise. Toute saisie invalide arrête l'enregistrement. */
-async function lireConfig(f, catalogue, modules) {
+/** Une ligne incomplète, dite en français. */
+function direManque(m) {
+  if (m.ou === 'vue' && m.manque === 'description') {
+    return `Vue n° ${m.rang} : pas de description — elle s'imprimerait « Vue » sur l'offre.`;
+  }
+  if (m.ou === 'vue') {
+    return `Vue n° ${m.rang} « ${m.nom} » : le nombre est à zéro — elle ne s'imprimerait nulle part.`;
+  }
+  if (m.ou === 'libre') {
+    return `Ligne libre n° ${m.rang} : pas d'intitulé — c'est ce qui s'imprime sur l'offre.`;
+  }
+  return 'Une prestation sans intitulé.';
+}
+
+/**
+ * Lit la configuration soumise.
+ *
+ * Rien n'est levé : les saisies fautives sont **toutes** collectées dans
+ * `soucis`, et la configuration est rendue quand même. C'est ce qui permet
+ * de réafficher le formulaire tel qu'il a été rempli au lieu de le recharger
+ * depuis la base — perdre dix minutes de saisie parce qu'un prix contenait
+ * une lettre serait la meilleure façon de faire détester l'écran.
+ */
+async function lireConfig(f, catalogue, modules, soucis) {
+  // La saisie telle qu'elle a été tapée, pour les seuls champs refusés :
+  // réafficher « 0,00 » à la place de « environ 1000 » ferait croire que la
+  // valeur est passée, dans le champ précisément qu'on demande de corriger.
+  const refusees = new Map();
+
+  /** Convertit, ou note le grief, garde la saisie et rend zéro. */
+  const lire = (convertir, saisie, champ, cle) => {
+    try {
+      return convertir(saisie, champ);
+    } catch (err) {
+      soucis.push(err.message);
+      refusees.set(cle, String(saisie ?? ''));
+      return 0;
+    }
+  };
+
   const choisies = new Set(f.getAll('prestation').map(String));
   const prestations = catalogue
     .filter((p) => choisies.has(String(p.id)))
@@ -58,12 +99,15 @@ async function lireConfig(f, catalogue, modules) {
     const nom = String(libresNoms[i] || '').trim();
     const prix = String(libresPrix[i] || '').trim();
     if (!nom && !prix) continue;
-    if (!nom) throw new Error('Une ligne libre sans intitulé ne peut pas figurer sur une offre.');
+    // Une ligne sans intitulé est conservée telle quelle : elle sera signalée
+    // à l'écran, ligne par ligne, et l'offre ne pourra pas partir tant qu'elle
+    // le reste. La faire disparaître à l'enregistrement serait pire — le
+    // commercial croirait avoir saisi quelque chose qui n'existe plus.
     prestations.push({
       cle: `libre-${i + 1}`,
       nom,
       description: null,
-      prix_cents: enCents(prix || '0', `Prix de « ${nom} »`),
+      prix_cents: lire(enCents, prix || '0', `Prix de la ligne libre n° ${i + 1}`, `libre_prix.${i}`),
       libre: true,
     });
   }
@@ -89,7 +133,7 @@ async function lireConfig(f, catalogue, modules) {
     // Une ligne entièrement vide est un reliquat du formulaire, pas une vue.
     if (!note && !brut && !interne) continue;
     vues.push({
-      nombre: enEntier(brut || '0', `Nombre de vues « ${note || i + 1} »`),
+      nombre: lire(enEntier, brut || '0', `Nombre de la vue n° ${i + 1}`, `vue_nombre.${i}`),
       note,
       // Ne part jamais chez le client : c'est le pense-bête du commercial.
       interne: interne || null,
@@ -101,19 +145,22 @@ async function lireConfig(f, catalogue, modules) {
   const exoneree = f.get('tva_exoneree') === '1';
 
   return {
+    refusees,
     langue: String(f.get('langue') || 'fr'),
-    jours_formation: enEntier(String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation'),
-    nombre_postes: enEntier(String(f.get('nombre_postes') || '0').trim() || '0', 'Magasins ouverts'),
-    postes_franchiseur: enEntier(String(f.get('postes_franchiseur') || '0').trim() || '0', 'Postes franchiseur'),
-    postes_onboardes: enEntier(String(f.get('postes_onboardes') || '0').trim() || '0', 'Postes à onboarder'),
-    mois_offerts: enEntier(String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts'),
+    jours_formation: lire(enEntier, String(f.get('jours_formation') || '0').trim() || '0', 'Jours de formation', 'jours_formation'),
+    nombre_postes: lire(enEntier, String(f.get('nombre_postes') || '0').trim() || '0', 'Magasins ouverts', 'nombre_postes'),
+    postes_franchiseur: lire(enEntier, String(f.get('postes_franchiseur') || '0').trim() || '0', 'Postes franchiseur', 'postes_franchiseur'),
+    postes_onboardes: lire(enEntier, String(f.get('postes_onboardes') || '0').trim() || '0', 'Postes à onboarder', 'postes_onboardes'),
+    mois_offerts: lire(enEntier, String(f.get('mois_offerts') || '0').trim() || '0', 'Mois offerts', 'mois_offerts'),
     option_app: String(f.get('option_app') || 'aucune'),
     prestations,
     modules: modulesRetenus,
     vues,
     remise_type: remiseType,
-    remise_valeur: remiseType === 'fixe' ? enCents(remiseBrute, 'Remise') : enPoints(remiseBrute, 'Remise'),
-    tva_taux: enPoints(String(f.get('tva_taux') || '21').trim() || '0', 'TVA'),
+    remise_valeur: remiseType === 'fixe'
+      ? lire(enCents, remiseBrute, 'Remise', 'remise_valeur')
+      : lire(enPoints, remiseBrute, 'Remise', 'remise_valeur'),
+    tva_taux: lire(enPoints, String(f.get('tva_taux') || '21').trim() || '0', 'TVA', 'tva_taux'),
     tva_exoneree: exoneree,
     tva_mention: exoneree ? String(f.get('tva_mention') || '').trim() : null,
     portee: String(f.get('portee') || '').trim(),
@@ -151,6 +198,14 @@ if (Astro.request.method === 'POST') {
     }
 
     if (action === 'envoyer') {
+      // Dernier filet avant la boîte du client : une ligne à moitié remplie
+      // s'imprimerait sans nom, ou disparaîtrait sans que personne ne le voie.
+      const restes = lignesIncompletes(configDe(courante));
+      if (restes.length > 0) {
+        throw new Error(
+          `Offre incomplète, ${restes.length} ligne(s) à reprendre — ${restes.map(direManque).join(' ')}`,
+        );
+      }
       const tarifs = await tarifsEnVigueur();
       const message = construireCourriel({
         offre: courante,
@@ -176,14 +231,23 @@ if (Astro.request.method === 'POST') {
     }
 
     const catalogue = await listerPrestations();
-    const config = await lireConfig(f, catalogue, await modulesVendables());
+    const soucis = [];
+    const config = await lireConfig(f, catalogue, await modulesVendables(), soucis);
     // « Ajouter une vue » enregistre d'abord, puis pose une ligne vide : sans
     // JavaScript, c'est un aller-retour, et perdre la saisie en cours serait
     // le meilleur moyen de faire détester l'écran.
     if (action === 'ajouter_vue') config.vues.push({ nombre: 1, note: '', interne: null });
     if (action === 'ajouter_libre') config.prestations.push({ cle: 'libre-neuve', nom: '', prix_cents: 0, libre: true });
-    await enregistrerOffre(courante.id, config);
-    return Astro.redirect(`${BASE}/admin/offres/${reference}?version=${courante.version}`, 303);
+
+    // Une saisie illisible arrête l'enregistrement, mais pas la page : on
+    // réaffiche ce qui vient d'être tapé, avec la liste de ce qui coince.
+    if (soucis.length > 0) {
+      erreur = soucis.join(' · ');
+      soumis = config;
+    } else {
+      await enregistrerOffre(courante.id, config);
+      return Astro.redirect(`${BASE}/admin/offres/${reference}?version=${courante.version}`, 303);
+    }
   } catch (err) {
     erreur = err.message;
   }
@@ -208,20 +272,37 @@ try {
 
 if (!offre && !erreur) return new Response('Offre introuvable', { status: 404 });
 
+// La saisie refusée prime sur ce que la base contient encore : les deux
+// portent les mêmes noms de champ, la fusion suffit à réafficher le
+// formulaire exactement comme il vient d'être rempli.
+if (offre && soumis) offre = { ...offre, ...soumis };
+
 const figee = offreFigee(offre);
 const resultat = offre ? calculerOffre(configDe(offre)) : null;
+
+// Les lignes à moitié remplies, et de quoi les montrer du doigt : le rang
+// rendu par le calculateur est celui de la ligne à l'écran.
+const incompletes = offre ? lignesIncompletes(configDe(offre)) : [];
+
+/** La saisie refusée d'un champ, s'il y en a une — sinon la valeur en base. */
+const refus = (cle, defaut) => (soumis?.refusees?.has(cle) ? soumis.refusees.get(cle) : defaut);
+const vuesFautives = new Set(incompletes.filter((m) => m.ou === 'vue').map((m) => m.rang - 1));
+const libresFautives = new Set(incompletes.filter((m) => m.ou === 'libre').map((m) => m.rang - 1));
 const message = Astro.url.searchParams.get('ok');
 const choisies = new Set((offre?.prestations || []).filter((p) => !p.libre).map((p) => p.cle));
 const modulesRetenus = new Set((offre?.modules || []).map((m) => m.slug));
 
 // Les lignes libres, avec une ligne vide en réserve tant que l'offre s'édite.
+// La ligne de réserve s'affiche entièrement vide — un « 0,00 » préimprimé en
+// ferait une ligne à moitié remplie dès le premier enregistrement, et l'écran
+// réclamerait un intitulé pour une ligne que personne n'a demandée.
 const libres = (offre?.prestations || []).filter((p) => p.libre);
-if (!figee && libres.length === 0) libres.push({ nom: '', prix_cents: 0 });
+if (!figee && libres.length === 0) libres.push({ nom: '', prix_cents: 0, reserve: true });
 
 // Une ligne vide en réserve : on peut décrire une vue sans avoir à demander
 // d'abord une ligne au serveur.
 const vues = [...(offre?.vues || [])];
-if (!figee && vues.length === 0) vues.push({ nombre: 1, note: '' });
+if (!figee && vues.length === 0) vues.push({ nombre: '', note: '', reserve: true });
 
 /** Une date au format que `<input type="date">` attend. */
 const pourChamp = (valeur) => (valeur ? new Date(valeur).toISOString().slice(0, 10) : '');
@@ -297,31 +378,11 @@ const ETAT_STATUT = {
         )}
       </section>
 
-      <section class="bloc" style="margin-block-end:20px">
-        <div class="bloc__tete">
-          <div>
-            <h2>Le chiffrage</h2>
-            <p>
-              Recalculé à chaque enregistrement, côté serveur. Tarifs de cette offre :
-              {' '}{formater(offre.prix_par_vue_cents)} par vue et par mois,
-              {' '}achat à {offre.multiplicateur_achat} mois,
-              {' '}maintenance {offre.taux_annuel / 100} %.
-            </p>
-          </div>
-        </div>
-        <RecapOffre
-          resultat={resultat}
-          langue={offre.langue}
-          devise={offre.devise}
-          mention={offre.tva_mention || vigueur?.mention_autoliquidation}
-        />
-      </section>
-
       <form method="post">
         {!figee && (
           <div class="barre-actions">
             <button class="bouton bouton--marque" type="submit">Enregistrer et recalculer</button>
-            <span class="barre-actions__note">Le chiffrage ci-dessus se met à jour à chaque enregistrement.</span>
+            <span class="barre-actions__note">Le chiffrage, en bas de page, se met à jour à chaque enregistrement.</span>
           </div>
         )}
 
@@ -394,7 +455,7 @@ const ETAT_STATUT = {
                     id="o-formation"
                     type="text"
                     name="jours_formation"
-                    value={offre.jours_formation || 0}
+                    value={refus('jours_formation', offre.jours_formation || 0)}
                     inputmode="numeric"
                   />
                   <span class="tarif__unite">j</span>
@@ -411,7 +472,7 @@ const ETAT_STATUT = {
                     id="o-postes"
                     type="text"
                     name="nombre_postes"
-                    value={offre.nombre_postes || 0}
+                    value={refus('nombre_postes', offre.nombre_postes || 0)}
                     inputmode="numeric"
                   />
                   <span class="tarif__unite">×</span>
@@ -428,7 +489,7 @@ const ETAT_STATUT = {
                     id="o-siege"
                     type="text"
                     name="postes_franchiseur"
-                    value={offre.postes_franchiseur || 0}
+                    value={refus('postes_franchiseur', offre.postes_franchiseur || 0)}
                     inputmode="numeric"
                   />
                   <span class="tarif__unite">×</span>
@@ -445,7 +506,7 @@ const ETAT_STATUT = {
                     id="o-onboardes"
                     type="text"
                     name="postes_onboardes"
-                    value={offre.postes_onboardes || 0}
+                    value={refus('postes_onboardes', offre.postes_onboardes || 0)}
                     inputmode="numeric"
                   />
                   <span class="tarif__unite">×</span>
@@ -467,24 +528,28 @@ const ETAT_STATUT = {
                 </span>
               </div>
               {libres.map((l, i) => (
-                <div class="vue">
+                <div class={libresFautives.has(i) ? 'vue vue--manque' : 'vue'}>
                   <input
                     type="text"
                     name="libre_nom"
                     value={l.nom || ''}
                     placeholder="Intitulé, tel qu'il apparaîtra sur l'offre"
                     aria-label={`Intitulé, ligne libre ${i + 1}`}
+                    aria-invalid={libresFautives.has(i) ? 'true' : undefined}
                   />
                   <span class="tarif__saisie" style="flex:none;inline-size:8rem">
                     <input
                       type="text"
                       name="libre_prix"
-                      value={depuisCents(l.prix_cents || 0)}
+                      value={refus(`libre_prix.${i}`, l.reserve ? '' : depuisCents(l.prix_cents || 0))}
                       inputmode="decimal"
                       aria-label={`Prix, ligne libre ${i + 1}`}
                     />
                     <span class="tarif__unite">€</span>
                   </span>
+                  {libresFautives.has(i) && (
+                    <span class="vue__manque">il manque l'intitulé</span>
+                  )}
                 </div>
               ))}
               {!figee && (
@@ -544,14 +609,15 @@ const ETAT_STATUT = {
                 </span>
               </div>
               {vues.map((v, i) => (
-                <div class="vue">
+                <div class={vuesFautives.has(i) ? 'vue vue--manque' : 'vue'}>
                   <span class="tarif__saisie">
                     <input
                       type="text"
                       name="vue_nombre"
-                      value={v.nombre}
+                      value={refus(`vue_nombre.${i}`, v.nombre)}
                       inputmode="numeric"
                       aria-label={`Nombre, ligne ${i + 1}`}
+                      aria-invalid={vuesFautives.has(i) ? 'true' : undefined}
                     />
                     <span class="tarif__unite">×</span>
                   </span>
@@ -561,6 +627,7 @@ const ETAT_STATUT = {
                     value={v.note || ''}
                     placeholder="Ce que fait cette vue"
                     aria-label={`Description, ligne ${i + 1}`}
+                    aria-invalid={vuesFautives.has(i) ? 'true' : undefined}
                   />
                   <input
                     class="vue__interne"
@@ -574,6 +641,13 @@ const ETAT_STATUT = {
                     {formater((Number(v.nombre) || 0) * offre.prix_par_vue_cents)}
                     <span class="champ__aide">/mois</span>
                   </span>
+                  {vuesFautives.has(i) && (
+                    <span class="vue__manque">
+                      {String(v.note || '').trim()
+                        ? "le nombre est à zéro : cette vue ne s'imprimera nulle part"
+                        : "pas de description : cette vue s'imprimera « Vue »"}
+                    </span>
+                  )}
                 </div>
               ))}
               {!figee && (
@@ -610,7 +684,7 @@ const ETAT_STATUT = {
                     id="o-remise"
                     type="text"
                     name="remise_valeur"
-                    value={offre.remise_type === 'fixe' ? depuisCents(offre.remise_valeur) : depuisPoints(offre.remise_valeur)}
+                    value={refus('remise_valeur', offre.remise_type === 'fixe' ? depuisCents(offre.remise_valeur) : depuisPoints(offre.remise_valeur))}
                     inputmode="decimal"
                   />
                   <span class="tarif__unite">{offre.remise_type === 'fixe' ? '€' : '%'}</span>
@@ -619,7 +693,7 @@ const ETAT_STATUT = {
               <div class="champ">
                 <label for="o-tva">Taux de TVA</label>
                 <span class="tarif__saisie">
-                  <input id="o-tva" type="text" name="tva_taux" value={depuisPoints(offre.tva_taux)} inputmode="decimal" />
+                  <input id="o-tva" type="text" name="tva_taux" value={refus('tva_taux', depuisPoints(offre.tva_taux))} inputmode="decimal" />
                   <span class="tarif__unite">%</span>
                 </span>
               </div>
@@ -640,7 +714,7 @@ const ETAT_STATUT = {
               <div class="champ">
                 <label for="o-offerts">Mois offerts</label>
                 <span class="tarif__saisie">
-                  <input id="o-offerts" type="text" name="mois_offerts" value={offre.mois_offerts || 0} inputmode="numeric" />
+                  <input id="o-offerts" type="text" name="mois_offerts" value={refus('mois_offerts', offre.mois_offerts || 0)} inputmode="numeric" />
                   <span class="tarif__unite">m</span>
                 </span>
                 <span class="champ__aide">
@@ -682,6 +756,37 @@ const ETAT_STATUT = {
       <section class="bloc" style="margin-block-end:20px">
         <div class="bloc__tete">
           <div>
+            <h2>Le chiffrage</h2>
+            <p>
+              Recalculé à chaque enregistrement, côté serveur. Tarifs de cette offre :
+              {' '}{formater(offre.prix_par_vue_cents)} par vue et par mois,
+              {' '}achat à {offre.multiplicateur_achat} mois,
+              {' '}maintenance {offre.taux_annuel / 100} %.
+            </p>
+          </div>
+        </div>
+
+        {incompletes.length > 0 && (
+          <div class="recap__alerte">
+            <strong>{incompletes.length} ligne(s) à reprendre</strong> — l'offre ne partira pas
+            tant qu'elles le sont. Elles sont encadrées dans le formulaire ci-dessus.
+            <ul class="manques">
+              {incompletes.map((m) => <li>{direManque(m)}</li>)}
+            </ul>
+          </div>
+        )}
+
+        <RecapOffre
+          resultat={resultat}
+          langue={offre.langue}
+          devise={offre.devise}
+          mention={offre.tva_mention || vigueur?.mention_autoliquidation}
+        />
+      </section>
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
             <h2>Le courriel</h2>
             <p>
               Tel qu'il partirait, gabarit des tarifs appliqué. Les jetons entre accolades
@@ -713,10 +818,17 @@ const ETAT_STATUT = {
               )}
             </div>
 
+            {incompletes.length > 0 && (
+              <div class="recap__alerte" style="margin-block-start:12px">
+                <strong>{incompletes.length} ligne(s) à reprendre avant l'envoi.</strong>{' '}
+                Elles sont listées dans le chiffrage, juste au-dessus.
+              </div>
+            )}
+
             <div class="actions">
               <form method="post" onsubmit={service.expedie ? undefined : "return confirm('Aucun courriel ne partira réellement. Marquer quand même l’offre comme envoyée ?')"}>
                 <input type="hidden" name="action" value="envoyer" />
-                <button class="bouton bouton--marque" type="submit">
+                <button class="bouton bouton--marque" type="submit" disabled={incompletes.length > 0}>
                   <Icone nom="mail" taille={16} />
                   {service.expedie ? "Envoyer l'offre" : "Journaliser et marquer envoyée"}
                 </button>
@@ -807,6 +919,18 @@ const ETAT_STATUT = {
     flex: none; inline-size: 9rem; text-align: end;
     font-size: var(--text-sm); color: var(--slate-600);
   }
+
+  /* Une ligne à moitié remplie. Le liseré la désigne au premier coup d'œil ;
+     la phrase dit ce qui manque, parce qu'un cadre rouge tout seul laisse
+     deviner. La couleur n'est jamais le seul signal : `aria-invalid` porte la
+     même information pour qui ne la voit pas. */
+  .vue--manque { flex-wrap: wrap; }
+  .vue--manque input[aria-invalid='true'] { border-color: var(--red-500); background: var(--red-100); }
+  .vue__manque {
+    flex-basis: 100%;
+    font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--red-700);
+  }
+  .manques { margin: 6px 0 0; padding-inline-start: 18px; display: grid; gap: 2px; }
 
   .apercu { border: 1px solid var(--slate-200); border-radius: var(--radius-card); overflow: hidden; }
   .apercu__entete {

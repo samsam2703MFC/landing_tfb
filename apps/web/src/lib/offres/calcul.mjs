@@ -197,6 +197,49 @@ export function lignesDe(offre) {
 }
 
 /**
+ * Les lignes à moitié remplies.
+ *
+ * Une ligne entièrement vide est un reliquat du formulaire : elle ne dit rien
+ * et disparaît à l'enregistrement. Une ligne à moitié remplie, elle, ment
+ * — une vue décrite mais comptée zéro ne s'imprime nulle part, une vue comptée
+ * mais sans description s'imprime « Vue », une ligne libre sans intitulé
+ * s'imprime sans nom. Rien à l'écran ne le signalerait : le total, lui, est
+ * juste. C'est donc ce qu'il faut voir avant d'envoyer, pas après.
+ *
+ * @returns {Array<{ou: 'vue'|'libre'|'prestation', rang: number, nom: string|null, manque: string}>}
+ *   `rang` est le numéro de la ligne dans sa propre liste, tel qu'il se compte
+ *   à l'écran — c'est ce qui permet de la désigner du doigt.
+ */
+export function lignesIncompletes(offre) {
+  const manques = [];
+
+  (offre.vues || []).forEach((v, i) => {
+    const nombre = entier(v.nombre);
+    const note = String(v.note || '').trim();
+    if (!nombre && !note) return;
+    if (!note) manques.push({ ou: 'vue', rang: i + 1, nom: null, manque: 'description' });
+    else if (!nombre) manques.push({ ou: 'vue', rang: i + 1, nom: note, manque: 'nombre' });
+  });
+
+  // Une prestation du catalogue a toujours un nom : en pratique, seule une
+  // ligne libre peut arriver ici sans intitulé. On la numérote parmi les
+  // lignes libres, puisque c'est ainsi qu'elle s'affiche.
+  let rangLibre = 0;
+  (offre.prestations || []).forEach((p) => {
+    if (p.libre) rangLibre += 1;
+    if (String(p.nom || '').trim()) return;
+    manques.push({
+      ou: p.libre ? 'libre' : 'prestation',
+      rang: p.libre ? rangLibre : 0,
+      nom: null,
+      manque: 'intitulé',
+    });
+  });
+
+  return manques;
+}
+
+/**
  * Le chiffrage complet.
  *
  * Deux règles de remise, et elles ne sont pas symétriques :

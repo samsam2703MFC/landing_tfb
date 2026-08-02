@@ -1171,6 +1171,9 @@ export function configDe(offre) {
       description: p.description || null,
       prix_cents: p.prix_cents,
       quantite: p.quantite || 1,
+      // Sert au repérage des lignes incomplètes : seule une ligne libre peut
+      // se retrouver sans intitulé, et on la numérote parmi les siennes.
+      libre: Boolean(p.libre),
     })),
     modules: offre.modules || [],
     jours_formation: offre.jours_formation || 0,
