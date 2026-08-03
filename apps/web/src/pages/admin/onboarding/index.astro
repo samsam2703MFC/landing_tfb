@@ -64,10 +64,12 @@ const coffre = coffreOuvert();
         <div>
           <h2>Le coffre des secrets n'est pas ouvert</h2>
           <p>
-            Aucune clé d'API ne peut être enregistrée tant que
-            <span class="jeton">SECRETS_CLE_1</span> n'est pas posée sur le serveur.
-            Elle se fabrique en une ligne, et ne se met <strong>jamais</strong> en base :
-            <code class="slug">node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"</code>
+            Aucune clé d'API ne peut être enregistrée tant que la clé de chiffrement
+            n'est pas posée sur le serveur. <strong>Rien à installer :</strong> relancez
+            le déploiement (GitHub → <em>Actions</em> → <em>Déployer sur le serveur</em>{' '}
+            → <em>Run workflow</em>), il la fabrique lui-même sur place. Elle ne se
+            met <strong>jamais</strong> en base — c'est ce qui fait qu'un vol de la
+            base seule ne donne rien.
           </p>
         </div>
       </div>

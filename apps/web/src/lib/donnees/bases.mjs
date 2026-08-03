@@ -163,7 +163,7 @@ export async function enregistrerBase(prospectId, valeurs, motDePasse = null) {
   let secret = null;
   if (motDePasse) {
     if (!coffreOuvert()) {
-      return { ok: false, erreur: 'Coffre fermé : posez SECRETS_CLE_1 sur le serveur avant d’enregistrer un mot de passe.' };
+      return { ok: false, erreur: 'Coffre fermé : relancez le déploiement, il fabrique la clé de chiffrement sur le serveur. Rien à enregistrer avant qu’elle existe.' };
     }
     secret = chiffrer(motDePasse);
   }
