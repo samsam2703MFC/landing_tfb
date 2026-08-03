@@ -169,6 +169,7 @@ Les diagrammes sont stockés en texte Mermaid et rendus **dans le navigateur**
 | `DB_LOGIN`, `DB_NAME`, `DB_PASS` | non utilisés par les workflows — ce sont les mêmes valeurs à reporter dans `infra/.env` |
 
 | `ADMIN_PASSWORD` | *(facultatif)* mot de passe de la console. Présent, il est écrit dans `infra/.env` à chaque déploiement ; absent, le fichier du serveur n'est pas touché |
+| `SECRETS_CLE_1` | *(facultatif, et rarement utile)* clé du coffre. **Ne sert qu'à restaurer** : elle n'est écrite que si le serveur n'en a aucune, jamais par-dessus une clé existante. Le cas normal est de ne pas créer ce secret — le serveur fabrique la sienne |
 
 Deux autres secrets facultatifs : `SSH_PORT` (22 par défaut) et `DEPLOY_PATH`
 (`/var/www/landing_tfb` par défaut).
@@ -195,6 +196,8 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
 | `ADMIN_PASSWORD` | ouvre la console `<BASE_PATH>/admin` — vide, elle reste fermée. Écrasé à chaque déploiement si le secret GitHub du même nom existe |
 | `ADMIN_SECRET` | *(facultatif)* clé de signature du cookie de session |
+| `SECRETS_CLE_1` | clé du coffre — **posée par le déploiement, à ne pas écrire à la main** (voir plus bas) |
+| `SECRETS_VERSION` | version de chiffrement active, `1` par défaut |
 | `ANTHROPIC_API_KEY` | clé API, nécessaire seulement pour l'ingestion |
 | `GH_INGEST_TOKEN` | jeton de lecture GitHub, seulement si des dépôts modules sont privés |
 
@@ -560,6 +563,40 @@ Un compte **sans code** existe mais n'entre pas — la colonne le dit. Retirer l
 code est le geste à faire quand quelqu'un part : la porte se ferme sans rien
 effacer de ce qu'il a fait. Le dernier administrateur actif, lui, ne peut être
 ni supprimé, ni désactivé, ni rétrogradé.
+
+#### Le coffre s'ouvre tout seul
+
+Les mots de passe des bases clientes et les clés d'API des connecteurs sont
+chiffrés en AES-256-GCM avant d'être écrits. La clé maître vit dans
+`infra/.env`, **jamais en base** : c'est ce qui fait qu'un vol de la base seule
+ne donne rien.
+
+**Personne n'a à la poser.** Au premier déploiement qui n'en trouve pas, le
+serveur la fabrique lui-même — 32 octets tirés au hasard, écrits dans
+`infra/.env`, `chmod 600`. Elle ne traverse ni GitHub, ni une messagerie, ni le
+presse-papiers de quelqu'un : elle naît à l'endroit où elle sert. Le
+déploiement le signale et rappelle de la sauvegarder.
+
+**Elle n'est jamais réécrite.** Changer cette clé rendrait illisible tout ce qui
+a été chiffré avec — la perdre, c'est le perdre. Pour la même raison, une valeur
+en place mais malformée fait échouer le déploiement au lieu d'être remplacée :
+l'écraser « pour réparer » détruirait ce qui est peut-être encore lisible.
+
+Deux gestes valent la peine, une fois :
+
+```bash
+grep SECRETS_CLE_1 /var/www/landing_tfb/infra/.env
+```
+
+et ranger la valeur dans le secret GitHub `SECRETS_CLE_1`. Ce secret ne sert
+qu'à **remettre la clé en place sur un serveur reconstruit** : le déploiement ne
+l'utilise que lorsque le serveur n'a aucune clé, et ne s'en sert jamais pour
+écraser celle qui s'y trouve.
+
+Tant que le coffre est fermé, la console le dit sur les écrans concernés et
+refuse d'enregistrer un mot de passe — mais le reste continue de fonctionner :
+chercher des bases, par exemple, se fait avec le mot de passe qu'on vient de
+taper, sans rien stocker.
 
 #### La clé de secours
 

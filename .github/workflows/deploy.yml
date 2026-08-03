@@ -48,6 +48,11 @@ jobs:
           # infra/.env du serveur n'est pas touché — ce qui y est déjà écrit
           # reste en place.
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          # Clé du coffre. Facultative et, à la différence de la précédente,
+          # elle ne sert **qu'à restaurer** : elle n'est écrite que si le
+          # serveur n'en a aucune. Sans ce secret, le serveur fabrique la
+          # sienne au premier déploiement — c'est le cas normal.
+          SECRETS_CLE_1: ${{ secrets.SECRETS_CLE_1 }}
         run: |
           set -euo pipefail
 
@@ -55,6 +60,7 @@ jobs:
           # pourrait contenir des caractères que le shell interpréterait.
           # GitHub masque de toute façon les secrets dans les journaux.
           MDP_B64=$(printf '%s' "${ADMIN_PASSWORD:-}" | base64 -w0)
+          COFFRE_B64=$(printf '%s' "${SECRETS_CLE_1:-}" | base64 -w0)
 
           # Le script distant est passé par l'entrée standard : les valeurs du
           # runner sont fixées en tête, le reste s'exécute côté serveur (d'où
@@ -72,6 +78,7 @@ jobs:
           BRANCHE_CIBLE='$BRANCHE'
           DEPOT_URL='$DEPOT'
           MDP_B64='$MDP_B64'
+          COFFRE_B64='$COFFRE_B64'
 
           # Premier déploiement : le clone n'existe pas encore.
           if [ ! -d "\$RACINE/.git" ]; then
@@ -153,6 +160,58 @@ jobs:
             chmod 600 infra/.env
             unset MDP
             echo "Mot de passe de la console repris du secret ADMIN_PASSWORD."
+          fi
+
+          # --- Le coffre ----------------------------------------------------
+          # La clé qui chiffre les mots de passe des bases clientes est
+          # **fabriquée ici, sur le serveur**, au premier déploiement qui n'en
+          # trouve pas. Personne n'a à s'y connecter pour la poser, et elle ne
+          # traverse ni GitHub, ni une messagerie, ni le presse-papiers de
+          # quelqu'un : elle naît à l'endroit où elle sert.
+          #
+          # ELLE N'EST JAMAIS RÉÉCRITE. Changer cette clé rendrait illisibles
+          # tous les mots de passe déjà chiffrés — la perdre, c'est les perdre.
+          # C'est aussi pourquoi une valeur en place mais malformée fait
+          # échouer le déploiement au lieu d'être remplacée : l'écraser « pour
+          # réparer » détruirait ce qui est peut-être encore lisible.
+          CLE_EN_PLACE=\$(grep -E '^SECRETS_CLE_1=' infra/.env | head -n 1 | cut -d= -f2- | tr -d "'\"" || true)
+          OCTETS=\$(CLE="\$CLE_EN_PLACE" node -e 'process.stdout.write(String(Buffer.from(process.env.CLE || "", "base64").length))')
+
+          if [ -n "\$CLE_EN_PLACE" ] && [ "\$OCTETS" = "32" ]; then
+            echo "Coffre ouvert — la clé du serveur est en place, laissée telle quelle."
+          elif [ -n "\$CLE_EN_PLACE" ]; then
+            echo "::error::SECRETS_CLE_1 fait \$OCTETS octets au lieu de 32 dans \$RACINE/infra/.env. Le déploiement s'arrête sans y toucher : si des mots de passe ont été chiffrés avec, les remplacer par une clé neuve les rendrait illisibles." >&2
+            exit 1
+          else
+            if [ -n "\$COFFRE_B64" ]; then
+              # Le secret GitHub ne sert qu'à *restaurer* — serveur reconstruit,
+              # fichier perdu. D'où ce chemin, qui n'est pris que lorsque le
+              # serveur n'a aucune clé.
+              CLE_NEUVE=\$(printf '%s' "\$COFFRE_B64" | base64 -d)
+              OCTETS_NEUFS=\$(CLE="\$CLE_NEUVE" node -e 'process.stdout.write(String(Buffer.from(process.env.CLE || "", "base64").length))')
+              if [ "\$OCTETS_NEUFS" != "32" ]; then
+                echo "::error::Le secret SECRETS_CLE_1 fait \$OCTETS_NEUFS octets au lieu de 32. Le fabriquer avec : node -e \"console.log(require('crypto').randomBytes(32).toString('base64'))\"" >&2
+                exit 1
+              fi
+              ORIGINE='reprise du secret GitHub SECRETS_CLE_1'
+              NEUVE=0
+            else
+              CLE_NEUVE=\$(node -e 'console.log(require("crypto").randomBytes(32).toString("base64"))')
+              ORIGINE='fabriquée sur le serveur'
+              NEUVE=1
+            fi
+
+            grep -v '^SECRETS_CLE_1=' infra/.env > infra/.env.nouveau || true
+            printf "SECRETS_CLE_1='%s'\n" "\$CLE_NEUVE" >> infra/.env.nouveau
+            mv infra/.env.nouveau infra/.env
+            chmod 600 infra/.env
+            unset CLE_NEUVE
+            echo "Coffre ouvert — clé \$ORIGINE, écrite dans \$RACINE/infra/.env."
+            # L'avertissement ne vaut que pour une clé neuve : celle reprise du
+            # secret GitHub a déjà, par construction, une copie ailleurs.
+            if [ "\$NEUVE" = "1" ]; then
+              echo "::warning::Une clé de coffre vient d'être créée et n'existe qu'à un seul endroit : \$RACINE/infra/.env. La sauvegarder — sans elle, les mots de passe des bases clientes enregistrés ensuite ne se déchiffreront plus. La lire : grep SECRETS_CLE_1 \$RACINE/infra/.env — la ranger : secret GitHub SECRETS_CLE_1, qui servira à la remettre en place sur un serveur reconstruit."
+            fi
           fi
 
           # Sans Docker, « host.docker.internal » ne résout pas : la base est
