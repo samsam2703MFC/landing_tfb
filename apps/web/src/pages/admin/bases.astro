@@ -92,15 +92,23 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
   </p>
 
   {!coffre && (
-    <p class="bloc avert">
-      <Icone nom="triangle-alert" taille={16} />
-      <span>
-        <strong>Coffre fermé.</strong> Aucun mot de passe ne peut être enregistré tant que
-        <span class="mono"> SECRETS_CLE_1 </span> n'est pas posée sur le serveur. Fabriquez-en une
-        avec <span class="mono">node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"</span>
-        et rangez-la dans le fichier d'environnement, jamais dans le dépôt.
-      </span>
-    </p>
+    <div class="bloc avert">
+      <p class="avert__quoi">
+        <Icone nom="triangle-alert" taille={17} />
+        <span>
+          <strong>Coffre fermé — aucune base ne peut être enregistrée.</strong>{' '}
+          Le mot de passe d'une base est chiffré avant d'être écrit, et la clé de chiffrement
+          n'est pas posée sur ce serveur. Chercher les bases fonctionne quand même : cette
+          recherche utilise le mot de passe que vous venez de taper, sans rien stocker.
+        </span>
+      </p>
+      <p class="avert__faire">Sur le serveur, fabriquez une clé&nbsp;:</p>
+      <pre class="avert__code">node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"</pre>
+      <p class="avert__faire">
+        puis ajoutez-la au fichier d'environnement — jamais au dépôt — et redémarrez le service&nbsp;:
+      </p>
+      <pre class="avert__code">SECRETS_CLE_1=la-clé-obtenue</pre>
+    </div>
   )}
 
   <details class="bloc inventaire" open={bases.length === 0}>
@@ -249,7 +257,7 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
         <button class="bouton bouton--sobre" type="submit" name="action" value="sonder">
           <Icone nom="search" taille={15} /> Chercher les bases sur ce serveur
         </button>
-        <button class="bouton bouton--marque" type="submit" disabled={!coffre && !parProspect.get(ouvert)}>
+        <button class="bouton bouton--marque" type="submit">
           <Icone nom="save" taille={15} /> Enregistrer
         </button>
         <a class="bouton bouton--sobre" href={lien('/admin/bases')}>Annuler</a>
@@ -280,7 +288,12 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
 <style>
   .intro, .note { max-inline-size: 78ch; color: var(--slate-600); }
   .note { font-size: var(--text-sm); margin-block-start: var(--space-3); }
-  .avert { display: flex; gap: 10px; align-items: flex-start; padding: 12px 16px; margin-block-end: var(--space-4); }
+  .avert { padding: 14px 16px; margin-block-end: var(--space-4);
+           border-color: var(--amber-700, #8a5900); }
+  .avert__quoi { display: flex; gap: 10px; align-items: flex-start; max-inline-size: 86ch; margin: 0; }
+  .avert__faire { font-size: var(--text-sm); color: var(--slate-600); margin: var(--space-3) 0 6px; }
+  .avert__code { background: var(--navy-900); color: #e7eaf3; border-radius: var(--radius-control);
+                 padding: 10px 13px; overflow-x: auto; font: 12px / 1.6 var(--font-mono); margin: 0; }
   table { inline-size: 100%; border-collapse: collapse; }
   th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
        letter-spacing: .09em; color: var(--slate-500); padding: 10px 14px; }
