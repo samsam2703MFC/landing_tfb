@@ -7,6 +7,14 @@
  * grille tarifaire. Un commercial qui pourrait changer le prix par vue
  * n'aurait pas de rôle du tout.
  *
+ * UN COMPTE, UN CODE. La console ne demande plus qu'une chose pour entrer :
+ * six chiffres. Ils identifient et authentifient à la fois, ce qui est
+ * précisément ce qui permet un formulaire à un champ sans perdre le nom sur
+ * les offres. Un compte sans code existe mais n'entre pas — la colonne le dit.
+ *
+ * Le code ne s'affiche qu'une fois, à l'attribution : la base n'en garde qu'une
+ * empreinte scrypt, et un code réaffiché finit copié dans un ticket.
+ *
  * Le dernier administrateur actif ne peut être ni supprimé, ni désactivé, ni
  * rétrogradé. La clé de secours du serveur rouvrirait la console, mais
  * compter dessus voudrait dire aller lire un fichier en SSH pour rentrer :
@@ -14,16 +22,13 @@
  */
 import Console from '../../components/Console.astro';
 import Icone from '../../components/Icone.astro';
-import {
-  ajouterUtilisateur,
+import { ajouterUtilisateur,
   basculerUtilisateur,
-  changerMotDePasse,
+  changerCode,
   changerRole,
   compteurs,
   listerUtilisateurs,
-  supprimerUtilisateur,
-} from '../../lib/admin/donnees.mjs';
-import { LONGUEUR_MOT_DE_PASSE } from '../../lib/admin/session.mjs';
+  supprimerUtilisateur } from '../../lib/admin/donnees.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -35,16 +40,23 @@ if (Astro.request.method === 'POST') {
     let dit = 'Enregistré.';
 
     if (action === 'ajout') {
-      const cle = await ajouterUtilisateur({
+      // Le code tapé, ou un code tiré au hasard si le champ est vide. Tirer au
+      // hasard vaut mieux que laisser choisir : « 010203 » est un code que
+      // quelqu'un choisit, jamais un code que le hasard donne.
+      const r = await ajouterUtilisateur({
         identifiant: f.get('identifiant'),
         nom: f.get('nom'),
-        motDePasse: f.get('mot_de_passe'),
+        code: f.get('code'),
         role: String(f.get('role') || 'commercial'),
       });
-      dit = `Compte « ${cle} » créé.`;
-    } else if (action === 'motdepasse') {
-      await changerMotDePasse(f.get('id'), f.get('mot_de_passe'));
-      dit = 'Mot de passe changé. Les sessions ouvertes de ce compte restent valides jusqu’à leur expiration.';
+      dit = `Compte « ${r.cle} » créé. Son code est ${r.code} — notez-le maintenant, il ne sera plus affiché.`;
+    } else if (action === 'code') {
+      const r = await changerCode(f.get('id'), f.get('code'));
+      if (!r.ok) throw new Error(r.erreur);
+      dit = `Nouveau code : ${r.code}. Notez-le maintenant — il ne sera plus affiché.`;
+    } else if (action === 'code-retrait') {
+      await changerCode(f.get('id'), null);
+      dit = 'Code retiré. Ce compte ne peut plus se connecter.';
     } else if (action === 'role') {
       await changerRole(f.get('id'), String(f.get('role')));
       dit = 'Rôle changé. Il ne prendra effet qu’à la prochaine connexion de la personne.';
@@ -129,10 +141,11 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
           <thead>
             <tr>
               <th>Personne</th>
-              <th style="inline-size:9rem">Rôle</th>
-              <th style="inline-size:6rem">État</th>
-              <th style="inline-size:7rem">Vu le</th>
-              <th style="inline-size:22rem"><span class="invisible">Actions</span></th>
+              <th style="inline-size:16rem">Code de connexion</th>
+              <th style="inline-size:12rem">Rôle</th>
+              <th style="inline-size:5.5rem">État</th>
+              <th style="inline-size:5.5rem">Vu le</th>
+              <th style="inline-size:13rem"><span class="invisible">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -142,6 +155,37 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                   <strong>{c.nom || c.identifiant}</strong>
                   <code class="slug">{c.identifiant}</code>
                   {c.id === session.id && <span class="etat etat--on">c'est vous</span>}
+                </td>
+                <td>
+                  <div class="compte-code">
+                    {c.aCode
+                      ? <span class="etat etat--on">••••••</span>
+                      : <span class="etat etat--manque">aucun — n'entre pas</span>}
+                    <form method="post" class="ligne-serree">
+                      <input type="hidden" name="action" value="code" />
+                      <input type="hidden" name="id" value={c.id} />
+                      <input
+                        type="text"
+                        name="code"
+                        inputmode="numeric"
+                        pattern="[0-9]{6}"
+                        maxlength="6"
+                        size="6"
+                        placeholder="au hasard"
+                        aria-label={`Nouveau code de ${c.identifiant}`}
+                      />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">
+                        {c.aCode ? 'Changer' : 'Attribuer'}
+                      </button>
+                    </form>
+                    {c.aCode && (
+                      <form method="post">
+                        <input type="hidden" name="action" value="code-retrait" />
+                        <input type="hidden" name="id" value={c.id} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Retirer</button>
+                      </form>
+                    )}
+                  </div>
                 </td>
                 <td>
                   <form method="post" class="ligne-serree">
@@ -158,20 +202,6 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
                 <td class="fb-num champ__aide">{jour(c.vu_le)}</td>
                 <td>
                   <div class="actions">
-                    <form method="post" class="ligne-serree">
-                      <input type="hidden" name="action" value="motdepasse" />
-                      <input type="hidden" name="id" value={c.id} />
-                      <input
-                        type="password"
-                        name="mot_de_passe"
-                        required
-                        minlength={LONGUEUR_MOT_DE_PASSE}
-                        placeholder="Nouveau mot de passe"
-                        autocomplete="new-password"
-                        aria-label={`Nouveau mot de passe de ${c.identifiant}`}
-                      />
-                      <button class="bouton bouton--sobre bouton--sm" type="submit">Changer</button>
-                    </form>
                     <form method="post">
                       <input type="hidden" name="action" value="bascule" />
                       <input type="hidden" name="id" value={c.id} />
@@ -200,6 +230,11 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       landing, les traductions, la grille tarifaire et les comptes.
       Un changement de rôle ne prend effet qu'à la prochaine connexion : le rôle voyage
       dans le cookie de session, signé.
+      <br />
+      Retirer le code ferme la porte à ce compte sans rien effacer de ce qu'il a fait —
+      c'est le geste à faire quand quelqu'un part. Cinq essais ratés bloquent l'adresse
+      qui essaie, et l'attente double ensuite : sans ce verrou, six chiffres se
+      testeraient tous en quelques minutes.
     </div>
   </section>
 
@@ -208,9 +243,11 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       <div>
         <h2>Créer un compte</h2>
         <p>
-          L'identifiant sert à se connecter — une adresse de courriel fait l'affaire.
-          Le mot de passe fait au moins {LONGUEUR_MOT_DE_PASSE} caractères et n'est
-          jamais stocké en clair.
+          On se connecte à la console avec <strong>six chiffres</strong>, et rien
+          d'autre : le code dit à la fois qui entre et qu'il a le droit d'entrer.
+          L'identifiant ne sert donc qu'à s'y retrouver ici. Laissez le code vide
+          pour en tirer un au hasard — c'est le meilleur choix, un code choisi
+          ressemble toujours à une date. Il s'affiche une fois, à la création.
         </p>
       </div>
     </div>
@@ -239,15 +276,18 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
       </div>
       <div class="duo" style="margin-block-start:12px">
         <div class="champ">
-          <label for="u-mdp">Mot de passe<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <label for="u-code">Code de connexion</label>
           <input
-            id="u-mdp"
-            type="password"
-            name="mot_de_passe"
-            required
-            minlength={LONGUEUR_MOT_DE_PASSE}
-            autocomplete="new-password"
+            id="u-code"
+            type="text"
+            name="code"
+            inputmode="numeric"
+            pattern="[0-9]{6}"
+            maxlength="6"
+            autocomplete="off"
+            placeholder="Vide = tiré au hasard"
           />
+          <span class="champ__aide">Six chiffres, propres à ce compte.</span>
         </div>
         <div class="champ">
           <label for="u-role">Rôle</label>
@@ -268,4 +308,21 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
 
 <style is:global>
   .bloc--alerte { border-color: var(--amber-300); background: var(--amber-50); }
+
+  .compte-code { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+  /* La largeur passe par `flex-basis`, pas par `inline-size` — et c'est le
+     détail qui décide.
+     La règle de base de la console est `input:not([type=checkbox]):not(
+     [type=radio]):not([type=hidden]) { inline-size: 100% }` : trois `:not`
+     d'attribut, donc une spécificité de (0,3,1) que `.compte-code
+     input[name=code]` (0,2,1) ne bat pas. Le champ restait à 100 % et poussait
+     le bouton hors de sa cellule. `flex-basis`, lui, n'entre en concurrence
+     avec rien et l'emporte sur `width` pour la taille d'un élément flex. */
+  .compte-code input[name='code'] {
+    flex: 0 0 6.5rem;
+    font-family: var(--font-mono); letter-spacing: .1em;
+  }
+  /* Même raison, même remède : sans base fixe, « Administrateur » se lisait
+     « Admir ». Un rôle à demi affiché est un rôle qu'on choisit au hasard. */
+  .roule select[name='role'] { flex: 0 0 8rem; }
 </style>

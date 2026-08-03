@@ -13,7 +13,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { ROLES, cheminAutorise, creerJeton, empreinteValide, hacher, lireJeton } from '../src/lib/admin/session.mjs';
+import { ROLES, cheminAutorise, creerJeton, empreinteValide, hacherCode, lireJeton } from '../src/lib/admin/session.mjs';
 
 // `consoleActive()` exige un mot de passe d'au moins dix caractères : sans lui,
 // les jetons sont refusés d'office et les tests ne prouveraient rien.
@@ -127,31 +127,27 @@ describe('le jeton de session', () => {
   });
 });
 
-describe('les mots de passe', () => {
-  it('ne se retrouvent pas dans leur empreinte', () => {
-    const empreinte = hacher('un-mot-de-passe-long');
-    assert.equal(empreinte.includes('un-mot-de-passe-long'), false);
+describe('les empreintes', () => {
+  it('ne laissent pas retrouver le secret', () => {
+    const empreinte = hacherCode('407392');
+    assert.equal(empreinte.includes('407392'), false);
     assert.match(empreinte, /^scrypt\$[\w-]+\$[\w-]+$/);
   });
 
-  it('donnent une empreinte différente à chaque fois — le sel change', () => {
-    assert.notEqual(hacher('un-mot-de-passe-long'), hacher('un-mot-de-passe-long'));
+  it('diffèrent à chaque fois — le sel change', () => {
+    assert.notEqual(hacherCode('407392'), hacherCode('407392'));
   });
 
   it('se vérifient', () => {
-    const empreinte = hacher('un-mot-de-passe-long');
-    assert.equal(empreinteValide('un-mot-de-passe-long', empreinte), true);
-    assert.equal(empreinteValide('un-mot-de-passe-lonG', empreinte), false);
+    const empreinte = hacherCode('407392');
+    assert.equal(empreinteValide('407392', empreinte), true);
+    assert.equal(empreinteValide('407393', empreinte), false);
     assert.equal(empreinteValide('', empreinte), false);
-  });
-
-  it('refusent un mot de passe trop court plutôt que de le hacher', () => {
-    assert.throws(() => hacher('court'), /au moins 10 caractères/);
   });
 
   it('refusent une empreinte malformée sans lever', () => {
     for (const mauvaise of ['', 'nimporte quoi', 'scrypt$abc', 'md5$sel$empreinte', null]) {
-      assert.equal(empreinteValide('un-mot-de-passe-long', mauvaise), false);
+      assert.equal(empreinteValide('407392', mauvaise), false);
     }
   });
 });
