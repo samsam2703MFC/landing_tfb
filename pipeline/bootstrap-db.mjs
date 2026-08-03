@@ -1280,6 +1280,34 @@ function modele(pg) {
       ],
     },
     {
+      // Les jetons d'accès, fabriqués par la console.
+      //
+      // Un jeton porte **une application et un client**. Ce couple est tout :
+      // l'application dit quels endpoints il peut lire, le client dit sur
+      // quelle base ils s'exécutent. Rien de cela ne se lit dans la requête,
+      // donc rien de cela ne se falsifie.
+      //
+      // Seule l'empreinte est stockée. Un jeton perdu se remplace ; un jeton
+      // qu'on pourrait relire dans un dump serait à changer partout.
+      nom: table('jetons'),
+      colonnes: [
+        ['id', t.id],
+        ['application_id', 'INT NOT NULL'],
+        ['prospect_id', 'INT NOT NULL'],
+        ['libelle', t.chaine(160)],
+        // SHA-256 du jeton, en hexadécimal. Voir jetons.mjs pour pourquoi un
+        // hachage rapide est ici le bon choix, contrairement aux mots de passe.
+        ['empreinte', `${t.chaine(64)} NOT NULL`],
+        ['quatre', t.chaine(8)],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['expire_le', t.chaine(40)],
+        ['cree_le', t.chaine(40)],
+        ['cree_par', t.chaine(200)],
+        ['vu_le', t.chaine(40)],
+        ['appels', 'INT DEFAULT 0'],
+      ],
+    },
+    {
       // Quelles applications lisent quel endpoint. Sans cette table, la
       // question « qui casse si je retire cette colonne » n'a pas de réponse.
       nom: table('endpoint_applications'),
@@ -1336,6 +1364,11 @@ function modele(pg) {
 
 /** Index secondaires, créés séparément pour rester portables. */
 const INDEX = [
+  // Le jeton est cherché par son empreinte à chaque appel d'une application :
+  // sans index, chaque requête balaie la table. Unique, parce que deux jetons
+  // de même empreinte voudraient dire une collision SHA-256 — ou une erreur.
+  { suffixe: 'jetons_empreinte', table: 'jetons', colonnes: 'empreinte', unique: true },
+  { suffixe: 'jetons_application', table: 'jetons', colonnes: 'application_id, prospect_id' },
   { suffixe: 'fonctions_module', table: 'fonctions', colonnes: 'module_id' },
   { suffixe: 'fonctions_cle', table: 'fonctions', colonnes: 'module_id, cle' },
   { suffixe: 'modules_actif', table: 'modules', colonnes: 'actif, ordre' },

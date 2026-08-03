@@ -26,6 +26,7 @@ import { DemandeRefusee, lireDemande, normaliserLigne, sqlDe } from '../src/lib/
 import { instructionVue, nomVuePour, sensibiliteDe } from '../src/lib/donnees/introspection.mjs';
 import { enregistrerBase, hoteAcceptable, refusHote, sonderServeur } from '../src/lib/donnees/bases.mjs';
 import { cleProposee, enregistrerEndpoint } from '../src/lib/donnees/endpoints.mjs';
+import { PLAFOND_DEBIT, debitDepasse, empreinteDe, fabriquerJeton, masque } from '../src/lib/donnees/jetons.mjs';
 
 /** Une ressource valide, dont partent la plupart des tests. */
 const VENTES = {
@@ -383,5 +384,58 @@ describe('écriture d’un endpoint', () => {
     assert.match(sansPlafond.erreur, /plafond/);
     const filtreFantome = await enregistrerEndpoint(0, { ...bon, filtres: { marge: ['eq'] } });
     assert.match(filtreFantome.erreur, /non exposée/);
+  });
+});
+
+/**
+ * Les jetons d'accès.
+ *
+ * Ce qui compte tient en une phrase : l'application, le client, et donc la
+ * base, viennent du jeton et jamais de la requête. Il n'y a donc aucun
+ * paramètre à falsifier, parce qu'il n'y a aucun paramètre qui décide.
+ */
+describe('jetons d’accès', () => {
+  it('sont assez longs pour n’être ni devinés ni dérivés', () => {
+    const j = fabriquerJeton();
+    assert.match(j, /^tfb_[A-Za-z0-9_-]{40,}$/);
+    // 32 octets tirés au hasard : c'est ce qui justifie un hachage rapide
+    // plutôt qu'un scrypt à cent millisecondes par appel.
+    assert.ok(Buffer.from(j.slice(4), 'base64url').length >= 32);
+  });
+
+  it('ne se répètent pas', () => {
+    const vus = new Set(Array.from({ length: 200 }, () => fabriquerJeton()));
+    assert.equal(vus.size, 200);
+  });
+
+  it('ont une empreinte stable et non réversible', () => {
+    const j = fabriquerJeton();
+    assert.equal(empreinteDe(j), empreinteDe(j));
+    assert.match(empreinteDe(j), /^[0-9a-f]{64}$/);
+    assert.ok(!empreinteDe(j).includes(j.slice(4, 20)));
+  });
+
+  it('ne montrent que quatre caractères une fois enregistrés', () => {
+    const m = masque('wXyZ');
+    assert.equal(m, 'tfb_••••wXyZ');
+    assert.ok(m.length < 20, 'rien qui ressemble au jeton entier');
+  });
+});
+
+describe('plafond de débit', () => {
+  // Il vise l'application qui boucle — le cas réel, celui qui met une base
+  // cliente à genoux un dimanche soir sans que personne ne soit malveillant.
+  it('laisse passer un usage normal puis coupe', () => {
+    const id = 987654;
+    let coupe = 0;
+    for (let n = 0; n < PLAFOND_DEBIT.parMinute + 5; n += 1) if (debitDepasse(id)) coupe += 1;
+    assert.equal(coupe, 5);
+  });
+
+  it('compte chaque jeton pour lui-même', () => {
+    const a = 111111;
+    const b = 222222;
+    for (let n = 0; n < PLAFOND_DEBIT.parMinute + 3; n += 1) debitDepasse(a);
+    assert.equal(debitDepasse(b), false, 'un jeton bavard n’enferme pas les autres');
   });
 });

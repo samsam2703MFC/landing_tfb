@@ -1,0 +1,212 @@
+---
+/**
+ * Les jetons d'accès aux endpoints.
+ *
+ * Un jeton porte une application **et** un client. Ce couple décide de tout :
+ * ce qui peut être lu, et sur quelle base. Rien de cela n'est dans la requête,
+ * donc rien de cela ne se falsifie.
+ *
+ * Le jeton en clair n'apparaît **qu'une fois**, juste après sa création. C'est
+ * volontairement inconfortable : un secret qu'on peut relire à volonté finit
+ * copié dans un ticket, un courriel et trois fils de discussion.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { lien } from '../../lib/lien.mjs';
+import { compteurs, listerProspects } from '../../lib/admin/donnees.mjs';
+import { listerApplications } from '../../lib/donnees/endpoints.mjs';
+import { PLAFOND_DEBIT, creerJetonAcces, listerJetons, revoquerJeton, supprimerJeton } from '../../lib/donnees/jetons.mjs';
+import { listerBases } from '../../lib/donnees/bases.mjs';
+
+let message = null;
+let souci = null;
+/** Le jeton tout juste fabriqué. Il n'existe nulle part ailleurs. */
+let neuf = null;
+
+if (Astro.request.method === 'POST') {
+  const f = await Astro.request.formData();
+  const action = String(f.get('action') || 'creer');
+  const session = Astro.locals.session || {};
+  const qui = session.nom || session.identifiant || (session.secours ? 'clé de secours' : null);
+
+  if (action === 'revoquer') {
+    await revoquerJeton(Number(f.get('id')));
+    message = 'Jeton révoqué. L’application qui s’en servait reçoit désormais un refus.';
+  } else if (action === 'supprimer') {
+    await supprimerJeton(Number(f.get('id')));
+    message = 'Jeton supprimé.';
+  } else {
+    const r = await creerJetonAcces({
+      applicationId: Number(f.get('application_id')),
+      prospectId: Number(f.get('prospect_id')),
+      libelle: f.get('libelle'),
+      expireLe: f.get('expire_le'),
+    }, qui);
+    if (r.ok) { neuf = r.clair; message = 'Jeton créé. Copiez-le maintenant : il ne sera plus affiché.'; }
+    else souci = r.erreur;
+  }
+}
+
+const [chiffres, applications, prospects, jetons, bases] = await Promise.all([
+  compteurs(),
+  listerApplications({ activesSeulement: true }).catch(() => []),
+  listerProspects().catch(() => []),
+  listerJetons().catch((e) => { souci = souci || e.message; return []; }),
+  listerBases().catch(() => []),
+]);
+
+const avecBase = new Set(bases.map((b) => b.prospectId));
+const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const exemple = `curl -H "Authorization: Bearer tfb_…" \\\n  "https://votre-serveur${base}/api/donnees/ventes.par_jour?limite=50"`;
+---
+
+<Console titre="Jetons d'accès" actif="jetons" compteurs={chiffres} message={message} erreur={souci}>
+  {neuf && (
+    <div class="bloc neuf">
+      <h3><Icone nom="lock" taille={16} /> Le jeton, une seule fois</h3>
+      <input class="clair" type="text" readonly value={neuf} onclick="this.select()" />
+      <p class="aide">
+        Seule son empreinte est conservée. Nous ne pourrons pas vous le redonner — et c'est ce qui
+        fait qu'un dump de la base ne donne accès à rien. Perdu, il se remplace en trente secondes.
+      </p>
+    </div>
+  )}
+
+  <p class="intro">
+    Un jeton porte <strong>une application et un client</strong>. L'application dit quels endpoints
+    il peut lire, le client dit sur quelle base ils s'exécutent. Ni l'un ni l'autre ne se lit dans
+    la requête, donc ni l'un ni l'autre ne se falsifie.
+  </p>
+
+  <form method="post" class="bloc ajout">
+    <label class="champ">
+      <span>Application</span>
+      <select name="application_id" required>
+        {applications.map((a) => <option value={a.id}>{a.nom}</option>)}
+      </select>
+      {applications.length === 0 && <em>Aucune — <a href={lien('/admin/applications')}>en déclarer une</a>.</em>}
+    </label>
+    <label class="champ">
+      <span>Client</span>
+      <select name="prospect_id" required>
+        {prospects.map((p) => (
+          <option value={p.id} disabled={!avecBase.has(Number(p.id))}>
+            {p.raison_sociale}{avecBase.has(Number(p.id)) ? '' : ' — pas de base déclarée'}
+          </option>
+        ))}
+      </select>
+    </label>
+    <label class="champ">
+      <span>Libellé</span>
+      <input type="text" name="libelle" placeholder="Tablette du comptoir" />
+      <em>Ce qui permettra de savoir lequel révoquer.</em>
+    </label>
+    <label class="champ">
+      <span>Expire le</span>
+      <input type="date" name="expire_le" />
+      <em>Facultatif. Un jeton sans fin est un jeton qu'on n'enlève jamais.</em>
+    </label>
+    <button class="bouton bouton--marque" type="submit" disabled={applications.length === 0}>
+      <Icone nom="plus" taille={15} /> Créer
+    </button>
+  </form>
+
+  {jetons.length === 0 ? (
+    <p class="vide">Aucun jeton.</p>
+  ) : (
+    <div class="bloc">
+      <table>
+        <thead>
+          <tr>
+            <th>Jeton</th><th>Application</th><th>Client</th><th>Appels</th>
+            <th>Dernier appel</th><th>État</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {jetons.map((j) => {
+            const expire = j.expireLe && new Date(j.expireLe).getTime() < Date.now();
+            return (
+              <tr class:list={[!j.actif && 'morte']}>
+                <td>
+                  <span class="mono">{j.masque}</span>
+                  {j.libelle && <div class="libelle">{j.libelle}</div>}
+                </td>
+                <td>{j.application}</td>
+                <td>{j.client}</td>
+                <td class="chiffre">{j.appels.toLocaleString('fr-FR')}</td>
+                <td class="mono petit">{j.vuLe ? String(j.vuLe).replace('T', ' ').slice(0, 16) : '—'}</td>
+                <td>
+                  {!j.actif ? <span class="etat">révoqué</span>
+                    : expire ? <span class="etat etat--ko">expiré</span>
+                    : <span class="etat etat--ok">actif</span>}
+                  {j.expireLe && !expire && <div class="petit">jusqu'au {j.expireLe.slice(0, 10)}</div>}
+                </td>
+                <td class="fin">
+                  <form method="post" class="enligne">
+                    <input type="hidden" name="action" value={j.actif ? 'revoquer' : 'supprimer'} />
+                    <input type="hidden" name="id" value={j.id} />
+                    <button class="reinit" type="submit">{j.actif ? 'Révoquer' : 'Supprimer'}</button>
+                  </form>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  )}
+
+  <div class="bloc appel">
+    <h3>Comment une application appelle</h3>
+    <pre class="code">{exemple}</pre>
+    <p class="aide">
+      Le jeton voyage en en-tête et jamais dans l'URL — une URL se journalise, dans un serveur
+      mandataire comme dans l'historique d'un navigateur. Plafond : {PLAFOND_DEBIT.parMinute} appels
+      par minute et par jeton, qui vise l'application qui boucle, pas l'attaquant.
+    </p>
+    <p class="aide">
+      Un endpoint que l'application n'a pas déclaré répond <span class="mono">404</span>, comme un
+      endpoint inexistant. Répondre <span class="mono">403</span> confirmerait son existence à qui
+      n'y a pas droit, et ferait de la bibliothèque un annuaire pour qui possède n'importe quel
+      jeton.
+    </p>
+  </div>
+</Console>
+
+<style>
+  .intro { max-inline-size: 78ch; color: var(--slate-600); }
+  .aide { color: var(--slate-600); font-size: var(--text-sm); max-inline-size: 80ch; margin-block-start: var(--space-3); }
+  .neuf { padding: 16px; border-color: var(--plum-500, #7b4488); }
+  .neuf h3 { margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  .clair { inline-size: 100%; font: 13px / 1.6 var(--font-mono); padding: 11px 13px;
+           border: 1px solid var(--plum-500, #7b4488); border-radius: var(--radius-control); }
+  .ajout { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: var(--space-4);
+           align-items: end; padding: 16px; }
+  .champ { display: flex; flex-direction: column; gap: 4px; }
+  .champ > span { font: 500 var(--text-sm) / 1.3 var(--font-sans); }
+  .champ input, .champ select { inline-size: 100%; }
+  .champ em { font-style: normal; font-size: var(--text-xs); color: var(--slate-500); }
+  .vide { color: var(--slate-500); }
+  table { inline-size: 100%; border-collapse: collapse; }
+  th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
+       letter-spacing: .09em; color: var(--slate-500); padding: 10px 14px; }
+  td { padding: 10px 14px; border-block-start: 1px solid var(--slate-200); font-size: var(--text-sm);
+       vertical-align: top; }
+  .morte { opacity: .55; }
+  .libelle { color: var(--slate-600); font-size: var(--text-xs); margin-block-start: 2px; }
+  .petit { font-size: var(--text-xs); color: var(--slate-500); }
+  .chiffre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+  .fin { text-align: end; }
+  .enligne { display: inline; }
+  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px;
+          background: var(--slate-100); color: var(--slate-600); }
+  .etat--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
+  .etat--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
+  .reinit { background: none; border: 0; padding: 0; cursor: pointer; font-size: var(--text-xs);
+            color: var(--slate-600); text-decoration: underline; text-underline-offset: 2px; }
+  .appel { padding: 16px; }
+  .appel h3 { margin: 0 0 10px; }
+  .code { background: var(--navy-900); color: #e7eaf3; border-radius: var(--radius-control);
+          padding: 12px 14px; overflow-x: auto; font: 12px / 1.7 var(--font-mono); }
+  .mono { font-family: var(--font-mono); }
+</style>
