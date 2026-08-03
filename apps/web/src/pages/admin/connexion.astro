@@ -1,19 +1,24 @@
 ---
 /**
- * Connexion à la console.
+ * Connexion à la console — **un seul champ**.
  *
- * Deux façons d'entrer, un seul formulaire.
+ * On tape ce qu'on a, et ce qu'on tape dit à la fois qui on est et qu'on a le
+ * droit d'entrer :
  *
- *   · **Un compte** : identifiant et mot de passe, vérifiés contre
- *     `landing_utilisateurs`. C'est ce qui donne un nom à ce qu'on fait.
- *   · **La clé de secours** : identifiant laissé vide, et le mot de passe
- *     d'environnement `ADMIN_PASSWORD`. Elle ouvre toujours la console en
- *     administrateur — sans elle, une base vide ou un dernier compte perdu
- *     fermeraient la porte à tout le monde.
+ *   · **Un code à six chiffres**, propre à un compte. Il identifie *et*
+ *     authentifie, c'est ce qui permet un formulaire à un champ sans perdre
+ *     l'attribution : une offre porte toujours le nom de qui l'a faite.
+ *   · **La clé de secours** (`ADMIN_PASSWORD`), qui ouvre toujours la console
+ *     en administrateur. Sans elle, une base vide ou un dernier code perdu
+ *     fermeraient la porte à tout le monde, y compris à qui pourrait la rouvrir.
  *
- * En cas d'échec, le message reste laconique et identique dans les deux cas :
- * dire « cet identifiant n'existe pas » reviendrait à donner la liste des
- * comptes à qui la demande.
+ * SIX CHIFFRES, C'EST UN MILLION DE COMBINAISONS — quelques minutes pour une
+ * machine. Ce qui rend ce code utilisable n'est pas sa longueur mais le nombre
+ * d'essais accordés : cinq, puis une attente qui double. Voir `verrou.mjs`.
+ *
+ * En cas d'échec, le message reste laconique et identique dans tous les cas :
+ * distinguer « code inconnu » de « code du mauvais compte » reviendrait à
+ * répondre aux questions de qui essaie.
  */
 import '../../design-system/styles.css';
 import { lien } from '../../lib/lien.mjs';
@@ -24,7 +29,8 @@ import {
   motDePasseValide,
   optionsCookie,
 } from '../../lib/admin/session.mjs';
-import { verifierIdentifiants } from '../../lib/admin/donnees.mjs';
+import { utilisateurParCode } from '../../lib/admin/donnees.mjs';
+import { noterEchec, noterReussite, origine, peutEssayer } from '../../lib/admin/verrou.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 
@@ -42,30 +48,47 @@ if (Astro.request.method === 'GET' && jetonValide(Astro.cookies.get(NOM_COOKIE)?
   return Astro.redirect(`${BASE}${retourDemande}`, 302);
 }
 
+let attente = 0;
+
 if (Astro.request.method === 'POST') {
   const formulaire = await Astro.request.formData();
-  const identifiant = String(formulaire.get('identifiant') || '').trim();
-  const motDePasse = formulaire.get('mot_de_passe');
-  let session = null;
+  const secret = String(formulaire.get('code') || '').trim();
+  const qui = origine(Astro.request, Astro.clientAddress);
+  const porte = peutEssayer(qui);
 
-  if (identifiant) {
-    try {
-      const compte = await verifierIdentifiants(identifiant, motDePasse);
-      if (compte) session = { id: compte.id, role: compte.role };
-    } catch (err) {
-      // Base injoignable : la clé de secours reste la seule porte, et c'est
-      // exactement le cas pour lequel elle existe.
-      console.error(`[connexion] comptes illisibles : ${err.message}`);
+  if (!porte.permis) {
+    // On refuse avant de vérifier quoi que ce soit : vérifier d'abord
+    // laisserait le temps de réponse dire si le code était bon.
+    attente = porte.attendreS;
+    erreur = `Trop d’essais. Réessayez dans ${attente} seconde(s).`;
+  } else {
+    let session = null;
+
+    // La clé de secours d'abord : elle doit fonctionner même quand la base ne
+    // répond pas, et c'est exactement le cas pour lequel elle existe.
+    if (motDePasseValide(secret)) {
+      session = { id: 0, role: 'admin' };
+    } else {
+      try {
+        const compte = await utilisateurParCode(secret);
+        if (compte) session = { id: compte.id, role: compte.role };
+      } catch (err) {
+        console.error(`[connexion] comptes illisibles : ${err.message}`);
+      }
     }
-  } else if (motDePasseValide(motDePasse)) {
-    session = { id: 0, role: 'admin' };
-  }
 
-  if (session) {
-    Astro.cookies.set(NOM_COOKIE, creerJeton(session), optionsCookie(Astro.request, Astro.url));
-    return Astro.redirect(`${BASE}${destination(formulaire.get('retour'))}`, 302);
+    if (session) {
+      noterReussite(qui);
+      Astro.cookies.set(NOM_COOKIE, creerJeton(session), optionsCookie(Astro.request, Astro.url));
+      return Astro.redirect(`${BASE}${destination(formulaire.get('retour'))}`, 302);
+    }
+
+    noterEchec(qui);
+    const apres = peutEssayer(qui);
+    erreur = apres.permis
+      ? `Code refusé. ${apres.restants} essai(s) avant blocage.`
+      : `Code refusé. Trop d’essais : attendez ${apres.attendreS} seconde(s).`;
   }
-  erreur = 'Identifiant ou mot de passe refusé.';
 }
 ---
 
@@ -78,6 +101,12 @@ if (Astro.request.method === 'POST') {
     <link rel="icon" type="image/png" href={lien('/brand/logo-mark.png')} />
 
     <style is:global>
+      /* Six chiffres se relisent d'un coup d'œil quand ils sont espacés : on
+         repère une faute de frappe sans recompter. */
+      .porte__code {
+        text-align: center; letter-spacing: .5em; text-indent: .5em;
+        font-family: var(--font-mono); font-size: 20px;
+      }
       body {
         min-height: 100vh;
         display: grid; place-items: center;
@@ -137,36 +166,29 @@ if (Astro.request.method === 'POST') {
       {erreur && <p class="porte__erreur">{erreur}</p>}
 
       <div>
-        <label for="identifiant">Identifiant</label>
+        <label for="code">Code</label>
         <input
-          id="identifiant"
-          name="identifiant"
-          type="text"
-          autocomplete="username"
+          id="code"
+          name="code"
+          type="password"
+          class="porte__code"
+          inputmode="numeric"
+          autocomplete="one-time-code"
           autocapitalize="none"
           autocorrect="off"
           spellcheck="false"
-          autofocus
-        />
-      </div>
-
-      <div>
-        <label for="mot_de_passe">Mot de passe</label>
-        <input
-          id="mot_de_passe"
-          name="mot_de_passe"
-          type="password"
-          autocomplete="current-password"
           required
+          autofocus
+          disabled={attente > 0}
         />
       </div>
 
       <input type="hidden" name="retour" value={retourDemande} />
-      <button type="submit">Entrer</button>
+      <button type="submit" disabled={attente > 0}>Entrer</button>
 
       <p class="porte__note">
         Accès réservé. Cette page n'est pas indexée.<br />
-        Sans identifiant, le mot de passe de secours du serveur ouvre la console.
+        Six chiffres. Cinq essais, puis une attente qui double à chaque échec.
       </p>
     </form>
   </body>

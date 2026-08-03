@@ -299,14 +299,22 @@ function modele(pg) {
     // n'est pas une coquille, c'est un litige.
     {
       // Les comptes de la console. Une offre porte le nom de qui l'a faite :
-      // un mot de passe partagé ne saurait pas le dire.
+      // un code partagé ne saurait pas le dire.
       nom: table('utilisateurs'),
       colonnes: [
         ['id', t.id],
         ['identifiant', `${t.chaine(160)} NOT NULL UNIQUE`],
         ['nom', t.chaine(160)],
-        // scrypt, sel compris — voir lib/admin/session.mjs. Jamais en clair.
+        // Les mots de passe de compte ont disparu : on entre par le code seul.
+        // La colonne reste — les anciennes lignes en portent une, et plus rien
+        // ne la lit. La supprimer serait une migration destructrice pour
+        // récupérer 255 octets par compte.
         ['empreinte', t.chaine(255)],
+        // Le code de connexion à six chiffres, haché en scrypt : c'est
+        // justement parce qu'il est court que le coût par essai compte. Vide
+        // tant que personne n'en a attribué — le compte ne se connecte alors
+        // pas, et c'est le bon défaut.
+        ['code', t.chaine(255)],
         ['role', `${t.chaine(20)} DEFAULT 'commercial'`],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['cree_le', t.horodatage],

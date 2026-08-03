@@ -15,7 +15,8 @@ import { calculerOffre, formater as formaterMontant, lignesDe } from '../offres/
 import { recapTexte } from '../offres/courriel.mjs';
 import { CHAMPS_DOSSIER, contexteContrat, dossierComplet, remplirGabarit } from '../contrats/gabarit.mjs';
 import { serviceSignature } from '../contrats/signature.mjs';
-import { ROLES, empreinteValide, hacher } from './session.mjs';
+import { randomInt } from 'node:crypto';
+import { ROLES, codeTropSimple, empreinteValide, estCode, hacherCode } from './session.mjs';
 import { lireImage } from './images.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
@@ -736,20 +737,14 @@ export async function basculerLangue(code, publiee) {
 export async function listerUtilisateurs() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, identifiant, nom, role, actif, cree_le, vu_le FROM ${table('utilisateurs')}
-     ORDER BY role, identifiant`,
+    `SELECT id, identifiant, nom, role, actif, cree_le, vu_le,
+            CASE WHEN code IS NULL OR code = '' THEN 0 ELSE 1 END AS a_code
+       FROM ${table('utilisateurs')}
+      ORDER BY role, identifiant`,
   );
-  return lignes.map((l) => ({ ...l, actif: Boolean(l.actif) }));
-}
-
-/** Un compte par son identifiant, empreinte comprise — pour la connexion seule. */
-export async function utilisateurParIdentifiant(identifiant) {
-  const db = await connexion();
-  const lignes = await db.requete(
-    `SELECT * FROM ${table('utilisateurs')} WHERE identifiant = ? LIMIT 1`,
-    [String(identifiant || '').trim().toLowerCase()],
-  );
-  return lignes[0] || null;
+  // `a_code` et jamais le code : la console dit qui peut se connecter, elle ne
+  // remontre pas comment. Un code réaffiché finit copié dans un ticket.
+  return lignes.map((l) => ({ ...l, actif: Boolean(l.actif), aCode: Boolean(Number(l.a_code)) }));
 }
 
 /** Un compte par son identifiant numérique, sans son empreinte. */
@@ -765,35 +760,24 @@ export async function utilisateurParId(id) {
 }
 
 /**
- * Vérifie un couple identifiant / mot de passe.
+ * Crée un compte, et lui donne son code du même geste.
  *
- * Le mot de passe est vérifié **même quand le compte est inconnu ou
- * désactivé** : sans ce calcul à vide, la réponse reviendrait instantanément
- * pour un identifiant qui n'existe pas et lentement pour un qui existe, ce
- * qui suffit à énumérer les comptes.
+ * Un compte sans code ne peut pas se connecter — la console n'a plus qu'une
+ * porte, et c'est le code qui l'ouvre. Créer d'abord puis attribuer ensuite
+ * laisserait derrière chaque oubli un compte qui existe et n'entre pas.
+ *
+ * Le code retourné est **la seule fois où il est lisible** : la base n'en garde
+ * qu'une empreinte scrypt.
  */
-export async function verifierIdentifiants(identifiant, motDePasse) {
-  const compte = await utilisateurParIdentifiant(identifiant);
-  const bon = empreinteValide(motDePasse, compte?.empreinte || EMPREINTE_LEURRE);
-  if (!compte || !compte.actif || !bon) return null;
-
-  const db = await connexion();
-  await db.executer(`UPDATE ${table('utilisateurs')} SET vu_le = ? WHERE id = ?`, [new Date(), compte.id]);
-  return { id: compte.id, identifiant: compte.identifiant, nom: compte.nom, role: compte.role };
-}
-
-/**
- * Une empreinte valide mais qui ne correspond à rien, pour que la
- * vérification coûte le même temps quand le compte n'existe pas.
- * Calculée une fois au démarrage.
- */
-const EMPREINTE_LEURRE = hacher(`leurre-${Date.now()}-${Math.random()}`);
-
-export async function ajouterUtilisateur({ identifiant, nom, motDePasse, role }) {
+export async function ajouterUtilisateur({ identifiant, nom, code, role }) {
   const db = await connexion();
   const cle = String(identifiant || '').trim().toLowerCase();
   if (!cle) throw new Error('Un compte a besoin d’un identifiant.');
   if (!ROLES.includes(role)) throw new Error(`Rôle inconnu : ${role}.`);
+
+  const demande = String(code || '').trim() || codeAuHasard();
+  const souci = codeTropSimple(demande);
+  if (souci) throw new Error(souci);
 
   const dejaLa = await db.requete(
     `SELECT id FROM ${table('utilisateurs')} WHERE identifiant = ? LIMIT 1`,
@@ -801,22 +785,91 @@ export async function ajouterUtilisateur({ identifiant, nom, motDePasse, role })
   );
   if (dejaLa.length > 0) throw new Error(`Le compte « ${cle} » existe déjà.`);
 
+  // L'unicité du code se vérifie avant l'insertion, pas après : un doublon
+  // inséré, et deux personnes se connectent sous le même nom en attendant
+  // qu'on s'en aperçoive.
+  if (await utilisateurParCode(demande)) {
+    throw new Error('Ce code est déjà celui d’un autre compte. Laissez le champ vide pour en tirer un au hasard.');
+  }
+
   await db.executer(
-    `INSERT INTO ${table('utilisateurs')} (identifiant, nom, empreinte, role, actif, cree_le)
+    `INSERT INTO ${table('utilisateurs')} (identifiant, nom, code, role, actif, cree_le)
      VALUES (?, ?, ?, ?, ?, ?)`,
-    [cle, String(nom || cle).slice(0, 160), hacher(motDePasse), role, vrai(true), new Date()],
+    [cle, String(nom || cle).slice(0, 160), hacherCode(demande), role, vrai(true), new Date()],
   );
   viderCache();
-  return cle;
+  return { cle, code: demande };
 }
 
-export async function changerMotDePasse(id, motDePasse) {
+/**
+ * Le compte qui porte ce code, ou `null`.
+ *
+ * Le code identifie **et** authentifie : c'est ce qui permet un formulaire à un
+ * seul champ sans perdre l'attribution. Il faut donc l'essayer contre chaque
+ * compte, ce qui coûte un scrypt par compte — quelques centaines de
+ * millisecondes pour une équipe, et un coût que le verrou d'essais rend sans
+ * intérêt pour qui cherche à forcer.
+ *
+ * Le parcours est **complet** : on ne s'arrête pas au premier compte reconnu.
+ * Sortir plus tôt rendrait le temps de réponse dépendant de la position du
+ * compte dans la liste, ce qui dit quelque chose à qui mesure.
+ */
+export async function utilisateurParCode(code) {
+  if (!estCode(code)) return null;
   const db = await connexion();
-  await db.executer(
-    `UPDATE ${table('utilisateurs')} SET empreinte = ? WHERE id = ?`,
-    [hacher(motDePasse), Number(id)],
+  const lignes = await db.requete(
+    `SELECT id, identifiant, nom, code, role, actif FROM ${table('utilisateurs')}
+      WHERE actif = 1 AND code IS NOT NULL AND code <> '' ORDER BY id ASC`,
+    [],
   );
+  let trouve = null;
+  for (const l of lignes) {
+    if (empreinteValide(code, l.code) && !trouve) trouve = l;
+  }
+  if (!trouve) return null;
+
+  await db.executer(`UPDATE ${table('utilisateurs')} SET vu_le = ? WHERE id = ?`, [new Date(), trouve.id]);
+  return { id: Number(trouve.id), identifiant: trouve.identifiant, nom: trouve.nom, role: trouve.role };
+}
+
+/**
+ * Attribue un code à un compte. `null` le retire ; une chaîne vide en tire un
+ * au hasard. Le code retenu revient en clair — c'est la dernière fois qu'il
+ * est lisible.
+ *
+ * L'unicité est vérifiée en essayant le code contre les autres comptes : deux
+ * personnes avec le même code, c'est la seconde qui se connecte sous le nom de
+ * la première, et rien ne le signale.
+ */
+export async function changerCode(id, code) {
+  const db = await connexion();
+  if (code === null || code === undefined) {
+    await db.executer(`UPDATE ${table('utilisateurs')} SET code = NULL WHERE id = ?`, [Number(id)]);
+    viderCache();
+    return { ok: true, code: null };
+  }
+
+  const demande = String(code).trim() || codeAuHasard();
+  const souci = codeTropSimple(demande);
+  if (souci) return { ok: false, erreur: souci };
+
+  const dejaPris = await utilisateurParCode(demande);
+  if (dejaPris && Number(dejaPris.id) !== Number(id)) {
+    return { ok: false, erreur: 'Ce code est déjà celui d’un autre compte. Deux comptes de même code, et l’un se connecte sous le nom de l’autre.' };
+  }
+
+  await db.executer(`UPDATE ${table('utilisateurs')} SET code = ? WHERE id = ?`, [hacherCode(demande), Number(id)]);
   viderCache();
+  return { ok: true, code: demande };
+}
+
+/** Un code tiré au hasard, qui passe les contrôles. */
+export function codeAuHasard() {
+  for (let n = 0; n < 200; n += 1) {
+    const c = String(randomInt(0, 1_000_000)).padStart(6, '0');
+    if (!codeTropSimple(c)) return c;
+  }
+  return null;
 }
 
 export async function changerRole(id, role) {

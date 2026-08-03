@@ -119,7 +119,7 @@ d'une table déjà en place, et sont interrogeables directement en SQL.
 | `landing_clients` | les réseaux affichés sur la landing, logo compris (`logo` en base64, `logo_type`) — vide, le bandeau ne s'affiche pas |
 | `landing_langues` | les neuf langues prévues et leur état de publication |
 | `landing_traductions` | les surcharges de traduction : `langue`, `entite`, `ligne_id`, `champ`, `valeur`, `source` |
-| `landing_utilisateurs` | les comptes de la console : `identifiant`, `nom`, `empreinte`, `role` |
+| `landing_utilisateurs` | les comptes de la console : `identifiant`, `nom`, `code` (six chiffres, hachés), `role` |
 | `landing_prospects` | le client démarché — **à ne pas confondre avec `landing_clients`**, la vitrine de l'accueil |
 | `landing_offres` | une proposition chiffrée : référence, version, statut, remise, TVA, prestations et vues retenues, **et une copie des tarifs du jour** |
 | `landing_offre_lignes` | les lignes du devis : `type`, `quantite`, `prix_unitaire_cents`, `recurrence` |
@@ -530,15 +530,43 @@ réécrire à la main casse la signature. Un changement de rôle ne prend donc
 effet qu'à la prochaine connexion de la personne. Un compte désactivé ou
 supprimé, lui, voit sa session coupée à la requête suivante.
 
-Le mot de passe d'un compte est haché en **scrypt** avec un sel tiré au
-hasard ; il n'est jamais stocké en clair, et une empreinte ne permet pas de
-le retrouver. Le dernier administrateur actif ne peut être ni supprimé, ni
-désactivé, ni rétrogradé.
+#### Un compte, un code
+
+**On entre dans la console avec six chiffres, et rien d'autre.** Un seul champ
+sur l'écran de connexion : le code dit à la fois qui entre et qu'il a le droit
+d'entrer. C'est ce qui permet de se passer d'identifiant sans perdre le nom sur
+les offres — chaque compte a le sien, et deux comptes ne peuvent pas partager
+le même.
+
+Le code est haché en **scrypt** avec un sel tiré au hasard : il n'est jamais
+stocké en clair, et l'écran des comptes ne le remontre jamais. Il s'affiche une
+seule fois, au moment où on l'attribue. Perdu, il se remplace ; il ne se
+retrouve pas.
+
+Six chiffres, c'est un million de combinaisons — quelques minutes pour une
+machine, et un chiffre de plus n'y changerait presque rien. Ce qui rend ce code
+utilisable n'est pas sa longueur mais **le nombre d'essais accordés** : cinq,
+puis une attente qui double à chaque échec, jusqu'à trente minutes
+(`src/lib/admin/verrou.mjs`). Une personne qui se trompe deux fois ne s'en
+aperçoit pas ; une machine qui essaie un million de codes met des siècles. Le
+compteur est en mémoire, donc par processus — la console tourne en un seul, et
+le noter en base offrirait un moyen de la saturer en échouant à se connecter.
+
+Les codes trop simples sont refusés à l'attribution : six fois le même chiffre,
+une suite, un motif répété, une année de naissance. Laisser le champ vide en
+tire un au hasard, et c'est le meilleur choix.
+
+Un compte **sans code** existe mais n'entre pas — la colonne le dit. Retirer le
+code est le geste à faire quand quelqu'un part : la porte se ferme sans rien
+effacer de ce qu'il a fait. Le dernier administrateur actif, lui, ne peut être
+ni supprimé, ni désactivé, ni rétrogradé.
 
 #### La clé de secours
 
-`ADMIN_PASSWORD` reste la clé du serveur : **identifiant laissé vide** sur
-l'écran de connexion, elle ouvre toujours la console en administrateur. Sans
+`ADMIN_PASSWORD` reste la clé du serveur : tapée dans **le même champ** que
+les codes, elle ouvre toujours la console en administrateur. Elle est essayée
+avant la base, parce qu'une base injoignable est exactement le cas pour lequel
+elle existe. Sans
 elle, une base vide ou un dernier compte perdu fermeraient la porte à tout le
 monde. En contrepartie, ce qui est fait sous cette clé ne porte aucun nom —
 la console le dit en clair dans le rail et sur l'écran des comptes.
@@ -639,7 +667,8 @@ traduction affirmer l'ancienne version sans que rien ne le dise.
 - La clé SSH est écrite puis effacée à chaque exécution de workflow, avec
   vérification stricte de l'empreinte du serveur.
 - La console est fermée par défaut : sans `ADMIN_PASSWORD`, elle répond `503`.
-  Le mot de passe est comparé en temps constant, la session tient dans un
+  Le secret est comparé en temps constant, la connexion est limitée à cinq
+  essais par adresse avant une attente qui double, la session tient dans un
   cookie signé HMAC-SHA256 — `HttpOnly`, `SameSite=Lax`, `Secure` dès que la
   requête arrive en HTTPS — qui ne contient que sa date d'expiration.
 - Les soumissions de formulaire sont contrôlées sur l'en-tête `Origin`,

@@ -3,17 +3,21 @@
  *
  * Deux portes, et il en faut deux.
  *
- *   · **Les comptes** (`landing_utilisateurs`) : un identifiant par personne,
- *     un mot de passe haché en scrypt, un rôle. C'est ce qui permet à une
- *     offre de porter le nom de qui l'a faite — un mot de passe partagé ne
- *     saurait pas le dire.
+ *   · **Les comptes** (`landing_utilisateurs`) : une personne, un **code à six
+ *     chiffres** haché en scrypt, un rôle. Le code identifie et authentifie à
+ *     la fois — c'est ce qui permet un formulaire à un seul champ sans perdre
+ *     le nom sur les offres. Un code partagé ne saurait pas le dire.
  *   · **La clé de secours** (`ADMIN_PASSWORD`) : le secret d'environnement,
  *     qui ouvre toujours la console en administrateur. Sans elle, une base
  *     vide ou un compte supprimé par mégarde fermeraient la console à tout le
  *     monde, y compris à celui qui pourrait la rouvrir.
  *
+ * Six chiffres ne tiennent que parce qu'on limite les essais : voir
+ * `verrou.mjs`. Sans ce verrou, un million de combinaisons se testent en
+ * quelques minutes et le nombre de chiffres n'y changerait rien.
+ *
  * La session tient dans un cookie signé HMAC-SHA256 : rien à stocker côté
- * serveur, et le cookie ne contient jamais de mot de passe — seulement une
+ * serveur, et le cookie ne contient jamais de secret — seulement une
  * expiration, un aléa, l'identifiant du compte et son rôle, le tout signé.
  * Modifier le rôle dans le cookie casse la signature.
  *
@@ -136,24 +140,51 @@ export function cleCharteValide(prospectId, proposee) {
 const SCRYPT = { N: 16384, r: 8, p: 1 };
 const LONGUEUR_CLE = 64;
 
-/** Longueur minimale d'un mot de passe de compte. */
-export const LONGUEUR_MOT_DE_PASSE = 10;
+/** Un code de connexion : six chiffres, ni plus ni moins. */
+export const LONGUEUR_CODE = 6;
+const FORME_CODE = /^[0-9]{6}$/;
+
+export function estCode(valeur) {
+  return FORME_CODE.test(String(valeur ?? ''));
+}
 
 /**
- * Hache un mot de passe avec un sel tiré au hasard.
- * Format : `scrypt$<sel>$<empreinte>`, tout en base64url.
+ * Les codes qu'on refuse d'attribuer.
+ *
+ * Six chiffres se devinent d'autant plus vite qu'ils se ressemblent : les
+ * suites, les répétitions et les dates de naissance sont les premiers essayés.
+ * Le verrou d'essais protège de la force brute ; cette liste protège du
+ * plus petit effort.
  */
-export function hacher(motDePasse) {
-  const clair = String(motDePasse ?? '');
-  if (clair.length < LONGUEUR_MOT_DE_PASSE) {
-    throw new Error(`Le mot de passe doit faire au moins ${LONGUEUR_MOT_DE_PASSE} caractères.`);
-  }
+export function codeTropSimple(code) {
+  const c = String(code);
+  if (!estCode(c)) return 'Six chiffres exactement.';
+  if (/^(\d)\1{5}$/.test(c)) return 'Six fois le même chiffre : c’est le premier code essayé.';
+  const suite = '0123456789';
+  const envers = '9876543210';
+  if (suite.includes(c) || envers.includes(c)) return 'Une suite de chiffres se devine en trois essais.';
+  // 19xx et 20xx suivis de deux chiffres : une année de naissance.
+  if (/^(19|20)\d{4}$/.test(c)) return 'Cela ressemble à une date. Prenez six chiffres sans rapport avec vous.';
+  if (/^(\d\d)\1\1$/.test(c)) return 'Un motif répété se devine presque aussi vite qu’une suite.';
+  return null;
+}
+
+/**
+ * Hache un code de connexion.
+ *
+ * scrypt et non un simple SHA, alors que six chiffres tiennent dans une table
+ * d'un million d'entrées : ce n'est pas la longueur du code qui justifie le
+ * coût, c'est justement qu'il est court. Cent millisecondes par essai rendent
+ * l'énumération d'un million de codes longue même pour qui aurait la base.
+ */
+export function hacherCode(code) {
+  if (!estCode(code)) throw new Error('Un code de connexion fait six chiffres.');
   const sel = randomBytes(16);
-  const derive = scryptSync(clair, sel, LONGUEUR_CLE, SCRYPT);
+  const derive = scryptSync(String(code), sel, LONGUEUR_CLE, SCRYPT);
   return `scrypt$${sel.toString('base64url')}$${derive.toString('base64url')}`;
 }
 
-/** Le mot de passe correspond-il à l'empreinte stockée ? */
+/** Le secret proposé correspond-il à l'empreinte stockée ? */
 export function empreinteValide(motDePasse, empreinte) {
   const morceaux = String(empreinte || '').split('$');
   if (morceaux.length !== 3 || morceaux[0] !== 'scrypt') return false;
