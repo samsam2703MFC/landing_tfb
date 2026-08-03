@@ -101,18 +101,58 @@ export function introspectionDisponible() {
   return !estPostgres();
 }
 
-/** Les tables et les vues du schéma de la connexion. */
-export async function listerSources(prospectId = null) {
+/**
+ * Le nombre de sources du schéma, sans les compter une à une.
+ *
+ * Séparé de `listerSources()` parce qu'un écran a besoin de dire « 586 tables,
+ * affinez » avant même d'en détailler une seule.
+ */
+export async function compterSources(prospectId = null) {
+  if (!introspectionDisponible()) return 0;
+  const requete = await acces(prospectId);
+  const lignes = await requete(
+    'SELECT COUNT(*) AS n FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()',
+    [],
+  );
+  return Number(lignes[0]?.n ?? 0);
+}
+
+/** Ce qu'on affiche d'un coup. Au-delà, on le dit plutôt que de tronquer. */
+export const SOURCES_MAX = 120;
+
+/**
+ * Les tables et les vues du schéma de la connexion.
+ *
+ * Le filtre part **dans le SQL** et non après coup, et ce n'est pas une
+ * optimisation de confort : la requête porte un sous-comptage de colonnes par
+ * table. Sur une base de 586 tables — un cas réel — l'afficher sans filtre
+ * revient à lancer 586 sous-requêtes pour montrer une liste que personne ne
+ * parcourt.
+ *
+ * `%` et `_` sont échappés : ce sont les jokers de LIKE, et quelqu'un qui tape
+ * « v_ventes » cherche cette table-là, pas « vXventes ».
+ */
+export async function listerSources(prospectId = null, { texte = '', maximum = SOURCES_MAX } = {}) {
   if (!introspectionDisponible()) return [];
   const requete = await acces(prospectId);
+
+  const q = String(texte || '').trim();
+  const ou = ['t.TABLE_SCHEMA = DATABASE()'];
+  const valeurs = [];
+  if (q) {
+    ou.push('t.TABLE_NAME LIKE ?');
+    valeurs.push(`%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`);
+  }
+
   const lignes = await requete(
     `SELECT t.TABLE_NAME, t.TABLE_TYPE, t.TABLE_ROWS,
             (SELECT COUNT(*) FROM information_schema.COLUMNS c
               WHERE c.TABLE_SCHEMA = t.TABLE_SCHEMA AND c.TABLE_NAME = t.TABLE_NAME) AS COLS
        FROM information_schema.TABLES t
-      WHERE t.TABLE_SCHEMA = DATABASE()
-      ORDER BY t.TABLE_TYPE DESC, t.TABLE_NAME ASC`,
-    [],
+      WHERE ${ou.join(' AND ')}
+      ORDER BY t.TABLE_TYPE DESC, t.TABLE_NAME ASC
+      LIMIT ${Number(maximum) + 1}`,
+    valeurs,
   );
 
   return lignes
