@@ -1,0 +1,2448 @@
+openapi: 3.1.0
+
+# Contrat d'API de la landing TFB et de son back-office.
+#
+# Ce fichier décrit UNIQUEMENT ce qui est implémenté dans src/app/api. Chaque
+# opération porte `x-tfb-status: implemented` et le fichier source dont elle est
+# tirée. Rien n'y est anticipé : un endpoint absent d'ici n'existe pas.
+#
+# Ce que ce fichier ne couvre pas encore, et qu'il ne faut donc pas croire absent
+# de l'application — cinq routes d'administration de la configuration par tenant :
+#   /api/admin/app-config/{tenant}            et /publish
+#   /api/admin/catalogue/sources              et /{name}
+#   /api/admin/catalogue/proposals
+# Le manifest par marque et la session PWA, eux, n'existent nulle part.
+
+info:
+  title: TFB — Landing & Back Office API
+  version: 1.0.0
+  description: |
+    Deux surfaces dans une même application Next.js.
+
+    **API publique** — ce que consomme la landing : le contenu résolu dans une
+    langue, les locales actives, le formulaire de contact, le paiement.
+
+    **API admin** (`/api/admin/*`) — protégée par `withAdmin`, gérée par un cookie
+    de session signé. Toute route admin non authentifiée répond `401`, avant tout
+    accès à la base.
+
+    Deux règles traversent le modèle :
+
+    - **Aucune copy en dur.** Toute chaîne affichée vient de `tfb_translations`.
+      Le français est la locale de repli : une traduction absente retombe sur FR,
+      et vider une cellule **supprime** la ligne plutôt que d'y stocker `''`.
+    - **Aucun média en base.** Les fichiers vont dans `STORAGE_PATH` ; la base ne
+      garde que le chemin relatif (`/storage/screenshots/x.png`), servi par
+      `GET /api/storage/…`.
+  contact:
+    name: The Franchise Buddy
+
+servers:
+  - url: http://localhost:3000
+    description: Développement
+  - url: https://{host}
+    description: Production
+    variables:
+      host:
+        default: www.franchisebuddy.eu
+
+tags:
+  - name: Landing
+    description: API publique consommée par le site vitrine.
+  - name: Paiement
+    description: Stripe. Bouchonné tant que les clés ne sont pas configurées.
+  - name: Fichiers
+    description: Service des fichiers téléversés.
+  - name: Admin — Authentification
+  - name: Admin — Contenu
+    description: Sections, modules, captures, enseignes, plans, traductions.
+  - name: Admin — Facturation
+    description: Lecture des abonnements, actions déléguées au service de facturation.
+  - name: Admin — Packs & licences
+    description: >-
+      Les packs (produits Stripe), ce qu'ils ouvrent, et les dérogations par
+      licence. À ne pas confondre avec `/api/admin/billing/*`, qui délègue au
+      service de facturation : ces routes-ci sont les nôtres.
+
+security: []
+
+paths:
+  # ------------------------------------------------------------------ public --
+
+  /api/landing:
+    get:
+      tags: [Landing]
+      summary: Le contenu complet de la landing, résolu dans une langue
+      description: |
+        Tout ce que la landing affiche, en un appel : sections actives, enseignes,
+        modules avec leurs captures et leurs fonctions, plans, et les chaînes `ui`.
+
+        Le repli est déjà appliqué : chaque champ est renvoyé dans la langue
+        demandée, ou en français quand la traduction n'existe pas.
+      operationId: getLanding
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/landing/route.ts
+      parameters:
+        - name: lang
+          in: query
+          required: false
+          description: Code locale. Une valeur inconnue retombe sur `fr`, sans erreur.
+          schema:
+            $ref: '#/components/schemas/LocaleCode'
+      responses:
+        '200':
+          description: Le contenu résolu.
+          headers:
+            Cache-Control:
+              schema: { type: string }
+              description: '`public, s-maxage=60, stale-while-revalidate=300`'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LandingPayload' }
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/languages:
+    get:
+      tags: [Landing]
+      summary: Les locales actives
+      operationId: getLanguages
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/languages/route.ts
+      responses:
+        '200':
+          description: Les locales actives, dans leur ordre d'affichage.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [languages]
+                properties:
+                  languages:
+                    type: array
+                    items: { $ref: '#/components/schemas/LandingLanguage' }
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/contact:
+    post:
+      tags: [Landing]
+      summary: Enregistre un message du formulaire de contact
+      description: |
+        Deux protections anti-spam, toutes deux silencieuses côté client :
+
+        - **Honeypot** — le champ `website` n'est jamais rempli par un humain.
+          S'il l'est, la route répond `200 { ok: true }` et **n'enregistre rien**.
+          Un bot voit un succès et cesse de réessayer.
+        - **Limite par IP** — 5 messages par tranche de 10 minutes, puis `429`.
+      operationId: postContact
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/contact/route.ts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ContactRequest' }
+      responses:
+        '200':
+          description: Honeypot déclenché. Rien n'a été enregistré.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+        '201':
+          description: Message enregistré.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '422':
+          description: Champs manquants ou e-mail invalide.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  fields:
+                    type: object
+                    additionalProperties: { type: string }
+                    description: Message d'erreur par champ fautif.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/checkout:
+    post:
+      tags: [Paiement]
+      summary: Ouvre une session Stripe Checkout pour un plan
+      description: |
+        Trois issues, toutes en `200` — c'est voulu : l'interface doit pouvoir dire
+        la vérité au lieu de simuler une redirection.
+
+        - `status: "redirect"` — session créée, `url` à suivre.
+        - `status: "contact"` — plan « sur devis » (`amount` NULL). Ces plans vont
+          au formulaire de contact, jamais à Checkout.
+        - `status: "stub"` — Stripe non configuré, ou `stripe_price_id` vide.
+          `reason` dit lequel des deux.
+      operationId: postCheckout
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/checkout/route.ts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [planKey]
+              properties:
+                planKey:
+                  type: string
+                  description: '`tfb_plans.key`. Le plan doit être actif.'
+                email:
+                  type: string
+                  format: email
+                  description: Pré-remplit Checkout. Facultatif.
+      responses:
+        '200':
+          description: Issue du paiement — voir `status`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CheckoutResult' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Plan inconnu ou inactif.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/stripe/webhook:
+    post:
+      tags: [Paiement]
+      summary: Webhook Stripe — tient `tfb_subscriptions` à jour
+      description: |
+        La signature est vérifiée avant toute écriture. Tant que
+        `STRIPE_WEBHOOK_SECRET` n'est pas défini, **la route refuse tout appel** :
+        un webhook non vérifié ne doit jamais écrire en base.
+      operationId: postStripeWebhook
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/stripe/webhook/route.ts
+      requestBody:
+        required: true
+        description: Charge utile Stripe brute. Le corps est lu tel quel pour la vérification de signature.
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      parameters:
+        - name: stripe-signature
+          in: header
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Événement traité, ou ignoré parce que non pertinent.
+        '400':
+          description: Signature invalide, ou secret de webhook absent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/billing/portal:
+    get:
+      tags: [Paiement]
+      summary: Lien vers le portail client Stripe
+      description: |
+        Session admin obligatoire : le portail expose l'historique de facturation
+        d'un tiers, il n'est pas public.
+      operationId: getBillingPortal
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/billing/portal/route.ts
+      security:
+        - adminSession: []
+      parameters:
+        - name: subscription
+          in: query
+          required: true
+          description: '`tfb_subscriptions.stripe_subscription_id`.'
+          schema: { type: string }
+      responses:
+        '200':
+          description: Lien du portail, ou bouchon si Stripe n'est pas configuré.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [redirect, stub] }
+                  url: { type: [string, 'null'], format: uri }
+                  reason: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Aucun `stripe_customer_id` pour cet abonnement.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/health:
+    get:
+      tags: [Landing]
+      summary: L'application répond-elle, et parle-t-elle vraiment à la base
+      description: >-
+        La première chose à interroger après un déploiement — c'est ce que fait
+        `deploy.yml`, depuis le serveur.
+
+
+        Volontairement avare : la route est publique, donc elle rapporte
+        l'accessibilité et si le seed a tourné, jamais un détail de schéma, une
+        version ou un contenu de ligne. Elle exécute une vraie requête et pas un
+        simple test de connexion : un serveur joignable au schéma manquant reste un
+        déploiement cassé.
+      operationId: getHealth
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/health/route.ts
+      responses:
+        '200':
+          description: L'application lit la base.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  db: { type: string, const: up }
+                  seeded: { type: boolean, description: '`false` tant que le seed n''a pas tourné.' }
+        '503':
+          description: La base est injoignable.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: false }
+                  db: { type: string, const: down }
+
+  /api/app-config:
+    get:
+      tags: [Landing]
+      summary: Tout ce que la PWA d'un tenant lit au démarrage
+      description: >-
+        Thème, navigation, drapeaux de fonctionnalité et codes de package auxquels
+        le tenant a droit. Un endpoint, une dimension de plus — la même forme que
+        `GET /api/landing` a déjà pour `lang`.
+
+
+        Cette charge utile est de la configuration de présentation, pas de la donnée
+        client, donc elle est servie par slug. Les lignes réelles passent par
+        `/api/data/{resource}`, qui refuse d'identifier un tenant depuis la chaîne
+        de requête.
+
+
+        `draft=1` sert ce que la console est en train d'éditer et exige une session
+        admin, pour qu'un profil à moitié fini se prévisualise sans être publié.
+      operationId: getAppConfig
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/app-config/route.ts
+      parameters:
+        - name: tenant
+          in: query
+          required: true
+          schema: { type: string }
+        - name: draft
+          in: query
+          required: false
+          description: '`1` sert le brouillon. Exige une session back-office.'
+          schema: { type: string, enum: ['1'] }
+        - name: If-None-Match
+          in: header
+          required: false
+          description: L'`etag` déjà détenu. Une PWA à jour ne doit pas retélécharger sa configuration.
+          schema: { type: string }
+      responses:
+        '200':
+          description: La configuration résolue.
+          headers:
+            ETag: { schema: { type: string } }
+            Cache-Control:
+              schema: { type: string }
+              description: Un brouillon est `private, no-store` — il est par administrateur et ne doit jamais atterrir dans un cache partagé.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '304':
+          description: Déjà à jour.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Le brouillon exige une session back-office.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          $ref: '#/components/responses/Unavailable'
+
+  /api/app-config/schema:
+    get:
+      tags: [Landing]
+      summary: Le registre des variables et les clés du catalogue
+      description: >-
+        Ce qui rend le back-office générique : il construit son formulaire à partir
+        de cette réponse au lieu de coder un écran par variable.
+
+
+        Public et cacheable — il décrit la forme de la configuration, jamais les
+        valeurs d'un tenant.
+      operationId: getAppConfigSchema
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/app-config/schema/route.ts
+      responses:
+        '200':
+          description: Le registre et le catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  variables: { type: array, items: { type: object, additionalProperties: true } }
+                  resources: { type: array, items: { type: object, additionalProperties: true } }
+
+  /api/data/{resource}:
+    get:
+      tags: [Landing]
+      summary: Une ressource du catalogue, pour la PWA d'un tenant
+      description: >-
+        Un seul gestionnaire pour tout le catalogue : ajouter une ressource est une
+        entrée dans `catalogue.ts`, jamais un nouveau fichier de route.
+
+
+        **Sur l'authentification, à lire avant de brancher une PWA.** Le tenant
+        n'est jamais identifié qu'au serveur. Cette version le résout depuis une
+        session back-office, parce que l'application n'a pas encore
+        d'authentification côté tenant. Faire confiance à `?tenant=` venant d'un
+        appelant anonyme est exactement ainsi qu'un client finit par lire les lignes
+        d'un autre : un appel non authentifié est donc refusé.
+      operationId: getDataResource
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/data/[resource]/route.ts
+      parameters:
+        - name: resource
+          in: path
+          required: true
+          schema: { type: string }
+        - name: tenant
+          in: query
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: La ressource.
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: Authentification tenant requise.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ------------------------------------------------------------------- admin --
+
+  /api/admin/auth/login:
+    post:
+      tags: [Admin — Authentification]
+      summary: Ouvre une session back-office
+      description: |
+        Authentifie contre `tfb_admin_users` et pose le cookie de session.
+
+        La réponse d'échec est **identique** pour « compte inconnu » et « mot de
+        passe faux », avec un temps de traitement comparable : la route ne doit pas
+        servir à énumérer les comptes.
+
+        Limite : 10 tentatives par IP et par quart d'heure.
+      operationId: adminLogin
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/auth/login/route.ts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, format: password }
+      responses:
+        '200':
+          description: Session ouverte. Le cookie `tfb_admin_session` est posé (httpOnly, 8 h).
+          headers:
+            Set-Cookie:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  email: { type: string }
+                  role: { $ref: '#/components/schemas/AdminRole' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          description: E-mail ou mot de passe incorrect.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422':
+          description: E-mail ou mot de passe manquant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+    delete:
+      tags: [Admin — Authentification]
+      summary: Ferme la session
+      operationId: adminLogout
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/auth/login/route.ts
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+
+  /api/admin/sections:
+    get:
+      tags: [Admin — Contenu]
+      summary: Toutes les sections de la landing
+      operationId: listSections
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/sections/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les sections, par `sortOrder`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sections:
+                    type: array
+                    items: { $ref: '#/components/schemas/Section' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Contenu]
+      summary: Crée une section
+      description: Créée **inactive** — une section ne peut pas apparaître avant que ses traductions existent.
+      operationId: createSection
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/sections/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, type]
+              properties:
+                key: { type: string, maxLength: 80 }
+                type: { type: string, maxLength: 50 }
+                sortOrder: { type: integer, default: 0 }
+                config:
+                  type: object
+                  additionalProperties: true
+                  description: Paramètres d'affichage uniquement. Jamais de copy.
+      responses:
+        '201':
+          description: Section créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  section: { $ref: '#/components/schemas/Section' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Admin — Contenu]
+      summary: Réordonne les sections
+      description: Un seul ordre complet, appliqué en une transaction — un réordonnancement à moitié appliqué afficherait la landing dans une séquence que personne n'a choisie.
+      operationId: reorderSections
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/sections/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReorderRequest' }
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/sections/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Contenu]
+      summary: Modifie une section
+      operationId: updateSection
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/sections/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                isActive: { type: boolean }
+                type: { type: string }
+                sortOrder: { type: integer }
+                config: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: Section modifiée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  section: { $ref: '#/components/schemas/Section' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Contenu]
+      summary: Supprime une section et ses traductions
+      operationId: deleteSection
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/sections/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/modules:
+    get:
+      tags: [Admin — Contenu]
+      summary: Les modules et leur nombre de captures
+      operationId: listModules
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les modules, par `sortOrder`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  modules:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Module'
+                        - type: object
+                          properties:
+                            screenshotCount: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Contenu]
+      summary: Crée un module
+      description: |
+        C'est aussi l'endpoint qu'appelle la routine de veille quand elle détecte
+        un nouveau produit.
+
+        Le module est créé **inactif** (`isActive: false`) : invisible sur la
+        landing tant que ses traductions ne sont pas écrites et qu'un humain ne
+        l'a pas publié.
+
+        `key` est la clé de jointure — celle sur laquelle s'alignent la sync et
+        toutes les traductions. Elle ne se renomme pas.
+      operationId: createModule
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, maxLength: 80 }
+                slug: { type: string, maxLength: 120, description: 'Défaut : la valeur de `key`.' }
+                icon: { type: string, maxLength: 60, default: layers, description: Nom de fichier d'icône dans `public/icons`. }
+                moduleGroup: { type: string, maxLength: 80 }
+                repo: { type: string, maxLength: 150 }
+                redirectUrl: { type: string, maxLength: 255, description: 'Défaut : `/modules/<slug>`.' }
+                sortOrder: { type: integer, default: 0 }
+      responses:
+        '201':
+          description: Module créé, inactif.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  module: { $ref: '#/components/schemas/Module' }
+        '400':
+          description: '`key` manquante, ou `key`/`slug` déjà pris.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/modules/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin — Contenu]
+      summary: Un module et ses captures ordonnées
+      operationId: getModule
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Le module.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  module:
+                    allOf:
+                      - $ref: '#/components/schemas/Module'
+                      - type: object
+                        properties:
+                          screenshots:
+                            type: array
+                            items: { $ref: '#/components/schemas/Screenshot' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin — Contenu]
+      summary: Modifie un module
+      description: '`key` est absente du corps : elle est immuable après publication.'
+      operationId: updateModule
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                slug: { type: string }
+                icon: { type: string }
+                moduleGroup: { type: [string, 'null'] }
+                repo: { type: [string, 'null'] }
+                redirectUrl: { type: [string, 'null'] }
+                isActive: { type: boolean, description: La publication — un geste humain. }
+                isNew: { type: boolean }
+                sortOrder: { type: integer }
+      responses:
+        '200':
+          description: Module modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  module: { $ref: '#/components/schemas/Module' }
+        '400':
+          description: Identifiant invalide, ou slug déjà pris.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Contenu]
+      summary: Supprime un module, ses captures, ses fichiers et ses traductions
+      operationId: deleteModule
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/modules/{id}/screenshots:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin — Contenu]
+      summary: Les captures d'un module
+      operationId: listScreenshots
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/screenshots/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les captures, par `sortOrder`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  screenshots:
+                    type: array
+                    items: { $ref: '#/components/schemas/Screenshot' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Contenu]
+      summary: Téléverse des captures
+      description: |
+        **Le seul moyen correct d'ajouter une capture** : cet appel écrit le
+        fichier dans `STORAGE_PATH` **et** crée la ligne, ensemble. Créer la ligne
+        autrement laisse un chemin qui ne pointe sur rien, et le carrousel retombe
+        sur son placeholder sans qu'aucune erreur ne soit levée.
+
+        Types acceptés : PNG, JPEG, WebP, SVG. 4 Mo maximum par fichier.
+
+        Un fichier refusé n'annule pas ceux déjà stockés : la réponse `422` liste
+        dans `created` ce qui est passé avant l'erreur.
+      operationId: uploadScreenshots
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/screenshots/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [files]
+              properties:
+                files:
+                  type: array
+                  items: { type: string, format: binary }
+            encoding:
+              files:
+                contentType: image/png, image/jpeg, image/webp, image/svg+xml
+      responses:
+        '201':
+          description: Captures créées.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  screenshots:
+                    type: array
+                    items: { $ref: '#/components/schemas/Screenshot' }
+        '400':
+          description: Requête non multipart, ou aucun fichier reçu.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          description: Un fichier a été refusé — type ou taille. Les précédents sont conservés.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                  created:
+                    type: array
+                    items: { $ref: '#/components/schemas/Screenshot' }
+    put:
+      tags: [Admin — Contenu]
+      summary: Réordonne le carrousel
+      description: Portée au module — on ne peut pas réordonner le carrousel d'un autre.
+      operationId: reorderScreenshots
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/screenshots/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReorderRequest' }
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/modules/{id}/screenshots/{shotId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: shotId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    delete:
+      tags: [Admin — Contenu]
+      summary: Supprime une capture, son fichier et ses traductions
+      operationId: deleteScreenshot
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/modules/[id]/screenshots/[shotId]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/brands:
+    get:
+      tags: [Admin — Contenu]
+      summary: Les enseignes, actives ou non
+      operationId: listBrands
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/brands/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les enseignes, par `sortOrder`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brands:
+                    type: array
+                    items: { $ref: '#/components/schemas/Brand' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Contenu]
+      summary: Crée une enseigne
+      operationId: createBrand
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/brands/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, slug]
+              properties:
+                name: { type: string, maxLength: 120 }
+                slug: { type: string, maxLength: 120 }
+                websiteUrl: { type: string, maxLength: 255 }
+                sortOrder: { type: integer, default: 0 }
+      responses:
+        '201':
+          description: Enseigne créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brand: { $ref: '#/components/schemas/Brand' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/brands/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Contenu]
+      summary: Modifie une enseigne
+      description: Remplacer `logoPath` supprime du disque le fichier précédent, qui n'aurait plus de référence.
+      operationId: updateBrand
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/brands/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                websiteUrl: { type: [string, 'null'] }
+                isActive: { type: boolean }
+                sortOrder: { type: integer }
+                logoPath:
+                  type: [string, 'null']
+                  description: Chemin renvoyé par `POST /api/admin/upload`.
+      responses:
+        '200':
+          description: Enseigne modifiée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  brand: { $ref: '#/components/schemas/Brand' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Contenu]
+      summary: Supprime une enseigne, son logo et ses traductions
+      operationId: deleteBrand
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/brands/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/plans:
+    get:
+      tags: [Admin — Contenu]
+      summary: Les plans et leur nombre d'abonnés
+      operationId: listPlans
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/plans/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les plans, par `sortOrder`.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items:
+                      allOf:
+                        - $ref: '#/components/schemas/Plan'
+                        - type: object
+                          properties:
+                            subscriberCount: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Contenu]
+      summary: Crée un plan
+      description: |
+        `amount` est en **centimes**. `null` signifie « sur devis » : ces plans
+        vont au formulaire de contact, jamais à Checkout.
+
+        Créé inactif.
+      operationId: createPlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/plans/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, maxLength: 80 }
+                amount: { type: [integer, 'null'], description: En centimes. `null` = sur devis. }
+                currency: { type: string, maxLength: 3, default: EUR }
+                interval: { type: string, enum: [month, year], default: month }
+                stripePriceId: { type: [string, 'null'], maxLength: 120 }
+                isFeatured: { type: boolean, default: false }
+                sortOrder: { type: integer, default: 0 }
+      responses:
+        '201':
+          description: Plan créé, inactif.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { $ref: '#/components/schemas/Plan' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/plans/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Contenu]
+      summary: Modifie un plan
+      description: >-
+        Un seul plan mis en avant à la fois — passer `isFeatured: true` retire la
+        distinction à tous les autres, dans la même transaction.
+      operationId: updatePlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/plans/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                amount: { type: [integer, 'null'] }
+                currency: { type: string }
+                interval: { type: string, enum: [month, year] }
+                stripePriceId: { type: [string, 'null'] }
+                isFeatured: { type: boolean }
+                isActive: { type: boolean }
+                sortOrder: { type: integer }
+      responses:
+        '200':
+          description: Plan modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { $ref: '#/components/schemas/Plan' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Contenu]
+      summary: Supprime un plan
+      description: Refusé tant que des abonnements le référencent — la réponse dit combien, et invite à le désactiver.
+      operationId: deletePlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/plans/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          description: Identifiant invalide, ou des abonnements pointent sur ce plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/translations:
+    get:
+      tags: [Admin — Contenu]
+      summary: Les traductions d'une entité, dans toutes les langues actives
+      description: |
+        Chaque champ est renvoyé pour **toutes** les locales actives, avec une
+        chaîne vide là où rien n'existe — l'éditeur affiche ces cellules comme
+        « Vide — fallback FR ».
+      operationId: getTranslations
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/translations/route.ts
+      security: [{ adminSession: [] }]
+      parameters:
+        - name: entityType
+          in: query
+          required: true
+          schema: { $ref: '#/components/schemas/EntityType' }
+        - name: entityId
+          in: query
+          required: true
+          description: '`0` pour la pseudo-entité `ui`, qui porte toute la copy de châssis.'
+          schema: { type: integer, minimum: 0 }
+      responses:
+        '200':
+          description: Les champs et leurs valeurs par locale.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entityType: { $ref: '#/components/schemas/EntityType' }
+                  entityId: { type: integer }
+                  languages:
+                    type: array
+                    items: { $ref: '#/components/schemas/AdminLanguage' }
+                  fields:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        field: { type: string }
+                        values:
+                          type: object
+                          additionalProperties: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    put:
+      tags: [Admin — Contenu]
+      summary: Écrit les traductions d'une entité
+      description: |
+        **Vider une cellule supprime la ligne** au lieu d'y stocker `''` : c'est
+        l'absence de ligne qui déclenche le repli sur le français. Stocker une
+        chaîne vide afficherait du vide sur la landing.
+      operationId: putTranslations
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/translations/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [entityType, entityId, values]
+              properties:
+                entityType: { $ref: '#/components/schemas/EntityType' }
+                entityId: { type: integer, minimum: 0 }
+                values:
+                  type: object
+                  description: '`{ "<champ>": { "<locale>": "<texte>" } }`. Une valeur vide supprime la ligne.'
+                  additionalProperties:
+                    type: object
+                    additionalProperties: { type: string }
+      responses:
+        '200':
+          description: Écriture effectuée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  written: { type: integer }
+                  cleared: { type: integer }
+        '400':
+          description: '`entityType` inconnu, `entityId` invalide, ou locale inconnue.'
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/upload:
+    post:
+      tags: [Admin — Contenu]
+      summary: Téléverse un fichier et renvoie son chemin
+      description: |
+        Téléversement générique : écrit sous `STORAGE_PATH/<category>/` et renvoie
+        le chemin relatif, **à charge de l'appelant de le persister** (les logos
+        d'enseigne passent par là). Les captures de module ont leur propre endpoint,
+        qui crée aussi la ligne en base.
+      operationId: uploadFile
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/upload/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, category]
+              properties:
+                file: { type: string, format: binary }
+                category: { type: string, enum: [screenshots, brands] }
+      responses:
+        '201':
+          description: Fichier écrit.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path: { type: string, examples: ['/storage/brands/logo-a1b2c3.png'] }
+                  size: { type: integer }
+        '400':
+          description: Requête non multipart, catégorie inconnue, ou aucun fichier.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          description: Type non autorisé, ou fichier de plus de 4 Mo.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/contact-messages:
+    get:
+      tags: [Admin — Contenu]
+      summary: La boîte de réception du formulaire de contact
+      operationId: listContactMessages
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/contact-messages/route.ts
+      security: [{ adminSession: [] }]
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Une valeur hors énumération est ignorée, et tous les messages sont renvoyés.
+          schema: { type: string, enum: [new, read, archived] }
+      responses:
+        '200':
+          description: Les 200 messages les plus récents, plus le compteur de non-lus.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  messages:
+                    type: array
+                    items: { $ref: '#/components/schemas/ContactMessage' }
+                  unread: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/contact-messages/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Contenu]
+      summary: Marque un message comme lu ou archivé
+      operationId: updateContactMessage
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/contact-messages/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status: { type: string, enum: [new, read, archived] }
+      responses:
+        '200':
+          description: Message modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { $ref: '#/components/schemas/ContactMessage' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/subscriptions:
+    get:
+      tags: [Admin — Facturation]
+      summary: Les abonnements
+      description: >-
+        Lecture seule. Stripe possède cette donnée : le webhook l'écrit, la console
+        la lit.
+      operationId: listSubscriptions
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/subscriptions/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les abonnements, du plus récent au plus ancien.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items: { $ref: '#/components/schemas/Subscription' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/billing/licenses/{licenseId}/block:
+    post:
+      tags: [Admin — Facturation]
+      summary: Bloque une licence
+      description: |
+        Délègue au service de facturation, qui possède la licence : passage en
+        `blocked`, écriture d'un `license_events` et d'une entrée de file de
+        synchronisation.
+
+        **Refusé (`409`) tant que `BILLING_SERVICE_URL` n'est pas défini** — pour
+        que l'interface puisse en dire la raison, au lieu de laisser croire qu'un
+        magasin a perdu son accès.
+      operationId: blockLicense
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/billing/licenses/[id]/block/route.ts
+      security: [{ adminSession: [] }]
+      parameters:
+        - name: licenseId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Licence bloquée.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingActionResult' }
+        '400':
+          description: Identifiant manquant.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingActionResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Action refusée — service de facturation non configuré ou en erreur.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingActionResult' }
+
+  /api/admin/billing/sync/replay:
+    post:
+      tags: [Admin — Facturation]
+      summary: Rejoue la file de synchronisation
+      operationId: replaySync
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/billing/sync/replay/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                queueId:
+                  type: integer
+                  description: Une ligne précise. Omis, toutes les lignes en échec sont rejouées.
+      responses:
+        '200':
+          description: Rejeu effectué.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingActionResult' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: Action refusée — service de facturation non configuré ou en erreur.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/BillingActionResult' }
+
+  # ------------------------------------------------------- packs & licences --
+
+  /api/admin/packs:
+    get:
+      tags: [Admin — Packs & licences]
+      summary: Les packs, leurs prix, leur composition
+      operationId: listPacks
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les packs, et si les licences comptées viennent des fixtures.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  packs:
+                    type: array
+                    items: { $ref: '#/components/schemas/PackView' }
+                  fixture: { type: boolean }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Packs & licences]
+      summary: Crée un pack
+      description: >-
+        Créé **inactif et sans module** : un pack qui ouvrirait quelque chose dès
+        sa création serait un pack que personne n'a relu.
+
+
+        `key` doit être identique au `code` du package côté service de
+        facturation — c'est la seule jointure entre une licence et les modules
+        qu'elle ouvre.
+      operationId: createPack
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, maxLength: 80, pattern: '^[a-z0-9][a-z0-9_-]*$' }
+                stripeProductId: { type: [string, 'null'], maxLength: 120 }
+                kind: { $ref: '#/components/schemas/PackKind' }
+                icon: { type: string, maxLength: 60 }
+                sortOrder: { type: integer, default: 0 }
+      responses:
+        '201':
+          description: Pack créé, inactif.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack: { $ref: '#/components/schemas/Pack' }
+        '400':
+          description: Clé invalide, clé déjà prise, ou produit Stripe déjà rattaché ailleurs.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/packs/sync-stripe:
+    post:
+      tags: [Admin — Packs & licences]
+      summary: Rafraîchit les prix depuis Stripe
+      description: >-
+        Met à jour les prix des packs déjà rattachés à un produit Stripe. **Ne
+        touche jamais la composition** : Stripe dit ce qui est payé, les modules
+        que ça ouvre sont à nous, et aucune lecture externe ne les réécrit.
+
+
+        Répond `200 { status: "stub" }` tant que Stripe n'est pas configuré, comme
+        `/api/checkout`, pour que la console dise pourquoi au lieu de laisser
+        croire qu'une synchronisation a eu lieu.
+      operationId: syncPacksFromStripe
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/sync-stripe/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Synchronisation effectuée, ou bouchonnée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, stub] }
+                  reason: { type: string }
+                  packs: { type: integer }
+                  prices: { type: integer }
+                  orphans:
+                    type: array
+                    description: Packs dont le produit Stripe est introuvable. Signalés, jamais désactivés d'office.
+                    items: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/packs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin — Packs & licences]
+      summary: Un pack, avec le catalogue de modules pour le composer
+      operationId: getPack
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Le pack et le catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack:
+                    allOf:
+                      - $ref: '#/components/schemas/Pack'
+                      - type: object
+                        properties:
+                          prices:
+                            type: array
+                            items: { $ref: '#/components/schemas/PackPrice' }
+                          moduleIds:
+                            type: array
+                            items: { type: integer }
+                  catalogue:
+                    type: array
+                    items: { $ref: '#/components/schemas/ModuleLabel' }
+                  licenseCount: { type: integer }
+                  fixture: { type: boolean }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin — Packs & licences]
+      summary: Modifie un pack
+      description: >-
+        `key` est absente du corps : c'est ce sur quoi le code de package d'une
+        licence s'aligne, donc la renommer détacherait silencieusement chaque
+        licence de ses modules.
+
+
+        Activer un pack exige un produit Stripe et au moins un prix — sauf pour un
+        pack `free`, qui ne facture rien. Sinon la landing afficherait une offre
+        que personne ne peut souscrire.
+      operationId: updatePack
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                stripeProductId: { type: [string, 'null'] }
+                kind: { $ref: '#/components/schemas/PackKind' }
+                icon: { type: [string, 'null'] }
+                isActive: { type: boolean }
+                isFeatured: { type: boolean }
+                sortOrder: { type: integer }
+      responses:
+        '200':
+          description: Pack modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pack: { $ref: '#/components/schemas/Pack' }
+        '400':
+          description: Produit déjà rattaché, ou activation sans produit ni prix.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Packs & licences]
+      summary: Supprime un pack
+      description: >-
+        Refusé tant que le service de facturation rapporte des licences sur cette
+        clé : chaque magasin concerné perdrait ses modules sans qu'il reste rien
+        pour l'expliquer.
+      operationId: deletePack
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          description: Des licences utilisent ce pack.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/packs/{id}/modules:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Admin — Packs & licences]
+      summary: La composition du pack
+      description: >-
+        La liste complète, appliquée en une transaction — une composition écrite à
+        moitié ouvrirait un ensemble de modules que personne n'a choisi.
+
+
+        C'est le modèle d'autorisation, et il vit ici plutôt que dans les
+        métadonnées Stripe : un modèle d'autorisation éditable depuis un champ
+        texte de tableau de bord n'est pas un modèle d'autorisation.
+
+
+        Un seul identifiant inconnu fait échouer tout l'appel, au lieu de composer
+        le pack avec le sous-ensemble qui existait.
+      operationId: setPackModules
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/[id]/modules/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [moduleIds]
+              properties:
+                moduleIds:
+                  type: array
+                  items: { type: integer, minimum: 1 }
+      responses:
+        '200':
+          description: Composition enregistrée, avec la portée du changement.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean, const: true }
+                  moduleIds:
+                    type: array
+                    items: { type: integer }
+                  added: { type: integer }
+                  removed: { type: integer }
+                  licenseCount:
+                    type: integer
+                    description: Licences touchées. Fermer un module masque l'écran et bloque ses endpoints, sans rien supprimer.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/packs/{id}/prices:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [Admin — Packs & licences]
+      summary: Les variantes de facturation du pack
+      description: >-
+        Mensuel, annuel et paiement unique sont trois prix d'un même produit
+        Stripe, pas trois packs. La liste remplace ce qui est stocké.
+
+
+        Un prix Stripe appartient à un seul produit, donc à un seul pack :
+        revendiquer le prix d'un autre pack ferait diverger les deux sur ce qu'un
+        paiement a acheté.
+      operationId: setPackPrices
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/packs/[id]/prices/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prices]
+              properties:
+                prices:
+                  type: array
+                  items:
+                    type: object
+                    required: [stripePriceId, interval]
+                    properties:
+                      stripePriceId: { type: string, maxLength: 120 }
+                      amount: { type: [integer, 'null'], description: En centimes. `null` = sur devis. }
+                      currency: { type: string, default: EUR }
+                      interval: { type: string, enum: [month, year, one_time] }
+                      isDefault: { type: boolean }
+      responses:
+        '200':
+          description: Les prix enregistrés.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prices:
+                    type: array
+                    items: { $ref: '#/components/schemas/PackPrice' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/licenses/{licenseId}/modules:
+    parameters:
+      - $ref: '#/components/parameters/LicenseId'
+    get:
+      tags: [Admin — Packs & licences]
+      summary: Ce que cette licence ouvre réellement
+      description: >-
+        La résolution pour laquelle toute la chaîne existe : la composition du
+        pack, puis le statut de licence que Stripe possède, puis les dérogations
+        qu'un humain a écrites. Chaque module revient avec la raison pour laquelle
+        il est ouvert ou fermé.
+
+
+        Seuls `active` et `trialing` ouvrent quoi que ce soit. `past_due` ferme —
+        il n'y a pas de délai de grâce, et en ajouter un est une décision produit
+        qui appartient à `OPEN_STATUSES`, pas aux appelants.
+      operationId: getLicenseModules
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/licenses/[licenseId]/modules/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: La licence et sa résolution.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  license: { type: object, additionalProperties: true }
+                  packKey: { type: string }
+                  packFound:
+                    type: boolean
+                    description: '`false` quand aucun pack ne porte cette clé — la licence n''ouvre alors rien, et le dire est le seul moyen de distinguer ce cas d''un pack vide.'
+                  modules:
+                    type: array
+                    items: { $ref: '#/components/schemas/ResolvedModule' }
+                  fixture: { type: boolean }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/licenses/{licenseId}/overrides:
+    parameters:
+      - $ref: '#/components/parameters/LicenseId'
+    get:
+      tags: [Admin — Packs & licences]
+      summary: Les dérogations d'une licence, en cours et révoquées
+      operationId: listOverrides
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/licenses/[licenseId]/overrides/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les dérogations, de la plus récente à la plus ancienne.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  overrides:
+                    type: array
+                    items: { $ref: '#/components/schemas/LicenseOverride' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Packs & licences]
+      summary: Pose une dérogation
+      description: >-
+        Ouvre ou ferme un module hors pack, pour cette licence. C'est le seul
+        endroit de la chaîne qu'une décision humaine peut surcharger, et le
+        webhook Stripe ne l'écrase pas.
+
+
+        `reason` est obligatoire : une dérogation sans motif est intraçable six
+        mois plus tard.
+
+
+        Une dérogation existante sur le même module est révoquée et remplacée —
+        l'ancienne ligne reste, avec sa date et son auteur.
+      operationId: createOverride
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/licenses/[licenseId]/overrides/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [moduleId, grant, reason]
+              properties:
+                moduleId: { type: integer, minimum: 1 }
+                grant:
+                  type: boolean
+                  description: '`true` ouvre le module malgré le pack, `false` le ferme malgré le pack.'
+                reason: { type: string }
+                expiresAt:
+                  type: [string, 'null']
+                  format: date-time
+                  description: Doit être dans le futur. Absente, la dérogation tient jusqu'à sa révocation.
+      responses:
+        '201':
+          description: Dérogation posée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  override: { $ref: '#/components/schemas/LicenseOverride' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Licence ou module introuvable.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /api/admin/licenses/{licenseId}/overrides/{overrideId}:
+    parameters:
+      - $ref: '#/components/parameters/LicenseId'
+      - name: overrideId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    delete:
+      tags: [Admin — Packs & licences]
+      summary: Révoque une dérogation
+      description: >-
+        Révoquée, pas supprimée : la ligne reste avec sa date et son auteur, et la
+        licence retombe sur ce que dit son pack. Une dérogation effaçable
+        laisserait un changement d'accès sans rien derrière pour l'expliquer.
+      operationId: revokeOverride
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/licenses/[licenseId]/overrides/[overrideId]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Dérogation révoquée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  override: { $ref: '#/components/schemas/LicenseOverride' }
+        '400':
+          description: Identifiant invalide, ou dérogation déjà révoquée.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+
+  securitySchemes:
+    adminSession:
+      type: apiKey
+      in: cookie
+      name: tfb_admin_session
+      description: |
+        JWT signé (HS256), posé par `POST /api/admin/auth/login`, `httpOnly`,
+        `sameSite: lax`, `secure` en production, valable 8 heures.
+
+        Toute route `/api/admin/*` est enveloppée par `withAdmin` : sans cookie
+        valide, la réponse est `401` **avant** tout accès à la base.
+
+  parameters:
+    LicenseId:
+      name: licenseId
+      in: path
+      required: true
+      description: L'identifiant de licence du service de facturation, tel quel.
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Entier positif. Toute autre valeur répond `400`.
+      schema: { type: integer, minimum: 1 }
+
+  responses:
+    Ok:
+      description: Opération effectuée.
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              ok: { type: boolean, const: true }
+    BadRequest:
+      description: Requête invalide.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: Authentification requise.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Ressource introuvable.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Trop de requêtes.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: Secondes à attendre.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unavailable:
+      description: Service indisponible.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Message en français, destiné à être affiché tel quel.
+
+    LocaleCode:
+      type: string
+      enum: [fr, en, nl, de, pl, uk, ru, ar]
+      default: fr
+      description: '`fr` est la locale par défaut et le repli de toutes les autres. `ar` est en écriture droite-à-gauche.'
+
+    AdminRole:
+      type: string
+      enum: [superadmin, admin]
+
+    EntityType:
+      type: string
+      enum: [ui, module, plan, brand, section, screenshot]
+      description: '`ui` est la pseudo-entité d''`entityId` 0 qui porte la copy de châssis, sous des clés pointées (`hero.title`, `nav.modules`).'
+
+    ReorderRequest:
+      type: object
+      required: [order]
+      properties:
+        order:
+          type: array
+          description: L'ordre complet, appliqué en une transaction.
+          items:
+            type: object
+            required: [id, sortOrder]
+            properties:
+              id: { type: integer }
+              sortOrder: { type: integer }
+
+    PackKind:
+      type: string
+      enum: [subscription, one_time, addon, free]
+      default: subscription
+      description: Comment le pack est facturé — pas ce qu'il ouvre.
+
+    Pack:
+      type: object
+      properties:
+        id: { type: integer }
+        key:
+          type: string
+          description: Égale au `code` du package côté service de facturation. Immuable.
+        stripeProductId: { type: [string, 'null'] }
+        kind: { $ref: '#/components/schemas/PackKind' }
+        icon: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    PackPrice:
+      type: object
+      properties:
+        id: { type: integer }
+        packId: { type: integer }
+        stripePriceId: { type: string }
+        amount: { type: [integer, 'null'], description: En centimes. `null` = sur devis. }
+        currency: { type: string }
+        interval: { type: string, enum: [month, year, one_time] }
+        isDefault: { type: boolean }
+
+    ModuleLabel:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        name: { type: string, description: Libellé français, ou la clé tant qu'aucune traduction n'existe. }
+        icon: { type: [string, 'null'] }
+        group: { type: [string, 'null'] }
+        isActive: { type: boolean }
+
+    PackView:
+      allOf:
+        - $ref: '#/components/schemas/Pack'
+        - type: object
+          properties:
+            prices:
+              type: array
+              items: { $ref: '#/components/schemas/PackPrice' }
+            modules:
+              type: array
+              items: { $ref: '#/components/schemas/ModuleLabel' }
+            licenseCount: { type: integer }
+            sellable:
+              type: boolean
+              description: Actif, et payable — produit et prix Stripe présents, sauf pour un pack `free`.
+
+    ResolvedModule:
+      type: object
+      properties:
+        moduleId: { type: integer }
+        key: { type: string }
+        open: { type: boolean }
+        source:
+          type: string
+          enum: [pack, override, status]
+          description: Qui a décidé — la composition du pack, une dérogation, ou le statut de la licence.
+        reason: { type: string }
+        overrideId: { type: integer }
+
+    LicenseOverride:
+      type: object
+      properties:
+        id: { type: integer }
+        licenseId:
+          type: string
+          description: L'identifiant du service de facturation. Aucune clé étrangère ne traverse cette frontière, volontairement.
+        moduleId: { type: integer }
+        grant: { type: boolean }
+        reason: { type: string }
+        expiresAt: { type: [string, 'null'], format: date-time }
+        createdBy: { type: string }
+        createdAt: { type: string, format: date-time }
+        revokedAt: { type: [string, 'null'], format: date-time }
+        revokedBy: { type: [string, 'null'] }
+
+    ContactRequest:
+      type: object
+      required: [name, email, message]
+      properties:
+        name: { type: string, maxLength: 120 }
+        email: { type: string, format: email, maxLength: 150 }
+        company: { type: string, maxLength: 150 }
+        message: { type: string, maxLength: 4000 }
+        languageCode:
+          $ref: '#/components/schemas/LocaleCode'
+        website:
+          type: string
+          description: >-
+            Honeypot. Un humain ne le remplit jamais. S'il est rempli, la route
+            répond un succès et n'enregistre rien.
+
+    Section:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        type: { type: string }
+        brandId: { type: [integer, 'null'] }
+        isActive: { type: boolean }
+        sortOrder: { type: integer }
+        config: { type: [object, 'null'], additionalProperties: true }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Module:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string, description: Clé de jointure, immuable. }
+        slug: { type: string }
+        redirectUrl: { type: [string, 'null'] }
+        repo: { type: [string, 'null'] }
+        moduleGroup: { type: [string, 'null'] }
+        icon: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        isNew: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Screenshot:
+      type: object
+      properties:
+        id: { type: integer }
+        moduleId: { type: integer }
+        filePath: { type: string, description: 'Chemin relatif, servi par `GET /api/storage/…`.' }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+
+    Brand:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        slug: { type: string }
+        logoPath: { type: [string, 'null'] }
+        websiteUrl: { type: [string, 'null'] }
+        isActive: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    Plan:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        stripePriceId: { type: [string, 'null'] }
+        amount: { type: [integer, 'null'], description: En centimes. `null` = sur devis. }
+        currency: { type: string }
+        interval: { type: string, enum: [month, year] }
+        isActive: { type: boolean }
+        isFeatured: { type: boolean }
+        sortOrder: { type: integer }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    ContactMessage:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        company: { type: [string, 'null'] }
+        message: { type: string }
+        languageCode: { type: [string, 'null'] }
+        status: { type: string, enum: [new, read, archived] }
+        createdAt: { type: string, format: date-time }
+
+    Subscription:
+      type: object
+      properties:
+        id: { type: integer }
+        brandId: { type: [integer, 'null'] }
+        email: { type: string, format: email }
+        stripeCustomerId: { type: [string, 'null'] }
+        stripeSubscriptionId: { type: [string, 'null'] }
+        planId: { type: integer }
+        status:
+          type: string
+          description: Valeur Stripe brute (`active`, `past_due`, `canceled`…). Jamais traduite — c'est de la donnée.
+        currentPeriodEnd: { type: [string, 'null'], format: date-time }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+        plan:
+          type: object
+          properties:
+            key: { type: string }
+            amount: { type: [integer, 'null'] }
+            currency: { type: string }
+        brand:
+          type: [object, 'null']
+          properties:
+            name: { type: string }
+            slug: { type: string }
+
+    AdminLanguage:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        isRtl: { type: boolean }
+        isDefault: { type: boolean }
+
+    BillingActionResult:
+      type: object
+      required: [ok]
+      properties:
+        ok: { type: boolean }
+        reason:
+          type: string
+          description: Présent quand `ok` est `false` — pourquoi l'action a été refusée.
+
+    CheckoutResult:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [redirect, contact, stub] }
+        url: { type: [string, 'null'], format: uri }
+        reason: { type: string }
+        planKey: { type: string }
+        configured: { type: boolean, description: '`false` tant que les clés Stripe ne sont pas posées.' }
+
+    # ---- Charge utile de la landing -----------------------------------------
+
+    LandingLanguage:
+      type: object
+      properties:
+        code: { type: string }
+        name: { type: string }
+        rtl: { type: boolean }
+
+    LandingScreenshot:
+      type: object
+      properties:
+        src: { type: [string, 'null'], description: URL publique, ou `null` tant qu'aucun fichier n'existe. }
+        alt: { type: string }
+
+    LandingFeature:
+      type: object
+      description: Une fonction documentée d'un module.
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        icon: { type: string }
+        name: { type: string }
+        description: { type: string }
+        screenshots:
+          type: array
+          items: { $ref: '#/components/schemas/LandingScreenshot' }
+
+    LandingModule:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        slug: { type: string }
+        icon: { type: string }
+        group: { type: string, description: Libellé traduit du groupe. }
+        groupKey: { type: string, description: Valeur brute — c'est elle que filtrent les puces, pas la traduction. }
+        name: { type: string }
+        description: { type: string }
+        overview: { type: string }
+        isNew: { type: boolean }
+        redirectUrl: { type: [string, 'null'] }
+        repo: { type: [string, 'null'] }
+        screenshots:
+          type: array
+          items: { $ref: '#/components/schemas/LandingScreenshot' }
+        features:
+          type: array
+          items: { $ref: '#/components/schemas/LandingFeature' }
+        bullets:
+          type: array
+          items: { type: string }
+        metric:
+          type: array
+          description: 'Le gain mesuré : `["12 min", "par inventaire"]`.'
+          minItems: 2
+          maxItems: 2
+          items: { type: string }
+
+    LandingPlan:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        name: { type: string }
+        description: { type: string }
+        features:
+          type: array
+          items: { type: string }
+        priceLabel: { type: [string, 'null'], description: Formaté pour la locale, ou `null` pour « sur devis ». }
+        amount: { type: [integer, 'null'] }
+        currency: { type: string }
+        interval: { type: string }
+        featured: { type: boolean }
+        stripePriceId: { type: [string, 'null'] }
+
+    LandingSection:
+      type: object
+      properties:
+        key: { type: string }
+        type: { type: string }
+        sortOrder: { type: integer }
+
+    LandingBrand:
+      type: object
+      properties:
+        slug: { type: string }
+        name: { type: string }
+        logoPath: { type: [string, 'null'] }
+        websiteUrl: { type: [string, 'null'] }
+
+    LandingPayload:
+      type: object
+      required: [locale, dir, languages, sections, brands, modules, plans, strings]
+      properties:
+        locale: { type: string }
+        dir: { type: string, enum: [ltr, rtl] }
+        languages:
+          type: array
+          items: { $ref: '#/components/schemas/LandingLanguage' }
+        sections:
+          type: array
+          description: Les sections actives, dans l'ordre. Le front rend celles-ci et rien d'autre.
+          items: { $ref: '#/components/schemas/LandingSection' }
+        brands:
+          type: array
+          items: { $ref: '#/components/schemas/LandingBrand' }
+        modules:
+          type: array
+          items: { $ref: '#/components/schemas/LandingModule' }
+        plans:
+          type: array
+          items: { $ref: '#/components/schemas/LandingPlan' }
+        strings:
+          type: object
+          description: Chaînes `ui` résolues, indexées par clé pointée.
+          additionalProperties: { type: string }

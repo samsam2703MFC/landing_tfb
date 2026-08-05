@@ -77,6 +77,34 @@ export async function createBillingPortalSession(customerId: string, returnUrl: 
   throw new Error(`Stripe est configuré mais createBillingPortalSession n'est pas implémenté (${customerId} → ${returnUrl}).`);
 }
 
+/** One Stripe product and its prices, as the packs screen needs them (§21). */
+export interface StripeProduct {
+  id: string;
+  name: string;
+  active: boolean;
+  prices: { id: string; amount: number | null; currency: string; interval: string }[];
+}
+
+export type ProductListResult =
+  | { status: 'ok'; products: StripeProduct[] }
+  | { status: 'stub'; reason: string };
+
+/**
+ * Lists the Stripe products and their prices, so a pack can be matched to the
+ * product that bills it.
+ *
+ * Reading Stripe never writes anything here: the composition of a pack is ours,
+ * and a resync only refreshes what a product is called and what it costs.
+ */
+export async function listStripeProducts(): Promise<ProductListResult> {
+  if (!stripeConfigured()) {
+    return { status: 'stub', reason: 'STRIPE_SECRET_KEY absent — aucun produit lu depuis Stripe.' };
+  }
+  // Real implementation: stripe.products.list({ active: true, expand: ['data.default_price'] })
+  // plus stripe.prices.list({ product }) per product. See the header comment.
+  throw new Error("Stripe est configuré mais listStripeProducts n'est pas implémenté.");
+}
+
 /** Stripe subscription statuses mapped onto tfb_subscriptions.status. */
 export const SUBSCRIPTION_STATUSES = [
   'trialing', 'active', 'past_due', 'canceled', 'unpaid', 'incomplete', 'incomplete_expired', 'paused',
