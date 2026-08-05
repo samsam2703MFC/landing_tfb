@@ -235,6 +235,32 @@ model LicenseOverride {
   @@map("tfb_license_overrides")
 }
 
+/// §18 — every Stripe event we have accepted, by its own id.
+///
+/// Stripe redelivers until it gets a 2xx, so the same event arrives more than once
+/// as a matter of course. `stripe_event_id` is unique: the second delivery is
+/// recognised and skipped instead of applied twice.
+///
+/// `created` is Stripe's own timestamp, not ours. Delivery order is not guaranteed,
+/// and an older `customer.subscription.updated` overtaking a newer one would roll a
+/// subscription's status backwards — comparing this field is what prevents it.
+model StripeEvent {
+  id            Int      @id @default(autoincrement())
+  stripeEventId String   @unique @map("stripe_event_id") @db.VarChar(120)
+  type          String   @db.VarChar(120)
+  /// Seconds since the epoch, as Stripe sends it.
+  created       Int
+  /// applied | skipped | ignored | failed — what we did, not what Stripe sent.
+  outcome       String   @db.VarChar(20)
+  /// One line of why, for the console. Never the payload: it carries customer data.
+  detail        String?  @db.VarChar(255)
+  receivedAt    DateTime @default(now()) @map("received_at")
+
+  @@index([receivedAt])
+  @@index([type])
+  @@map("tfb_stripe_events")
+}
+
 /// §2.8 — subscriptions, kept in sync by the Stripe webhook.
 model Subscription {
   id                   Int       @id @default(autoincrement())
@@ -245,6 +271,10 @@ model Subscription {
   planId               Int       @map("plan_id")
   status               String    @db.VarChar(30)
   currentPeriodEnd     DateTime? @map("current_period_end")
+  /// Stripe's own timestamp for the last event applied to this row. Delivery order
+  /// is not guaranteed, so an event older than this one is stale and is skipped —
+  /// without it, a late `updated` rolls the status backwards.
+  lastEventCreated     Int?      @map("last_event_created")
   createdAt            DateTime  @default(now()) @map("created_at")
   updatedAt            DateTime  @updatedAt @map("updated_at")
 
