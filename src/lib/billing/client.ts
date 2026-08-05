@@ -80,6 +80,65 @@ export async function blockLicense(licenseId: string): Promise<{ ok: boolean; re
   return { ok: true };
 }
 
+/**
+ * Resolves a tenant API key to the tenant that owns it (§21).
+ *
+ * The billing service holds the keys — it only ever exposes `api_key_hint`, so
+ * there is nothing here to compare against and verification has to be delegated.
+ * That is the point: one service owns the credential, and this app never sees it
+ * stored.
+ *
+ * **Refused while BILLING_SERVICE_URL is unset.** Authenticating against the
+ * fixture snapshot would hand a caller the entitlements of a tenant nobody
+ * verified — an open door dressed as a demo.
+ *
+ * Requires `POST /admin/api-keys/verify { key } → { tenant: "<name>" }` on the
+ * billing service. It answers 401 for an unknown key.
+ */
+export async function verifyTenantKey(
+  key: string,
+): Promise<{ ok: true; tenant: string } | { ok: false; reason: string; status: number }> {
+  if (!billingConfigured()) {
+    return {
+      ok: false,
+      status: 503,
+      reason: 'BILLING_SERVICE_URL absent — aucune clé ne peut être vérifiée, donc aucun droit accordé.',
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${BASE.replace(/\/$/, '')}/admin/api-keys/verify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}),
+      },
+      body: JSON.stringify({ key }),
+      cache: 'no-store',
+    });
+  } catch (error) {
+    // Unreachable is not "unauthorised": say so, and let the caller decide. A PWA
+    // that locks itself on a network blip is worse than one that retries.
+    console.error('Billing service unreachable while verifying a tenant key.', error);
+    return { ok: false, status: 503, reason: 'Service de facturation injoignable.' };
+  }
+
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, status: 401, reason: 'Clé inconnue ou révoquée.' };
+  }
+  if (!response.ok) {
+    return { ok: false, status: 503, reason: `Service de facturation → HTTP ${response.status}` };
+  }
+
+  const body = (await response.json().catch(() => ({}))) as { tenant?: unknown };
+  if (typeof body.tenant !== 'string' || body.tenant === '') {
+    return { ok: false, status: 503, reason: 'Réponse de vérification inexploitable.' };
+  }
+  return { ok: true, tenant: body.tenant };
+}
+
 /** Replays one sync_queue row, or every failed row when no id is given. */
 export async function replaySync(queueId?: number): Promise<{ ok: boolean; reason?: string }> {
   if (!billingConfigured()) {

@@ -51,6 +51,10 @@ tags:
     description: API publique consommée par le site vitrine.
   - name: Paiement
     description: Stripe. Bouchonné tant que les clés ne sont pas configurées.
+  - name: Habilitation
+    description: >-
+      Ce qu'une PWA produit a le droit d'ouvrir. Appelée de serveur à serveur par
+      les applications produit, jamais depuis un navigateur.
   - name: Fichiers
     description: Service des fichiers téléversés.
   - name: Admin — Authentification
@@ -464,6 +468,109 @@ paths:
               schema: { $ref: '#/components/schemas/Error' }
         '404':
           $ref: '#/components/responses/NotFound'
+
+  /api/entitlement:
+    get:
+      tags: [Habilitation]
+      summary: Ce qu'une PWA produit a le droit d'ouvrir
+      description: >-
+        Chaque PWA est une ligne de `tfb_modules`, un pack l'ouvre, et c'est ici
+        qu'elle demande si le client devant elle a payé l'application qu'elle
+        s'apprête à afficher. Masquer une tuile de lanceur est un confort ; cette
+        route est le contrôle.
+
+
+        **De serveur à serveur uniquement.** La clé identifie le tenant : elle doit
+        vivre sur le serveur de la PWA et ne jamais atteindre un navigateur. C'est
+        aussi pourquoi aucun en-tête CORS n'est renvoyé — un appel depuis le
+        JavaScript d'une page signifierait que la clé est déjà exposée, et y
+        répondre rendrait la fuite confortable.
+
+
+        **Ce qu'une PWA doit faire de chaque réponse :**
+
+        - `200 { open: true }` — afficher.
+
+        - `200 { open: false }` — verrouiller, et montrer `reason`.
+
+        - `401` — la clé est mauvaise : verrouiller, et ne pas réessayer en boucle.
+
+        - `503` — nous n'avons pas pu décider. **Ne pas verrouiller là-dessus.** Une
+          panne de facturation ne doit pas éteindre la tablette de chaque magasin :
+          garder la dernière réponse connue et réessayer.
+
+
+        C'est pour cette dernière distinction que la route sépare « non » de
+        « je ne sais pas » au lieu de renvoyer un booléen sec.
+      operationId: getEntitlement
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/entitlement/route.ts
+      security:
+        - tenantKey: []
+      parameters:
+        - name: module
+          in: query
+          required: false
+          description: Clé d'un module. Présente, la réponse porte `open` pour celui-là seul.
+          schema: { type: string }
+        - name: store
+          in: query
+          required: false
+          description: Restreint à la licence d'un magasin. Absent, l'union des licences du tenant.
+          schema: { type: string }
+      responses:
+        '200':
+          description: La décision.
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - type: object
+                    title: Un module
+                    properties:
+                      tenant: { type: string }
+                      store: { type: [string, 'null'] }
+                      module: { type: string }
+                      open: { type: boolean }
+                      reason: { type: string, description: Présent quand `open` est `false`. Affichable tel quel. }
+                      licenses:
+                        type: array
+                        items: { $ref: '#/components/schemas/EntitlementLicense' }
+                  - type: object
+                    title: Tous les modules
+                    properties:
+                      tenant: { type: string }
+                      store: { type: [string, 'null'] }
+                      modules:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            key: { type: string }
+                            name: { type: string }
+                            icon: { type: [string, 'null'] }
+                      licenses:
+                        type: array
+                        items: { $ref: '#/components/schemas/EntitlementLicense' }
+                      unmatchedPackKeys:
+                        type: array
+                        description: Codes de package qu'aucun pack ne porte. Nommés plutôt qu'avalés — sinon une liste vide ressemble à un client qui n'a rien acheté.
+                        items: { type: string }
+        '401':
+          description: Clé absente, inconnue ou révoquée.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          description: >-
+            Indécidable — service de facturation non configuré ou injoignable.
+            Aucun droit n'est accordé, et aucun n'est retiré : l'appelant garde sa
+            dernière réponse connue.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 
   # ------------------------------------------------------------------- admin --
 
@@ -1990,6 +2097,13 @@ paths:
 components:
 
   securitySchemes:
+    tenantKey:
+      type: http
+      scheme: bearer
+      description: >-
+        La clé API du tenant, détenue par le service de facturation — cette
+        application ne la stocke jamais et délègue la vérification. Réservée aux
+        appels de serveur à serveur.
     adminSession:
       type: apiKey
       in: cookie
@@ -2180,6 +2294,15 @@ components:
         createdAt: { type: string, format: date-time }
         revokedAt: { type: [string, 'null'], format: date-time }
         revokedBy: { type: [string, 'null'] }
+
+    EntitlementLicense:
+      type: object
+      properties:
+        id: { type: string }
+        store: { type: [string, 'null'] }
+        package: { type: string }
+        status: { type: string, description: Statut brut du service de facturation. Seuls `active` et `trialing` ouvrent. }
+        open: { type: integer, description: Nombre de modules que cette licence ouvre. }
 
     ContactRequest:
       type: object

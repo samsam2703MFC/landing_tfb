@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma';
 import { DEFAULT_LOCALE } from '@/lib/i18n/config';
+import { getBillingSnapshot } from '@/lib/billing/client';
 import type { License } from '@/lib/billing/types';
 import { resolveLicenseModules, type ModuleRef, type OverrideRow, type ResolvedModule } from './resolve';
 
@@ -173,6 +174,74 @@ export async function resolveLicenses(licenses: License[]): Promise<LicenseModul
       overrides: overrides.map((o) => ({ ...o, module: byId.get(o.moduleId) ?? null })),
     };
   });
+}
+
+export interface TenantModules {
+  /** Modules open right now, deduplicated across the tenant's licences. */
+  open: ModuleLabel[];
+  /** Package codes seen on those licences — what the pack keys had to match. */
+  packKeys: string[];
+  /** Package codes carrying no pack: they grant nothing, and silence would hide it. */
+  unmatchedPackKeys: string[];
+  /** Licences examined, with the status that decided each one. */
+  licenses: { id: string; store: string | null; package: string; status: string; open: number }[];
+}
+
+/**
+ * Every module a tenant may open, across all its licences (§21).
+ *
+ * The union is deliberate: a franchisee with three stores on three packs may use
+ * anything any of them opens. Pass `store` to narrow it to one licence — that is
+ * what a PWA running in a single shop asks for.
+ *
+ * Free packages are granted without a licence, the same rule `grantsFor` applies,
+ * because a free package has nothing to bill and therefore nothing to expire.
+ */
+export async function openModulesForTenant(
+  tenantName: string,
+  options: { store?: string } = {},
+): Promise<TenantModules> {
+  const [snapshot, catalogue, packs] = await Promise.all([
+    getBillingSnapshot(),
+    getModuleCatalogue(),
+    prisma.pack.findMany({ include: { modules: { select: { moduleId: true } } } }),
+  ]);
+
+  const byId = new Map(catalogue.map((m) => [m.id, m]));
+  const packByKey = new Map(packs.map((p) => [p.key, p]));
+
+  let licenses = snapshot.licenses.filter((l) => l.tenant === tenantName);
+  if (options.store !== undefined) licenses = licenses.filter((l) => l.store === options.store);
+
+  const resolved = await resolveLicenses(licenses);
+
+  const open = new Map<number, ModuleLabel>();
+  for (const row of resolved) {
+    for (const m of row.open) open.set(m.id, m);
+  }
+
+  // A free, active package opens its pack without any licence behind it.
+  for (const pkg of snapshot.packages) {
+    if (!pkg.is_free || !pkg.is_active) continue;
+    for (const m of packByKey.get(pkg.code)?.modules ?? []) {
+      const label = byId.get(m.moduleId);
+      if (label) open.set(label.id, label);
+    }
+  }
+
+  const packKeys = [...new Set(licenses.map((l) => l.package))].sort();
+  return {
+    open: [...open.values()].sort((a, b) => a.key.localeCompare(b.key)),
+    packKeys,
+    unmatchedPackKeys: packKeys.filter((k) => !packByKey.has(k)),
+    licenses: resolved.map((r) => ({
+      id: r.license.id,
+      store: r.license.store,
+      package: r.packKey,
+      status: r.license.status,
+      open: r.open.length,
+    })),
+  };
 }
 
 /** How many licences the billing service reports per package code. */
