@@ -6,7 +6,7 @@ import { getModuleCatalogue } from '@/lib/licensing/queries';
 
 type Ctx = { params: Promise<{ id: string }> };
 
-const KINDS = ['subscription', 'one_time', 'addon', 'free'] as const;
+const KINDS = ['subscription', 'one_time', 'addon', 'free', 'purchase'] as const;
 
 /** GET /api/admin/packs/:id — the pack, its prices, its composition, its licences. */
 export async function GET(request: Request, ctx: Ctx) {

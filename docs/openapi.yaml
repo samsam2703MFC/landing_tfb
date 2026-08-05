@@ -67,6 +67,11 @@ tags:
       Les packs (produits Stripe), ce qu'ils ouvrent, et les dérogations par
       licence. À ne pas confondre avec `/api/admin/billing/*`, qui délègue au
       service de facturation : ces routes-ci sont les nôtres.
+  - name: Admin — Commercial
+    description: >-
+      Agents B2B, leurs attributions, les plans de commission, et le vocabulaire
+      commercial (étapes, prestations, sociétés de facturation). Les offres ne
+      sont pas ici : une offre est un pack.
 
 security: []
 
@@ -2153,6 +2158,526 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # -------------------------------------------------------------- commercial --
+
+  /api/admin/agents:
+    get:
+      tags: [Admin — Commercial]
+      summary: Les agents, leurs clients et ce qui est calculable
+      description: >-
+        `totalCents` n'additionne que les factures encaissées. Une facture émise
+        et non payée n'y figure pas — une commission sur de l'argent que personne
+        n'a reçu est une dette envers l'agent.
+      operationId: listAgents
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les agents.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agents:
+                    type: array
+                    items: { $ref: '#/components/schemas/AgentRow' }
+                  fixture:
+                    type: boolean
+                    description: >-
+                      `true` quand les factures viennent des fixtures. Aucun
+                      montant ne peut alors être arrêté.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Commercial]
+      summary: Crée un agent
+      description: >-
+        Créé sans client et sans plan. Le plan se rattache à l'attribution, pas à
+        l'agent : le même agent peut être sur deux deals différents.
+      operationId: createAgent
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email, description: Unique — c'est l'identifiant de l'agent. }
+                kind: { type: string, enum: [commercial, technique], default: commercial }
+      responses:
+        '201':
+          description: Agent créé.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent: { $ref: '#/components/schemas/Agent' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/agents/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Admin — Commercial]
+      summary: Un agent, ses attributions, ses commissions ligne par ligne
+      description: |
+        Une ligne par facture, avec la raison quand rien n'est calculé. `amount`
+        vaut `null`, jamais `0` : zéro se lit comme une décision, et il s'agit
+        d'une omission.
+
+        `settleable` est `false` tant que les factures ne viennent pas du service
+        de facturation. Arrêter une commission sur des chiffres inventés, c'est
+        payer quelqu'un sur une facture que personne n'a émise.
+      operationId: getAgent
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: La fiche de l'agent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AgentDetail' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags: [Admin — Commercial]
+      summary: Modifie un agent
+      operationId: updateAgent
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                kind: { type: string, enum: [commercial, technique] }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Agent modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  agent: { $ref: '#/components/schemas/Agent' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Commercial]
+      summary: Supprime un agent sans aucune attribution
+      description: >-
+        Refusé dès qu'une attribution existe : la suppression les emporterait, et
+        avec elles le seul document expliquant les commissions versées.
+        Désactivez l'agent à la place.
+      operationId: deleteAgent
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          description: Des attributions sont rattachées à cet agent.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/agents/{id}/assignments:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [Admin — Commercial]
+      summary: Attribue un client à un agent
+      description: >-
+        Si un autre agent détient déjà ce client, son attribution est close à
+        `startedAt` dans la même transaction : deux attributions ouvertes
+        paieraient deux agents sur la même facture. `startedAt` décide de
+        l'ancienneté, donc du palier, pour des années — il vaut par défaut la
+        date du jour et s'antidate délibérément.
+      operationId: assignClient
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/assignments/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantSlug]
+              properties:
+                tenantSlug: { type: string, description: Le slug du tenant côté service de facturation. }
+                packKey: { type: [string, 'null'], description: Restreint l'attribution à un pack. `null` couvre tout. }
+                planId: { type: [integer, 'null'] }
+                startedAt: { type: string, format: date-time }
+                note: { type: string, maxLength: 255 }
+      responses:
+        '201':
+          description: Attribution créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignment: { $ref: '#/components/schemas/AgentAssignment' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/agents/{id}/assignments/{assignmentId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - name: assignmentId
+        in: path
+        required: true
+        schema: { type: integer, minimum: 1 }
+    patch:
+      tags: [Admin — Commercial]
+      summary: Modifie ou clôt une attribution
+      description: >-
+        Changer le plan change les calculs **à venir**. Les commissions déjà
+        arrêtées gardent le taux appliqué : c'est pourquoi l'arrêté capture le
+        montant au lieu de le recalculer depuis le plan du jour.
+      operationId: updateAssignment
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/assignments/[assignmentId]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                planId: { type: [integer, 'null'] }
+                packKey: { type: [string, 'null'] }
+                endedAt: { type: [string, 'null'], format: date-time }
+                note: { type: [string, 'null'], maxLength: 255 }
+      responses:
+        '200':
+          description: Attribution modifiée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignment: { $ref: '#/components/schemas/AgentAssignment' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Commercial]
+      summary: Supprime une attribution
+      description: >-
+        Une attribution qui a tourné se clôt avec `endedAt`, elle ne se supprime
+        pas : c'est le seul document expliquant pourquoi un agent a été payé.
+      operationId: deleteAssignment
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/agents/[id]/assignments/[assignmentId]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/commission-plans:
+    get:
+      tags: [Admin — Commercial]
+      summary: Les plans de commission et leurs paliers
+      description: >-
+        `coversMonthZero` signale un plan dont l'échelle démarre après le mois 0 :
+        il ne calcule rien pour un client neuf, et le fait sans bruit.
+      operationId: listCommissionPlans
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commission-plans/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les plans.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plans:
+                    type: array
+                    items: { $ref: '#/components/schemas/CommissionPlan' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Commercial]
+      summary: Crée un plan et ses paliers
+      description: >-
+        Les taux sont en points de base — `9000` = 90,00 % — et jamais en
+        flottants. Deux paliers au même mois sont refusés : l'échelle dépendrait
+        de l'ordre des lignes.
+      operationId: createCommissionPlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commission-plans/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key]
+              properties:
+                key: { type: string, pattern: '^[a-z0-9][a-z0-9_-]*$' }
+                label: { type: string }
+                tiers:
+                  type: array
+                  items: { $ref: '#/components/schemas/CommissionTier' }
+      responses:
+        '201':
+          description: Plan créé.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { $ref: '#/components/schemas/CommissionPlan' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/commission-plans/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Commercial]
+      summary: Modifie un plan, ou remplace ses paliers
+      description: >-
+        Fourni, `tiers` remplace l'échelle entière : un plan se lit d'un bloc, et
+        une modification à moitié appliquée est un taux que personne n'a
+        négocié.
+      operationId: updateCommissionPlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commission-plans/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                isActive: { type: boolean }
+                tiers:
+                  type: array
+                  items: { $ref: '#/components/schemas/CommissionTier' }
+      responses:
+        '200':
+          description: Plan modifié.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  plan: { $ref: '#/components/schemas/CommissionPlan' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Commercial]
+      summary: Supprime un plan qu'aucune attribution n'utilise
+      description: >-
+        La clé étrangère est `ON DELETE SET NULL` : la suppression ne échouerait
+        pas, elle laisserait ces attributions sans plan et cesserait de payer
+        leurs agents. Désactivez le plan à la place.
+      operationId: deleteCommissionPlan
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commission-plans/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          description: Des attributions utilisent ce plan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /api/admin/commercial/settings:
+    get:
+      tags: [Admin — Commercial]
+      summary: Étapes du cycle, prestations, sociétés de facturation
+      description: >-
+        Les trois listes sont derrière un seul point d'entrée parce qu'elles se
+        lisent ensemble : une liste d'étapes sans ses prestations est une
+        configuration à moitié faite. Les offres ne sont pas ici — une offre est
+        un pack.
+      operationId: getCommercialSettings
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commercial/settings/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les trois listes.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CommercialSettings' }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [Admin — Commercial]
+      summary: Ajoute une entrée dans l'une des trois listes
+      operationId: createCommercialSetting
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commercial/settings/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [collection, key, label]
+              properties:
+                collection: { $ref: '#/components/schemas/CommercialCollection' }
+                key: { type: string, pattern: '^[a-z0-9][a-z0-9_-]*$' }
+                label: { type: string, description: Le nom de la société pour `billing-entities`. }
+                amount:
+                  type: [integer, 'null']
+                  description: '`services` uniquement, en centimes. `null` = sur devis, ce qui n''est pas gratuit.'
+                currency: { type: string, default: EUR }
+                vatNumber: { type: [string, 'null'] }
+                address: { type: [string, 'null'] }
+                sortOrder: { type: integer, default: 0 }
+                isDefault: { type: boolean, description: '`billing-entities` uniquement. Une seule à la fois.' }
+      responses:
+        '201':
+          description: Entrée créée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry: { type: object, additionalProperties: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/commercial/settings/{collection}/{id}:
+    parameters:
+      - name: collection
+        in: path
+        required: true
+        schema: { $ref: '#/components/schemas/CommercialCollection' }
+      - $ref: '#/components/parameters/Id'
+    patch:
+      tags: [Admin — Commercial]
+      summary: Modifie une entrée
+      description: >-
+        Désactiver plutôt que supprimer : une étape ou une prestation qui
+        disparaît emporte la lecture des deals passés.
+      operationId: updateCommercialSetting
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commercial/settings/[collection]/[id]/route.ts
+      security: [{ adminSession: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string }
+                name: { type: string }
+                amount: { type: [integer, 'null'] }
+                currency: { type: string }
+                vatNumber: { type: [string, 'null'] }
+                address: { type: [string, 'null'] }
+                sortOrder: { type: integer }
+                isActive: { type: boolean }
+                isDefault: { type: boolean }
+      responses:
+        '200':
+          description: Entrée modifiée.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entry: { type: object, additionalProperties: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [Admin — Commercial]
+      summary: Supprime une entrée
+      description: >-
+        Possible aujourd'hui parce que rien ne référence encore ces listes. Dès
+        qu'une offre portera une étape ou une prestation, cette route devra
+        refuser sur un compteur de références, comme le font déjà les packs et
+        les plans. La société par défaut est déjà refusée.
+      operationId: deleteCommercialSetting
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/commercial/settings/[collection]/[id]/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          $ref: '#/components/responses/Ok'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
 
   securitySchemes:
@@ -2628,3 +3153,192 @@ components:
           type: object
           description: Chaînes `ui` résolues, indexées par clé pointée.
           additionalProperties: { type: string }
+
+    Agent:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        kind: { type: string, enum: [commercial, technique] }
+        isActive: { type: boolean }
+        createdAt: { type: string, format: date-time }
+
+    AgentRow:
+      type: object
+      description: Une ligne de la liste des agents.
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        email: { type: string, format: email }
+        kind: { type: string, enum: [commercial, technique] }
+        isActive: { type: boolean }
+        clients: { type: integer, description: Attributions ouvertes, tenants distincts. }
+        planKeys:
+          type: array
+          items: { type: string }
+        withoutPlan:
+          type: integer
+          description: >-
+            Attributions ouvertes sans plan. Elles ne calculent rien, sans erreur
+            ni zéro — nommées ici pour que ça se voie avant un versement.
+        totalCents: { type: integer, description: Somme des commissions calculables, en centimes. }
+
+    CommissionTier:
+      type: object
+      required: [fromMonth, percentBp]
+      properties:
+        fromMonth: { type: integer, minimum: 0, description: Ancienneté à partir de laquelle ce palier s'applique. 0 = première année. }
+        percentBp:
+          type: integer
+          minimum: 0
+          maximum: 10000
+          description: Points de base. `9000` = 90,00 %. Jamais un flottant.
+
+    CommissionPlan:
+      type: object
+      properties:
+        id: { type: integer }
+        key: { type: string }
+        label: { type: string }
+        isActive: { type: boolean }
+        tiers:
+          type: array
+          items: { $ref: '#/components/schemas/CommissionTier' }
+        assignments: { type: integer }
+        coversMonthZero:
+          type: boolean
+          description: '`false` = l''échelle démarre après le mois 0, donc rien n''est calculé pour un client neuf.'
+
+    AgentAssignment:
+      type: object
+      properties:
+        id: { type: integer }
+        agentId: { type: integer }
+        tenantSlug: { type: string }
+        packKey: { type: [string, 'null'] }
+        planId: { type: [integer, 'null'] }
+        startedAt:
+          type: string
+          format: date-time
+          description: >-
+            L'ancienneté se compte depuis cette date, pas depuis la facture ni
+            depuis l'arrivée du client.
+        endedAt: { type: [string, 'null'], format: date-time }
+        note: { type: [string, 'null'] }
+
+    Invoice:
+      type: object
+      description: >-
+        Une facture telle que le service de facturation la publie. Cette
+        application ne les modélise pas : elle les lit.
+      properties:
+        id: { type: string }
+        tenant: { type: string, description: Le nom d'affichage du tenant, pas son slug. }
+        store: { type: [string, 'null'] }
+        stripe_invoice_id: { type: string }
+        amount_due: { type: number }
+        amount_paid: { type: number }
+        currency: { type: string }
+        status: { type: string, enum: [draft, open, paid, void, uncollectible] }
+        period:
+          type: string
+          description: >-
+            Texte d'affichage, pas une date. Une période illisible ne donne aucune
+            commission et le dit — une date devinée est de l'argent faux.
+        pdf: { type: boolean }
+
+    CommissionReason:
+      type: string
+      description: Pourquoi une ligne vaut ce qu'elle vaut — ou pourquoi elle ne vaut rien.
+      enum: [ok, unpaid, no_plan, empty_plan, no_tier, unparsable_period, outside_assignment]
+
+    CommissionLine:
+      type: object
+      properties:
+        invoiceId: { type: string }
+        amount:
+          type: [integer, 'null']
+          description: >-
+            En centimes. `null` dès que `reason` n'est pas `ok` — jamais `0`, qui
+            se lirait comme une décision plutôt que comme une omission.
+        percentBp: { type: [integer, 'null'] }
+        months: { type: [integer, 'null'] }
+        reason: { $ref: '#/components/schemas/CommissionReason' }
+        tenantSlug: { type: string }
+        packKey: { type: [string, 'null'] }
+        invoice: { $ref: '#/components/schemas/Invoice' }
+
+    AgentDetail:
+      type: object
+      properties:
+        agent: { $ref: '#/components/schemas/Agent' }
+        assignments:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              tenantSlug: { type: string }
+              tenantName: { type: string }
+              packKey: { type: [string, 'null'] }
+              planKey: { type: [string, 'null'] }
+              planLabel: { type: [string, 'null'] }
+              tiers:
+                type: array
+                items: { $ref: '#/components/schemas/CommissionTier' }
+              startedAt: { type: string, format: date-time }
+              endedAt: { type: [string, 'null'], format: date-time }
+        lines:
+          type: array
+          items: { $ref: '#/components/schemas/CommissionLine' }
+        totalCents: { type: integer }
+        fixture: { type: boolean }
+        settleable:
+          type: boolean
+          description: >-
+            `false` tant que les factures ne viennent pas du service de
+            facturation. Arrêter une commission sur des chiffres inventés, c'est
+            payer sur une facture que personne n'a émise.
+
+    CommercialCollection:
+      type: string
+      enum: [stages, services, billing-entities]
+
+    CommercialSettings:
+      type: object
+      properties:
+        stages:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              key: { type: string }
+              label: { type: string }
+              isActive: { type: boolean }
+              sortOrder: { type: integer }
+        services:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              key: { type: string }
+              label: { type: string }
+              amount: { type: [integer, 'null'], description: Centimes. `null` = sur devis. }
+              currency: { type: string }
+              isActive: { type: boolean }
+              sortOrder: { type: integer }
+        billingEntities:
+          type: array
+          items:
+            type: object
+            properties:
+              id: { type: integer }
+              key: { type: string }
+              name: { type: string }
+              vatNumber: { type: [string, 'null'] }
+              address: { type: [string, 'null'] }
+              isDefault: { type: boolean }
+              isActive: { type: boolean }

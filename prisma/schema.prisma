@@ -153,7 +153,8 @@ model Pack {
   id              Int      @id @default(autoincrement())
   key             String   @unique @db.VarChar(80)
   stripeProductId String?  @unique @map("stripe_product_id") @db.VarChar(120)
-  /// subscription | one_time | addon — how it is billed, not what it opens.
+  /// subscription | one_time | addon | free | purchase — how it is billed, not
+  /// what it opens. `purchase` is §15's outright application purchase.
   kind            String   @default("subscription") @db.VarChar(20)
   /// Icon file stem in public/icons.
   icon            String?  @db.VarChar(60)
@@ -233,6 +234,135 @@ model LicenseOverride {
   @@index([licenseId])
   @@index([moduleId])
   @@map("tfb_license_overrides")
+}
+
+/// §17 — an agent who brings or supports clients.
+model Agent {
+  id        Int      @id @default(autoincrement())
+  name      String   @db.VarChar(150)
+  email     String   @unique @db.VarChar(150)
+  /// commercial | technique — what they are paid for, not what they are called.
+  kind      String   @default("commercial") @db.VarChar(20)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  assignments AgentAssignment[]
+
+  @@map("tfb_agents")
+}
+
+/// §17 — a negotiated split, named and reusable.
+///
+/// "30 %" and "90 % the first year then 20 %" are both plans; the difference is
+/// how many tiers they have. Storing a bare percentage on each client instead
+/// would make every renegotiation a search-and-replace across rows, and make it
+/// impossible to say later which deal someone was actually on.
+model CommissionPlan {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(80)
+  label     String   @db.VarChar(150)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  tiers       CommissionTier[]
+  assignments AgentAssignment[]
+
+  @@map("tfb_commission_plans")
+}
+
+/// §17 — one step of a plan: from this many months of seniority, this rate.
+model CommissionTier {
+  id        Int @id @default(autoincrement())
+  planId    Int @map("plan_id")
+  /// Months of seniority at which this tier starts. 0 is the first year.
+  fromMonth Int @map("from_month")
+  /// Basis points: 9000 = 90,00 %. Never a float — money computed from a float
+  /// is money that disagrees with itself at the fourth decimal.
+  percentBp Int @map("percent_bp")
+
+  plan CommissionPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+
+  @@unique([planId, fromMonth], map: "uq_tier_start")
+  @@index([planId])
+  @@map("tfb_commission_tiers")
+}
+
+/// §17 — this agent handles this client, on this plan, from this date.
+///
+/// `tenant_slug` is the billing service's own identifier, kept as a plain string:
+/// that service owns tenants, and a foreign key across the boundary would be a
+/// lie. Same reasoning as tfb_license_overrides.
+///
+/// `ended_at` rather than deletion: a closed assignment still explains the
+/// commissions paid while it was open.
+model AgentAssignment {
+  id         Int       @id @default(autoincrement())
+  agentId    Int       @map("agent_id")
+  tenantSlug String    @map("tenant_slug") @db.VarChar(120)
+  /// Restricts the assignment to one pack. NULL covers everything the client buys.
+  packKey    String?   @map("pack_key") @db.VarChar(80)
+  planId     Int?      @map("plan_id")
+  /// Seniority is counted from here — not from the invoice, and not from the
+  /// client's own start date. A client handed to another agent restarts at the
+  /// first tier with them, and the previous assignment ends the same day.
+  startedAt  DateTime  @map("started_at")
+  endedAt    DateTime? @map("ended_at")
+  note       String?   @db.VarChar(255)
+  createdAt  DateTime  @default(now()) @map("created_at")
+  updatedAt  DateTime  @updatedAt @map("updated_at")
+
+  agent Agent           @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  plan  CommissionPlan? @relation(fields: [planId], references: [id], onDelete: SetNull)
+
+  @@index([agentId])
+  @@index([tenantSlug])
+  @@map("tfb_agent_assignments")
+}
+
+/// §16 — the commercial cycle's stages, in order.
+model SalesStage {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(80)
+  label     String   @db.VarChar(150)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tfb_sales_stages")
+}
+
+/// §16 — a service included in or sold alongside an offer.
+model Service {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(80)
+  label     String   @db.VarChar(150)
+  /// In cents, like every other amount here. NULL = quoted case by case.
+  amount    Int?
+  currency  String   @default("EUR") @db.VarChar(3)
+  isActive  Boolean  @default(true) @map("is_active")
+  sortOrder Int      @default(0) @map("sort_order")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tfb_services")
+}
+
+/// §16 — the legal entity that issues the invoice.
+model BillingEntity {
+  id        Int      @id @default(autoincrement())
+  key       String   @unique @db.VarChar(80)
+  name      String   @db.VarChar(150)
+  vatNumber String?  @map("vat_number") @db.VarChar(40)
+  address   String?  @db.VarChar(255)
+  isDefault Boolean  @default(false) @map("is_default")
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("tfb_billing_entities")
 }
 
 /// §18 — every Stripe event we have accepted, by its own id.
