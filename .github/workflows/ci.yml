@@ -67,3 +67,13 @@ jobs:
                     if m in ('get', 'post', 'put', 'patch', 'delete'))
           print(f'OpenAPI : {len(spec["paths"])} chemins, {ops} opérations')
           PY
+
+  # Le déploiement est un job de CE workflow, pas un `workflow_run` séparé : la
+  # CI part sur `main` (un `push:` lit le fichier de la branche poussée), donc un
+  # job qui en dépend part aussi, sans rien devoir à la branche par défaut.
+  deployer:
+    name: déploiement
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit
