@@ -102,6 +102,8 @@ model Module {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   screenshots ModuleScreenshot[]
+  packs       PackModule[]
+  overrides   LicenseOverride[]
 
   @@map("tfb_modules")
 }
@@ -137,6 +139,100 @@ model Plan {
   subscriptions Subscription[]
 
   @@map("tfb_plans")
+}
+
+/// §21 — a pack IS a Stripe product. Its prices are Stripe prices; what it opens
+/// is `tfb_pack_modules`, here, in our database.
+///
+/// Stripe says what is paid, we say what that grants. The composition never goes
+/// into Stripe metadata: an authorisation model editable from a dashboard text
+/// field is not an authorisation model.
+///
+/// A pack with no `stripe_product_id` cannot be sold and never reaches the landing.
+model Pack {
+  id              Int      @id @default(autoincrement())
+  key             String   @unique @db.VarChar(80)
+  stripeProductId String?  @unique @map("stripe_product_id") @db.VarChar(120)
+  /// subscription | one_time | addon — how it is billed, not what it opens.
+  kind            String   @default("subscription") @db.VarChar(20)
+  /// Icon file stem in public/icons.
+  icon            String?  @db.VarChar(60)
+  isActive        Boolean  @default(false) @map("is_active")
+  isFeatured      Boolean  @default(false) @map("is_featured")
+  sortOrder       Int      @default(0) @map("sort_order")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  prices  PackPrice[]
+  modules PackModule[]
+
+  @@map("tfb_packs")
+}
+
+/// §21.2 — the billing variants of one pack. Monthly, yearly and one-off are three
+/// prices of the same product, not three packs.
+model PackPrice {
+  id            Int      @id @default(autoincrement())
+  packId        Int      @map("pack_id")
+  stripePriceId String   @unique @map("stripe_price_id") @db.VarChar(120)
+  /// In cents. NULL means "sur devis" — routed to the contact form, never to Checkout.
+  amount        Int?
+  currency      String   @default("EUR") @db.VarChar(3)
+  /// month | year | one_time
+  interval      String   @db.VarChar(20)
+  isDefault     Boolean  @default(false) @map("is_default")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  pack Pack @relation(fields: [packId], references: [id], onDelete: Cascade)
+
+  @@index([packId])
+  @@map("tfb_pack_prices")
+}
+
+/// §21.1 — the composition: which modules a pack opens.
+model PackModule {
+  packId    Int      @map("pack_id")
+  moduleId  Int      @map("module_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  pack   Pack   @relation(fields: [packId], references: [id], onDelete: Cascade)
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@id([packId, moduleId])
+  @@index([moduleId])
+  @@map("tfb_pack_modules")
+}
+
+/// §21.2 — a module opened or closed outside the pack, for one licence.
+///
+/// `license_id` is the billing service's own id, kept as a string: that service
+/// owns licences and this table must not pretend otherwise. There is no foreign
+/// key across the service boundary, on purpose.
+///
+/// No unique constraint on (license_id, module_id): the newest row that is neither
+/// revoked nor expired wins, and the older ones stay as the audit trail. A partial
+/// unique index would say this better, but MySQL has none — so the resolver
+/// enforces it, and `revoked_at` is what retires a derogation.
+model LicenseOverride {
+  id        Int       @id @default(autoincrement())
+  licenseId String    @map("license_id") @db.VarChar(64)
+  moduleId  Int       @map("module_id")
+  /// true = opened despite the pack. false = closed despite the pack.
+  grant     Boolean
+  /// Why. Required — an untraceable derogation is how access drifts.
+  reason    String    @db.Text
+  expiresAt DateTime? @map("expires_at")
+  createdBy String    @map("created_by") @db.VarChar(150)
+  createdAt DateTime  @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+  revokedBy String?   @map("revoked_by") @db.VarChar(150)
+
+  module Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@index([licenseId])
+  @@index([moduleId])
+  @@map("tfb_license_overrides")
 }
 
 /// §2.8 — subscriptions, kept in sync by the Stripe webhook.

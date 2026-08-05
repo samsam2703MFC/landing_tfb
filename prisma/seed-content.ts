@@ -62,6 +62,39 @@ export const MODULES = [
   { key: 'pwa', slug: 'pwa', icon: 'smartphone', moduleGroup: 'Terrain', repo: 'tfb/pwa-shell', isNew: true, sortOrder: 7, shots: 2 },
 ];
 
+/**
+ * tfb_packs — §21. The `key` is deliberately the billing service's package `code`
+ * (`core`, `admin`, `sklep`, see src/lib/billing/fixtures.ts): that equality is
+ * the only join between a licence and the modules it opens, so the seed makes it
+ * true rather than leaving the two halves to disagree.
+ *
+ * `stripePriceId` mirrors the fixtures' packages.stripe_price_id for the same
+ * reason. Amounts are in cents.
+ */
+export const PACKS = [
+  {
+    key: 'core', kind: 'free', icon: 'layers', isActive: true, sortOrder: 1,
+    modules: ['pwa'],
+    prices: [] as { stripePriceId: string; amount: number | null; interval: string; isDefault: boolean }[],
+    stripeProductId: null as string | null,
+  },
+  {
+    key: 'admin', kind: 'subscription', icon: 'layout-dashboard', isActive: true, sortOrder: 2,
+    modules: ['invoicing', 'marketing', 'offers', 'ceobot'],
+    prices: [{ stripePriceId: 'price_1QsAdmin', amount: 8900, interval: 'month', isDefault: true }],
+    stripeProductId: 'prod_QsAdmin' as string | null,
+  },
+  {
+    key: 'sklep', kind: 'subscription', icon: 'shopping-cart', isActive: true, sortOrder: 3,
+    modules: ['shop', 'scan', 'invoicing'],
+    prices: [
+      { stripePriceId: 'price_1QsSklep', amount: 14900, interval: 'month', isDefault: true },
+      { stripePriceId: 'price_1QsSklepY', amount: 149000, interval: 'year', isDefault: false },
+    ],
+    stripeProductId: 'prod_QsSklep' as string | null,
+  },
+];
+
 /** tfb_plans. `amount` in cents; NULL = sur devis. */
 export const PLANS = [
   { key: 'starter', amount: 8900, currency: 'EUR', interval: 'month', isFeatured: false, stripePriceId: null, sortOrder: 1 },

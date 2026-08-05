@@ -13,6 +13,7 @@ import { BASE_PATH } from '@/lib/base-path';
 
 export interface AdminNavCounts {
   tenants?: number;
+  packs?: number;
   licenses?: number;
   sync?: number;
   modules?: number;
@@ -36,7 +37,8 @@ export function buildNav(counts: AdminNavCounts): SidebarSection[] {
         { value: '/admin/tenants', label: 'Tenants', icon: 'building', count: counts.tenants },
         { value: '/admin/licenses', label: 'Licences', icon: 'lock', count: counts.licenses },
         { value: '/admin/invoices', label: 'Factures', icon: 'receipt' },
-        { value: '/admin/packages', label: 'Packages & tarifs', icon: 'tag' },
+        { value: '/admin/packs', label: 'Packs & modules', icon: 'tag', count: counts.packs },
+        { value: '/admin/packages', label: 'Packages & tarifs', icon: 'percent' },
         { value: '/admin/sync', label: 'File de sync', icon: 'arrow-up-down', count: counts.sync },
         { value: '/admin/events', label: 'Événements', icon: 'clock' },
       ],
@@ -79,6 +81,7 @@ const TITLES: Record<string, [string, string[]]> = {
   '/admin/tenants': ['Tenants', ['TFB Admin', 'Facturation', 'Tenants']],
   '/admin/licenses': ['Licences', ['TFB Admin', 'Facturation', 'Licences']],
   '/admin/invoices': ['Factures', ['TFB Admin', 'Facturation', 'Factures']],
+  '/admin/packs': ['Packs & modules', ['TFB Admin', 'Facturation', 'Packs']],
   '/admin/packages': ['Packages & tarifs', ['TFB Admin', 'Facturation', 'Packages']],
   '/admin/sync': ['File de synchronisation', ['TFB Admin', 'Facturation', 'Sync']],
   '/admin/events': ['Événements de licence', ['TFB Admin', 'Facturation', 'Événements']],

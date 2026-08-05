@@ -11,7 +11,7 @@
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../src/lib/auth/password';
 import {
-  AUTHORED_LOCALES, LANGUAGES, SECTIONS, BRANDS, MODULES, PLANS,
+  AUTHORED_LOCALES, LANGUAGES, SECTIONS, BRANDS, MODULES, PACKS, PLANS,
   UI_STRINGS, MODULE_STRINGS, PLAN_STRINGS, CONTACT_MESSAGES,
 } from './seed-content';
 
@@ -106,6 +106,36 @@ async function main() {
     screenshotIds.set(m.key, ids);
   }
   console.log(`modules: ${MODULES.length}`);
+
+  // ---- Packs ---------------------------------------------------------------
+  // Composition is replaced wholesale: the seed states what a pack opens, and a
+  // re-run must not leave a module attached that the seed no longer lists.
+  for (const pk of PACKS) {
+    const row = await prisma.pack.upsert({
+      where: { key: pk.key },
+      create: {
+        key: pk.key, kind: pk.kind, icon: pk.icon, isActive: pk.isActive,
+        sortOrder: pk.sortOrder, stripeProductId: pk.stripeProductId,
+      },
+      update: { kind: pk.kind, icon: pk.icon, sortOrder: pk.sortOrder, stripeProductId: pk.stripeProductId },
+    });
+
+    for (const price of pk.prices) {
+      await prisma.packPrice.upsert({
+        where: { stripePriceId: price.stripePriceId },
+        create: { packId: row.id, ...price, currency: 'EUR' },
+        update: { amount: price.amount, interval: price.interval, isDefault: price.isDefault },
+      });
+    }
+
+    const ids = pk.modules.map((k) => moduleIds.get(k)).filter((v): v is number => v != null);
+    await prisma.packModule.deleteMany({ where: { packId: row.id, moduleId: { notIn: ids } } });
+    await prisma.packModule.createMany({
+      data: ids.map((moduleId) => ({ packId: row.id, moduleId })),
+      skipDuplicates: true,
+    });
+  }
+  console.log(`packs: ${PACKS.length}`);
 
   // ---- Plans ---------------------------------------------------------------
   const planIds = new Map<string, number>();

@@ -35,3 +35,35 @@ jobs:
         env:
           DATABASE_URL: mysql://ci:ci@localhost:3306/ci
           ADMIN_SESSION_SECRET: ci-secret-32-characters-minimum-ok
+
+      # Le contrat prétend décrire ce qui existe. Sans ce contrôle il se met à
+      # décrire ce qui existait, ce qui est pire que pas de contrat : on le croit.
+      - name: Contrôler docs/openapi.yaml
+        run: |
+          python3 - <<'PY'
+          import os, re, sys, yaml
+          spec = yaml.safe_load(open('docs/openapi.yaml'))
+          text = open('docs/openapi.yaml').read()
+
+          broken = []
+          for ref in set(re.findall(r"'#/([^']+)'", text)):
+              node = spec
+              for part in ref.split('/'):
+                  if isinstance(node, dict) and part in node:
+                      node = node[part]
+                  else:
+                      broken.append(ref)
+                      break
+          missing = sorted({s for s in re.findall(r'x-tfb-source:\s*(\S+)', text) if not os.path.exists(s)})
+
+          if broken:
+              print('Références cassées :', ', '.join(sorted(broken)))
+          if missing:
+              print('x-tfb-source introuvable :', ', '.join(missing))
+          if broken or missing:
+              sys.exit(1)
+
+          ops = sum(1 for p in spec['paths'].values() for m in p
+                    if m in ('get', 'post', 'put', 'patch', 'delete'))
+          print(f'OpenAPI : {len(spec["paths"])} chemins, {ops} opérations')
+          PY
