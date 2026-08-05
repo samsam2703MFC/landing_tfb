@@ -30,7 +30,8 @@
     "jose": "5.9.6",
     "next": "^15.5.22",
     "react": "19.0.0",
-    "react-dom": "19.0.0"
+    "react-dom": "19.0.0",
+    "yaml": "2.7.1"
   },
   "devDependencies": {
     "@types/node": "22.10.7",

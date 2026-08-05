@@ -58,6 +58,7 @@ export function buildNav(counts: AdminNavCounts): SidebarSection[] {
         { value: '/admin/brands', label: 'Enseignes', icon: 'store' },
         { value: '/admin/plans', label: 'Tarifs landing', icon: 'credit-card' },
         { value: '/admin/translations', label: 'Traductions', icon: 'languages' },
+        { value: '/admin/api', label: 'Contrat d’API', icon: 'file-text' },
       ],
     },
     {
@@ -93,6 +94,7 @@ const TITLES: Record<string, [string, string[]]> = {
   '/admin/brands': ['Enseignes', ['TFB Admin', 'Contenu', 'Enseignes']],
   '/admin/plans': ['Tarifs landing', ['TFB Admin', 'Contenu', 'Tarifs']],
   '/admin/translations': ['Traductions', ['TFB Admin', 'Contenu', 'Traductions']],
+  '/admin/api': ['Contrat d’API', ['TFB Admin', 'Contrat d’API']],
   '/admin/messages': ['Messages', ['TFB Admin', 'Réseau', 'Messages']],
 };
 

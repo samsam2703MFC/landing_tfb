@@ -1400,6 +1400,39 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 
+  /api/admin/openapi.yaml:
+    get:
+      tags: [Admin — Contenu]
+      summary: Le contrat lui-même, pour l'outillage
+      description: >-
+        Pointez Swagger UI, Postman, Insomnia ou Scalar sur cette URL. La console en
+        rend une version lisible sur `/admin/api` ; celle-ci est la version machine.
+
+
+        **Derrière la session admin, volontairement.** Le document décrit toute la
+        surface `/api/admin/*` : chaque route, chaque corps, chaque refus. Ces
+        endpoints sont gardés de toute façon, donc publier le contrat n'est pas un
+        trou en soi — c'est une carte, et rien n'oblige à en donner une à un inconnu.
+      operationId: getOpenApiDocument
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/openapi.yaml/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Le document OpenAPI.
+          content:
+            application/yaml:
+              schema: { type: string }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: >-
+            `docs/openapi.yaml` est absent du serveur. Signalé plutôt que servi vide :
+            un contrat vide ressemble à une API sans endpoint.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
   /api/admin/upload:
     post:
       tags: [Admin — Contenu]
