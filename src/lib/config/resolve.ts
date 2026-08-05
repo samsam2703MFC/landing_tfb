@@ -12,12 +12,18 @@
  */
 
 import { getBillingSnapshot } from '@/lib/billing/client';
+import { openModulesForTenant } from '@/lib/licensing/queries';
+import { OPEN_STATUSES } from '@/lib/licensing/resolve';
 import type { Tenant } from '@/lib/billing/types';
 import { REGISTRY, registryDefaults, validate, validateTheme, variable, type ConfigValue, type ConfigValues } from './registry';
 import { globalOverlay, publishedOverlay, draftOverlay, type Overlay } from './store';
 
-/** Licence statuses that entitle a tenant to a package. */
-const ENTITLING = new Set(['active', 'trialing']);
+/**
+ * Which statuses entitle a tenant is decided in one place — src/lib/licensing/resolve.ts.
+ * It was written here too, and the same rule stated twice is the "two sources of
+ * truth" this file's own header warns about: they agree until one is edited.
+ */
+const ENTITLING = new Set<string>(OPEN_STATUSES);
 
 export interface ResolvedLayer {
   layer: 'tenant' | 'global' | 'registry';
@@ -42,6 +48,12 @@ export interface AppConfig {
   config: Record<string, Record<string, ConfigValue>>;
   /** Package codes the tenant is entitled to, derived from licences. */
   grants: string[];
+  /**
+   * The module keys those packages actually open — pack composition, then
+   * derogations. A package code says what was paid for; only this says what to
+   * render, and it is what nav.modules is filtered against.
+   */
+  modules: string[];
   /** True when the billing service was unreachable and grants come from fixtures. */
   fixture: boolean;
 }
@@ -109,8 +121,9 @@ export async function grantsFor(slug: string): Promise<{ grants: string[]; tenan
  * The payload a tenant's PWA reads at boot. `draft: true` serves what the console is
  * editing instead of what is published — used by the back office's preview only.
  *
- * nav.modules is filtered against the grants: a module the tenant no longer pays for
- * disappears from the navigation without anybody editing the overlay.
+ * nav.modules is filtered against the modules the licences actually open: one the
+ * tenant no longer pays for disappears from the navigation without anybody editing
+ * the overlay.
  */
 export async function getAppConfig(slug: string, options: { draft?: boolean } = {}): Promise<AppConfig> {
   const [tenantOverlay, global, entitlement] = await Promise.all([
@@ -118,6 +131,13 @@ export async function getAppConfig(slug: string, options: { draft?: boolean } = 
     globalOverlay(),
     grantsFor(slug),
   ]);
+
+  // Package codes are not module keys. Filtering nav.modules against `grants`
+  // compared `shop` to `sklep` and emptied the list every time — silently, because
+  // an empty navigation looks exactly like one nobody configured yet.
+  const openModules = entitlement.tenant
+    ? (await openModulesForTenant(entitlement.tenant.name)).open.map((m) => m.key)
+    : [];
 
   const config: Record<string, Record<string, ConfigValue>> = {};
   for (const resolution of resolveAll(tenantOverlay, global)) {
@@ -127,7 +147,10 @@ export async function getAppConfig(slug: string, options: { draft?: boolean } = 
 
     let value = resolution.value;
     if (resolution.key === 'nav.modules' && Array.isArray(value)) {
-      value = value.filter((moduleKey) => entitlement.grants.includes(moduleKey));
+      // nav.modules is the order and nothing else: the licence decides what may
+      // appear. Honouring a key the licence closed would let the back office hand
+      // out an access nobody paid for.
+      value = value.filter((moduleKey) => openModules.includes(moduleKey));
     }
     (config[group] ??= {})[leaf] = value;
   }
@@ -142,6 +165,7 @@ export async function getAppConfig(slug: string, options: { draft?: boolean } = 
     updatedAt: tenantOverlay.updatedAt,
     config,
     grants: entitlement.grants,
+    modules: openModules,
     fixture: entitlement.fixture,
   };
 }
