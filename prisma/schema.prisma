@@ -365,6 +365,32 @@ model BillingEntity {
   @@map("tfb_billing_entities")
 }
 
+/// §19 — the result of each connector probe, kept so a failure has a history.
+///
+/// A live dashboard answers "is it broken now"; the question that actually gets
+/// asked is "since when", and "did it flap or has it been down all week". One row
+/// per probe answers both.
+///
+/// `detail` is one line for a human. Never a payload and never a response body:
+/// those carry customer data and credentials, and this table is read on a screen
+/// that gets shared.
+model ConnectorCheck {
+  id         Int      @id @default(autoincrement())
+  /// The connector's registry key — plain string, since the registry is code.
+  connector  String   @db.VarChar(60)
+  /// ok | degraded | down | unconfigured — the same vocabulary as the screen.
+  outcome    String   @db.VarChar(20)
+  detail     String?  @db.VarChar(255)
+  /// Round trip in milliseconds. NULL when nothing was called.
+  durationMs Int?     @map("duration_ms")
+  /// manual | page — who asked. A probe nobody triggered is worth less.
+  trigger    String   @default("page") @db.VarChar(20)
+  checkedAt  DateTime @default(now()) @map("checked_at")
+
+  @@index([connector, checkedAt])
+  @@map("tfb_connector_checks")
+}
+
 /// §18 — every Stripe event we have accepted, by its own id.
 ///
 /// Stripe redelivers until it gets a 2xx, so the same event arrives more than once
