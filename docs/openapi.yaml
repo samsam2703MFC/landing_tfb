@@ -72,6 +72,11 @@ tags:
       Agents B2B, leurs attributions, les plans de commission, et le vocabulaire
       commercial (étapes, prestations, sociétés de facturation). Les offres ne
       sont pas ici : une offre est un pack.
+  - name: Admin — Système
+    description: >-
+      Connexions et connecteurs : chaque dépendance externe, son état réel, et ce
+      qui s'arrête sans elle. Aucun secret n'est renvoyé — la présence et le
+      fonctionnement, jamais la valeur.
 
 security: []
 
@@ -2678,6 +2683,94 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
+  # ------------------------------------------------------------- connecteurs --
+
+  /api/admin/connectors:
+    get:
+      tags: [Admin — Système]
+      summary: Chaque dépendance externe, son état réel, et ce qui casse sans elle
+      description: |
+        Quatre états, et la distinction entre les deux premiers est tout l'intérêt
+        de la route :
+
+        - `unconfigured` — aucune configuration. Une **décision**, pas une panne.
+        - `down` — configuré et ne répond pas. Un **accident**.
+        - `degraded` — répond, mais une pièce manque. Le cas le plus discret :
+          Stripe avec une clé secrète et sans secret de webhook lit tout
+          correctement et n'enregistre aucun paiement.
+        - `ok` — répond, et tout ce dont il a besoin est présent.
+
+        Les sondes sont en lecture seule et sans effet de bord, et leur résultat
+        est mis en cache 30 secondes. **Aucun secret ne franchit cette frontière** :
+        les valeurs renvoyées sont des empreintes masquées et des compteurs.
+      operationId: listConnectors
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/connectors/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Les connecteurs et le décompte par état.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connectors:
+                    type: array
+                    items: { $ref: '#/components/schemas/ConnectorState' }
+                  counts:
+                    type: object
+                    properties:
+                      ok: { type: integer }
+                      degraded: { type: integer }
+                      down: { type: integer }
+                      unconfigured: { type: integer }
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /api/admin/connectors/{key}/test:
+    parameters:
+      - name: key
+        in: path
+        required: true
+        description: La clé du connecteur au registre (`src/lib/connectors/registry.ts`).
+        schema:
+          type: string
+          enum: [database, sessions, storage, billing, stripe, tenant-keys]
+    post:
+      tags: [Admin — Système]
+      summary: Relance la sonde d'un connecteur, sans cache
+      description: >-
+        `POST` et non `GET` : l'appel contourne le cache et écrit une ligne
+        d'historique, il n'est donc pas sûr à préfetcher et un navigateur ne doit
+        pas le déclencher au survol. La sonde elle-même reste sans effet de bord
+        sur le connecteur — lire un compte Stripe, compter une table, se faire
+        refuser une clé volontairement invalide. Seuls les tests demandés sont
+        journalisés : enregistrer chaque rendu de page enterrerait les tests sous
+        du bruit.
+      operationId: testConnector
+      x-tfb-status: implemented
+      x-tfb-source: src/app/api/admin/connectors/[key]/test/route.ts
+      security: [{ adminSession: [] }]
+      responses:
+        '200':
+          description: Le connecteur après sondage, et son historique.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  connector: { $ref: '#/components/schemas/ConnectorState' }
+                  history:
+                    type: array
+                    items: { $ref: '#/components/schemas/ConnectorCheck' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
 components:
 
   securitySchemes:
@@ -3342,3 +3435,74 @@ components:
               address: { type: [string, 'null'] }
               isDefault: { type: boolean }
               isActive: { type: boolean }
+
+    ConnectorOutcome:
+      type: string
+      description: >-
+        `unconfigured` est une décision, `down` un accident, `degraded` un
+        connecteur qui répond avec une pièce en moins. Les confondre coûte soit une
+        chasse à une panne inexistante, soit une vraie panne ignorée.
+      enum: [ok, degraded, down, unconfigured]
+
+    ConnectorCheckItem:
+      type: object
+      description: Un contrôle unitaire d'une sonde.
+      properties:
+        name: { type: string }
+        outcome: { $ref: '#/components/schemas/ConnectorOutcome' }
+        value:
+          type: string
+          description: >-
+            Empreinte masquée, compteur ou statut court. **Jamais un secret, jamais
+            une charge utile** — cette valeur s'affiche dans un navigateur, souvent
+            pendant un partage d'écran.
+
+    ConnectorState:
+      type: object
+      properties:
+        key: { type: string }
+        name: { type: string }
+        what: { type: string }
+        icon: { type: string, description: Nom de fichier dans public/icons. }
+        env:
+          type: array
+          description: Les variables d'environnement concernées, nommées — jamais leurs valeurs.
+          items: { type: string }
+        breaks:
+          type: string
+          description: >-
+            Ce qui s'arrête. Un voyant dit qu'un service est mort ; il ne dit pas
+            qu'un client peut être débité sans qu'une ligne soit écrite.
+        optional:
+          type: boolean
+          description: >-
+            `true` quand l'absence est un état supporté — la console se dégrade et
+            le dit. `false` quand l'application ne peut pas faire son travail.
+        dependents:
+          type: array
+          items:
+            type: object
+            properties:
+              name: { type: string }
+              whenBroken: { type: string }
+        outcome: { $ref: '#/components/schemas/ConnectorOutcome' }
+        summary: { type: string }
+        checks:
+          type: array
+          items: { $ref: '#/components/schemas/ConnectorCheckItem' }
+        durationMs: { type: [integer, 'null'] }
+        checkedAt: { type: string, format: date-time }
+
+    ConnectorCheck:
+      type: object
+      description: Une ligne d'historique — tfb_connector_checks.
+      properties:
+        id: { type: integer }
+        connector: { type: string }
+        outcome: { $ref: '#/components/schemas/ConnectorOutcome' }
+        detail:
+          type: [string, 'null']
+          description: Une ligne pour un humain. Ni charge utile, ni corps de réponse.
+        durationMs: { type: [integer, 'null'] }
+        trigger: { type: string, enum: [manual, page] }
+        checkedAt: { type: string, format: date-time }

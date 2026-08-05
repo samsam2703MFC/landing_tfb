@@ -74,6 +74,13 @@ export function buildNav(counts: AdminNavCounts): SidebarSection[] {
       title: 'Réseau',
       items: [{ value: '/admin/messages', label: 'Messages', icon: 'mail', count: counts.messages }],
     },
+    // No count on Connecteurs, deliberately. A badge on « non configuré » would
+    // alert on a decision — Stripe is unplugged on purpose — and a badge on
+    // « en échec » would mean probing six services on every console page load.
+    {
+      title: 'Système',
+      items: [{ value: '/admin/system/connectors', label: 'Connecteurs', icon: 'life-buoy' }],
+    },
   ];
 }
 
@@ -108,6 +115,7 @@ const TITLES: Record<string, [string, string[]]> = {
   '/admin/translations': ['Traductions', ['TFB Admin', 'Contenu', 'Traductions']],
   '/admin/api': ['Contrat d’API', ['TFB Admin', 'Contrat d’API']],
   '/admin/messages': ['Messages', ['TFB Admin', 'Réseau', 'Messages']],
+  '/admin/system/connectors': ['Connecteurs', ['TFB Admin', 'Système', 'Connexions', 'Connecteurs']],
 };
 
 /** Detail routes inherit their parent's title; the screen renders its own heading. */
