@@ -1,11 +1,20 @@
 name: Deploy
 
-# Se déclenche sur main une fois la CI verte, ou à la main depuis l'onglet Actions.
+# Appelé par la CI une fois verte (job `deployer` de ci.yml), ou lancé à la main
+# depuis l'onglet Actions.
+#
+# Ce workflow s'appuyait sur `workflow_run`. Il ne s'est jamais déclenché une
+# seule fois, et la raison n'est pas dans ce fichier : GitHub ne lance un
+# workflow `workflow_run` que depuis la version présente sur la BRANCHE PAR
+# DÉFAUT du dépôt — or la branche par défaut est `feat/landing-and-back-office`,
+# pas `main`. La CI, elle, part bien sur `main` parce qu'un `push:` utilise le
+# fichier de la branche poussée.
+#
+# `workflow_call` n'a pas cette faiblesse : le workflow appelé est résolu depuis
+# le commit de l'appelant. Le déploiement suit donc la CI quoi qu'il arrive à la
+# branche par défaut.
 on:
-  workflow_run:
-    workflows: [CI]
-    branches: [main]
-    types: [completed]
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -18,8 +27,6 @@ jobs:
   deploy:
     name: VPS
     runs-on: ubuntu-latest
-    # Sur workflow_run, ne déploie que si la CI a réussi.
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     environment: production
 
     steps:
@@ -48,6 +55,15 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
+
+          # Une clé illisible échoue plus loin en « Permission denied », ce qui
+          # envoie chercher du côté des droits du serveur alors que le problème
+          # est le format du secret. Panne observée les 02/08 et 05/08 :
+          #   Load key "id_deploy": error in libcrypto
+          if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
+            echo "::error::SSH_KEY n'est pas une clé privée OpenSSH exploitable. Causes courantes : clé publique collée à la place de la privée, retours à la ligne perdus au collage, ou clé protégée par une passphrase — un runner ne peut pas la saisir. Régénérer avec : ssh-keygen -t ed25519 -N '' -f deploy_key"
+            exit 1
+          fi
 
           if [ -n "$KNOWN_HOSTS" ]; then
             printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
