@@ -61,7 +61,23 @@ jobs:
           # est le format du secret. Panne observée les 02/08 et 05/08 :
           #   Load key "id_deploy": error in libcrypto
           if ! ssh-keygen -y -f ~/.ssh/id_deploy > /dev/null 2>&1; then
-            echo "::error::SSH_KEY n'est pas une clé privée OpenSSH exploitable. Causes courantes : clé publique collée à la place de la privée, retours à la ligne perdus au collage, ou clé protégée par une passphrase — un runner ne peut pas la saisir. Régénérer avec : ssh-keygen -t ed25519 -N '' -f deploy_key"
+            # La FORME du secret, jamais son contenu : nombre de lignes, taille,
+            # en-tête. Aucune de ces valeurs n'est un secret, et elles suffisent à
+            # distinguer les quatre façons de rater ce collage — ce que « clé
+            # invalide » tout court ne dit pas.
+            lignes=$(wc -l < ~/.ssh/id_deploy)
+            octets=$(wc -c < ~/.ssh/id_deploy)
+            case "$(head -1 ~/.ssh/id_deploy)" in
+              '-----BEGIN OPENSSH PRIVATE KEY-----') forme='en-tête OpenSSH correct' ;;
+              '-----BEGIN '*)                        forme='en-tête PEM mais pas OpenSSH' ;;
+              ssh-*|ecdsa-*)                         forme='CLÉ PUBLIQUE collée à la place de la privée' ;;
+              '')                                    forme='fichier vide' ;;
+              *)                                     forme='aucun en-tête reconnu' ;;
+            esac
+            chiffree=non; if grep -q ENCRYPTED ~/.ssh/id_deploy; then chiffree=oui; fi
+            crlf=non;     if grep -qU $'\r' ~/.ssh/id_deploy; then crlf=oui; fi
+
+            echo "::error::SSH_KEY illisible — $forme ; $lignes ligne(s) ; $octets octets ; chiffrée : $chiffree ; retours CRLF : $crlf. Une clé ed25519 valide fait 7 lignes et ~400 octets. 0 ou 1 ligne = le collage a aplati la clé. « CLÉ PUBLIQUE » = c'est deploy_key.pub qui a été collé, pas deploy_key. chiffrée : oui = régénérer avec -N ''. Rappel : un secret défini sur l'environnement « production » masque celui du dépôt qui porte le même nom."
             exit 1
           fi
 
