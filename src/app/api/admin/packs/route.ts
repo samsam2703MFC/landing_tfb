@@ -13,7 +13,7 @@ import { getPacks, countLicensesByPackage } from '@/lib/licensing/queries';
  */
 
 const KEY_RE = /^[a-z0-9][a-z0-9_-]*$/;
-const KINDS = ['subscription', 'one_time', 'addon', 'free'] as const;
+const KINDS = ['subscription', 'one_time', 'addon', 'free', 'purchase'] as const;
 
 /** GET /api/admin/packs — packs, prices, composition, and their licence counts. */
 export const GET = withAdmin(async () => {

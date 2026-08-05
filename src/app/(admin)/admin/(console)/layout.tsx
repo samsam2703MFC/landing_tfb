@@ -24,11 +24,12 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
   const session = await getSession();
   if (!session) redirect('/admin/login');
 
-  const [billing, moduleCount, packCount, unread] = await Promise.all([
+  const [billing, moduleCount, packCount, unread, agentCount] = await Promise.all([
     getBillingSnapshot(),
     prisma.module.count(),
     prisma.pack.count(),
     prisma.contactMessage.count({ where: { status: 'new' } }),
+    prisma.agent.count({ where: { isActive: true } }),
   ]);
 
   const counts = {
@@ -38,6 +39,7 @@ export default async function ConsoleLayout({ children }: { children: ReactNode 
     modules: moduleCount,
     packs: packCount,
     messages: unread,
+    agents: agentCount,
     // Un profil de configuration par tenant vivant ; le registre et le catalogue
     // sont du code, donc leurs compteurs sont des constantes, pas des requêtes.
     profiles: billing.tenants.filter((t) => t.archived_at === null).length,
