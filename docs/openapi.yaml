@@ -239,7 +239,24 @@ paths:
       description: |
         La signature est vérifiée avant toute écriture. Tant que
         `STRIPE_WEBHOOK_SECRET` n'est pas défini, **la route refuse tout appel** :
-        un webhook non vérifié ne doit jamais écrire en base.
+        un webhook non vérifié est une écriture non authentifiée par quiconque
+        connaît l'URL.
+
+        **Le même événement arrive plusieurs fois.** Stripe redélivre jusqu'à
+        obtenir un 2xx, donc un doublon est le cas normal. `tfb_stripe_events`
+        porte un index unique sur l'identifiant : l'insertion *est* le verrou, et
+        perdre cette course signifie qu'un autre appel applique déjà l'événement.
+        Un doublon répond `200 { duplicate: true }`.
+
+        **Les événements arrivent dans le désordre.** Un
+        `customer.subscription.updated` retardé peut atterrir après un plus récent
+        et faire reculer le statut — de `canceled` vers `active`, qui est le sens
+        coûteux. Chaque écriture compare le `created` de Stripe à
+        `tfb_subscriptions.last_event_created` et refuse de revenir en arrière.
+
+        Un échec de traitement laisse la ligne en `failed` plutôt que de la
+        supprimer : la console doit montrer qu'un événement est arrivé sans
+        aboutir, et la redélivrance suivante a le droit de réessayer.
       operationId: postStripeWebhook
       x-tfb-status: implemented
       x-tfb-source: src/app/api/stripe/webhook/route.ts
@@ -256,7 +273,16 @@ paths:
           schema: { type: string }
       responses:
         '200':
-          description: Événement traité, ou ignoré parce que non pertinent.
+          description: Événement traité, ignoré, ou déjà appliqué.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  received: { type: boolean, const: true }
+                  duplicate:
+                    type: boolean
+                    description: Présent quand cet identifiant avait déjà abouti. Rien n'a été réappliqué.
         '400':
           description: Signature invalide, ou secret de webhook absent.
           content:
