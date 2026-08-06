@@ -46,7 +46,7 @@ export const CHAMPS_DOSSIER = [
   // franchiseur au centre, comptabilité ailleurs.
   { nom: 'facturation_adresse', libelle: 'Adresse de facturation', groupe: 'facturation', zone: true },
   { nom: 'facturation_email', libelle: 'Courriel de facturation', groupe: 'facturation', type: 'email' },
-  { nom: 'iban', libelle: 'IBAN', groupe: 'facturation', requis: true },
+  { nom: 'iban', libelle: 'IBAN du franchiseur', groupe: 'facturation', requis: true, exemple: 'BE68 5390 0754 7034' },
   { nom: 'bic', libelle: 'BIC', groupe: 'facturation' },
   { nom: 'delai_paiement_jours', libelle: 'Délai de paiement', groupe: 'facturation', unite: 'j', nombre: true },
   { nom: 'mandat_sepa', libelle: 'Mandat de domiciliation signé', groupe: 'facturation', case: true },
@@ -55,7 +55,17 @@ export const CHAMPS_DOSSIER = [
 export const GROUPES_DOSSIER = [
   { cle: 'entite', titre: 'L’entité qui signe', aide: "Ce qui identifie la société au registre : c'est elle qui s'engage, pas la personne en face de vous." },
   { cle: 'signature', titre: 'Le signataire', aide: 'Qui signe, et de quel droit. Un contrat signé par quelqu’un sans pouvoir n’engage personne.' },
-  { cle: 'facturation', titre: 'Facturation et banque', aide: 'Où part la facture, et sur quel compte arrive le paiement.' },
+  {
+    cle: 'facturation',
+    titre: 'Le compte du franchiseur',
+    // Le sens de ce groupe se perdait derrière « Facturation et banque ».
+    // C'est le compte sur lequel LE FRANCHISEUR est payé — les redevances de
+    // ses franchisés, encaissées par la plateforme et reversées. Lu comme
+    // « notre compte à nous », il se remplissait avec l'IBAN de TFB, et
+    // l'erreur ne se voyait qu'au premier virement qui ne partait pas.
+    aide: 'Sur quel compte le franchiseur est payé, et où part la facture. '
+      + 'C’est SON IBAN, pas le nôtre.',
+  },
 ];
 
 /**

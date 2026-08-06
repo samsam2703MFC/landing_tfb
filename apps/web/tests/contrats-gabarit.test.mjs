@@ -50,9 +50,17 @@ describe('le dossier client', () => {
   });
 
   it('nomme le champ qui manque en clair, pas par sa colonne', () => {
+    // L'intitulé peut se reformuler — « IBAN » est devenu « IBAN du
+    // franchiseur » le jour où l'on s'est aperçu qu'on y saisissait le nôtre.
+    // Ce que ce test tient, c'est qu'un libellé lisible accompagne la colonne,
+    // pas le mot exact.
     const r = dossierComplet(dossierPlein({ iban: '' }), { pieces: PIECES_REQUISES });
     assert.equal(r.complet, false);
-    assert.deepEqual(r.manque, [{ quoi: 'champ', nom: 'iban', libelle: 'IBAN' }]);
+    assert.equal(r.manque.length, 1);
+    assert.equal(r.manque[0].quoi, 'champ');
+    assert.equal(r.manque[0].nom, 'iban');
+    assert.match(r.manque[0].libelle, /IBAN/);
+    assert.notEqual(r.manque[0].libelle, r.manque[0].nom);
   });
 
   it('refuse un dossier sans pièce d’identité, même parfaitement rempli', () => {
