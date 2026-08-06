@@ -288,6 +288,67 @@ const RUBRIQUES = TOUTES
         font: 400 var(--text-sm) / 1.5 var(--font-sans); color: var(--slate-600);
       }
 
+      /* ── Cartouches, bandeaux, pilules ─────────────────────────────────── */
+      /*
+       * Trois motifs partagés, ici et non dans chaque page.
+       *
+       * Ils vivaient dans le `<style is:global>` de commissions.astro. Astro
+       * empaquette ces styles **par page** : les pages qui reprenaient les
+       * classes sans recopier les règles s'affichaient donc sans style, et rien
+       * ne le signalait — pas d'erreur au build, pas d'avertissement, juste
+       * quatre chiffres nus en haut de l'écran. C'est arrivé deux fois.
+       */
+
+      /* Quatre chiffres en tête d'écran, pas un tableau de bord. */
+      .cartouches {
+        display: grid; grid-template-columns: repeat(4, 1fr);
+        gap: 16px; margin-block-end: 20px;
+      }
+      /* Quatre colonnes tiennent au bureau, deux sur une tablette, une sur un
+         téléphone — en dessous, le chiffre passe sous son intitulé. */
+      @media (max-width: 1080px) { .cartouches { grid-template-columns: repeat(2, 1fr); } }
+      @media (max-width: 560px) { .cartouches { grid-template-columns: 1fr; } }
+      .cartouche {
+        background: var(--blanc); border: 1px solid var(--slate-200);
+        border-radius: var(--rayon-carte, 14px);
+        padding: 16px 18px; display: flex; flex-direction: column; gap: 2px;
+      }
+      .cartouche__k {
+        font: 600 var(--text-xs) / 1 var(--font-sans); text-transform: uppercase;
+        letter-spacing: 0.06em; color: var(--slate-500);
+      }
+      .cartouche__v {
+        font: 600 var(--text-3xl) / 1.1 var(--font-titre, var(--font-sans));
+        margin-block-start: 6px;
+      }
+      .cartouche__d { font: var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500); }
+
+      /* Un bandeau qui explique. Neutre par défaut, ambre quand il appelle un
+         geste — jamais rouge : ces écrans signalent des situations à traiter,
+         pas des pannes. */
+      .avertit {
+        display: flex; gap: 10px; align-items: flex-start; padding: 13px 16px;
+        border-radius: 12px; margin-block-end: 20px;
+        font: var(--text-sm) / 1.5 var(--font-sans);
+        background: var(--slate-50); color: var(--slate-700); border: 1px solid var(--slate-200);
+      }
+      .avertit svg { flex: none; margin-block-start: 2px; color: var(--slate-500); }
+      .avertit--attention {
+        background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c);
+        border-color: var(--amber-200, #f0d9a8);
+      }
+      .avertit--attention svg { color: var(--text-warning); }
+
+      /* Une pilule pour une valeur courte et dénombrable — un pack, un taux,
+         une clé. En chasse fixe : ce sont des choses qu'on compare de l'œil
+         d'une ligne à l'autre. */
+      .taux {
+        display: inline-block; margin-inline-end: 4px;
+        font: 600 var(--text-xs) / 1 var(--font-mono);
+        padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
+        background: var(--brand-subtle); color: var(--brand-press);
+      }
+
       /* ── Tables ────────────────────────────────────────────────────────── */
       .roule { overflow-x: auto; }
       table { inline-size: 100%; border-collapse: collapse; }

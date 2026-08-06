@@ -1,0 +1,216 @@
+---
+/**
+ * Les applications de ce client, et ce qu'elles lisent.
+ *
+ * « Combien de PWA tournent chez Belleville, et sur quelles API ? » — la
+ * réponse existait, éparpillée sur trois écrans du rail : les jetons disaient
+ * qui a un accès, les endpoints ce que chaque application peut lire, et rien ne
+ * recousait les deux par client.
+ *
+ * Le couple qui compte est `(application, client)`, porté par le jeton :
+ * l'application dit quels endpoints elle atteint, le client dit sur quelle base
+ * ils s'exécutent. Une application sans jeton pour ce client-ci n'est pas la
+ * sienne, même si elle tourne chez dix autres.
+ *
+ * Rien de secret n'est affiché : un jeton ne se relit pas, même par un
+ * administrateur. On montre ses quatre derniers caractères, sa date et son
+ * usage — de quoi l'identifier pour le révoquer, pas de quoi s'en servir.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import OngletsClient from '../../../../components/OngletsClient.astro';
+import { lien } from '../../../../lib/lien.mjs';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { applicationsDuClient } from '../../../../lib/admin/fiche-client.mjs';
+
+const { id } = Astro.params;
+let erreur = null;
+let prospect = null;
+let parc = { applications: [], en_fonction: 0, jetons: 0 };
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) parc = await applicationsDuClient(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : null);
+const appels = parc.applications.reduce((s, a) => s + a.appels, 0);
+const muettes = parc.applications.filter((a) => a.jamais_appelee);
+const sansApi = parc.applications.filter((a) => a.sans_api);
+const cassees = parc.applications.filter((a) => a.orpheline || !a.application_active);
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Client · ${prospect?.raison_sociale || ''} · Applications`}
+  actif="offres"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <OngletsClient prospect={prospect.id} actif="applications" />
+
+      <div class="cartouches">
+        <div class="cartouche">
+          <span class="cartouche__k">En fonction</span>
+          <strong class="cartouche__v">{parc.en_fonction}</strong>
+          <span class="cartouche__d">jeton valable et déjà appelé</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Applications</span>
+          <strong class="cartouche__v">{parc.applications.length}</strong>
+          <span class="cartouche__d">un jeton chez ce client</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Jetons</span>
+          <strong class="cartouche__v">{parc.jetons}</strong>
+          <span class="cartouche__d">révoqués et expirés compris</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Appels</span>
+          <strong class="cartouche__v">{appels.toLocaleString('fr-BE')}</strong>
+          <span class="cartouche__d">depuis la création des jetons</span>
+        </div>
+      </div>
+
+      {/* « Livrée » et « en fonction » ne sont pas la même chose, et les
+          confondre envoie chercher un bug là où il faut passer un coup de
+          fil. */}
+      {muettes.length > 0 && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>{muettes.map((a) => a.nom).join(', ')} — jamais appelée(s).</strong>
+            Le jeton est valable, personne ne s'en est encore servi. Ce n'est pas une panne :
+            c'est une mise en service qui n'a pas eu lieu.
+          </span>
+        </p>
+      )}
+
+      {sansApi.length > 0 && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>{sansApi.map((a) => a.nom).join(', ')} — aucun endpoint autorisé.</strong>
+            Ces applications ont un jeton et ne peuvent rien lire : tout appel repartira en 403.
+            Les endpoints se lient depuis <a href={lien('/admin/endpoints')}>la bibliothèque</a>.
+          </span>
+        </p>
+      )}
+
+      {cassees.length > 0 && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>{cassees.map((a) => a.nom).join(', ')}</strong> — application désactivée ou
+            supprimée alors que ce client en a encore un jeton. Le jeton ne sert plus, et rien ne
+            le disait.
+          </span>
+        </p>
+      )}
+
+      {parc.applications.length === 0 ? (
+        <section class="bloc">
+          <div class="bloc__pied">
+            Aucune application chez ce client. Elles apparaissent ici dès qu'un jeton lui est
+            émis, depuis <a href={lien('/admin/jetons')}>Jetons d'accès</a>.
+          </div>
+        </section>
+      ) : (
+        parc.applications.map((a) => (
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>{a.nom}</h2>
+                <p>
+                  {a.cle && <span class="jeton">{a.cle}</span>}
+                  {a.appels > 0
+                    ? ` ${a.appels.toLocaleString('fr-BE')} appel(s), le dernier le ${jourHeure(a.dernier_appel)}`
+                    : ' Aucun appel à ce jour.'}
+                </p>
+              </div>
+              {a.en_fonction
+                ? <span class="etat etat--on">en fonction</span>
+                : a.jamais_appelee
+                  ? <span class="etat etat--manque">jamais appelée</span>
+                  : <span class="etat">hors service</span>}
+              {a.orpheline && <span class="etat etat--manque">application supprimée</span>}
+              {!a.orpheline && !a.application_active && <span class="etat etat--manque">désactivée</span>}
+            </div>
+
+            <div class="roule">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Jeton</th>
+                    <th style="inline-size:9rem">État</th>
+                    <th style="inline-size:11rem">Créé</th>
+                    <th style="inline-size:11rem">Dernier appel</th>
+                    <th style="inline-size:7rem">Appels</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {a.jetons.map((j) => (
+                    <tr>
+                      <td>
+                        <strong class="num">{j.masque}</strong>
+                        {j.libelle && <span class="champ__aide">{j.libelle}</span>}
+                      </td>
+                      <td>
+                        {j.vivant
+                          ? <span class="etat etat--on">valable</span>
+                          : j.expire
+                            ? <span class="etat etat--manque">expiré</span>
+                            : <span class="etat">révoqué</span>}
+                        {j.expire_le && !j.expire && (
+                          <span class="champ__aide">jusqu'au {jourHeure(j.expire_le)}</span>
+                        )}
+                      </td>
+                      <td>{jourHeure(j.cree_le) || <span class="champ__aide">—</span>}</td>
+                      <td>{jourHeure(j.vu_le) || <span class="champ__aide">jamais</span>}</td>
+                      <td class="num">{j.appels || <span class="champ__aide">—</span>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div class="bloc__pied">
+              {a.endpoints.length === 0 ? (
+                <><strong>Aucune API autorisée.</strong> Cette application ne peut rien lire chez
+                  ce client — ni chez aucun autre.</>
+              ) : (
+                <>
+                  <strong>{a.endpoints.length} endpoint(s) autorisé(s)</strong> — ce que ce jeton
+                  permet de lire, et rien de plus :
+                  <div class="api">
+                    {a.endpoints.map((e) => (
+                      <span class={e.statut === 'actif' ? 'taux' : 'taux api--froid'} title={e.nom}>
+                        {e.cle}
+                        {e.statut !== 'actif' && ` (${e.statut})`}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+          </section>
+        ))
+      )}
+    </>
+  )}
+</Console>
+
+<style is:global>
+  .api { display: flex; flex-wrap: wrap; gap: 4px; margin-block-start: 8px; }
+  /* Un endpoint en brouillon ou retiré reste listé — il est bel et bien lié —
+     mais il ne répond pas. En gris pour qu'on ne le compte pas comme un accès
+     qui fonctionne. */
+  .api--froid { background: var(--slate-100); color: var(--slate-600); }
+</style>

@@ -298,43 +298,16 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
 </Console>
 
 <style is:global>
-  /* Les cartouches du haut : quatre chiffres, pas un tableau de bord. */
-  .cartouches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-block-end: 20px; }
-  .cartouche {
-    background: var(--blanc); border: 1px solid var(--slate-200); border-radius: var(--rayon-carte, 14px);
-    padding: 16px 18px; display: flex; flex-direction: column; gap: 2px;
-  }
-  .cartouche__k {
-    font: 600 var(--text-xs) / 1 var(--font-sans); text-transform: uppercase;
-    letter-spacing: 0.06em; color: var(--slate-500);
-  }
-  .cartouche__v { font: 600 var(--text-3xl) / 1.1 var(--font-titre, var(--font-sans)); margin-block-start: 6px; }
-  .cartouche__d { font: var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500); }
-
-  .avertit {
-    display: flex; gap: 10px; align-items: flex-start; padding: 13px 16px;
-    border-radius: 12px; margin-block-end: 20px;
-    font: var(--text-sm) / 1.5 var(--font-sans);
-    background: var(--slate-50); color: var(--slate-700); border: 1px solid var(--slate-200);
-  }
-  .avertit svg { flex: none; margin-block-start: 2px; color: var(--slate-500); }
-  .avertit--attention {
-    background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c);
-    border-color: var(--amber-200, #f0d9a8);
-  }
-  .avertit--attention svg { color: var(--text-warning); }
+  /* `.cartouches`, `.avertit` et `.taux` sont dans Console.astro : trois pages
+     les reprenaient, et Astro empaquette les styles par page — celles qui ne
+     recopiaient pas les règles s'affichaient sans style, sans rien pour le
+     signaler. */
 
   /* Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
      sans sa raison se lit comme un bug ; avec, c'est une information. */
   .raison {
     display: block; margin-block-start: 4px;
     font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
-  }
-  .taux {
-    display: inline-block; margin-inline-end: 4px;
-    font: 600 var(--text-xs) / 1 var(--font-mono);
-    padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
-    background: var(--brand-subtle); color: var(--brand-press);
   }
   /* Deux niveaux : le client, puis ses contrats.
      À plat, l'écran listait « CTR-2026-014 » sans dire de qui il s'agit — et un
@@ -369,7 +342,4 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
   .rattache { display: flex; gap: 8px; align-items: center; }
   .bloc__actions { display: flex; gap: 14px; align-items: center; margin-inline-start: auto; }
   .total { font: 600 var(--text-lg) / 1 var(--font-mono); }
-  @media (max-width: 900px) {
-    .cartouches { grid-template-columns: repeat(2, 1fr); }
-  }
 </style>
