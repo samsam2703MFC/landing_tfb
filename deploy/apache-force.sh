@@ -217,9 +217,25 @@ head -c 300 /tmp/tfb443 2>/dev/null | sed 's/^/   /'; echo
 say "B. Vhosts retenus par Apache"
 apache2ctl -S 2>&1 | sed 's/^/   /'
 
-say "C. Directives de routage, tous vhosts activés"
+# conf-enabled/ AUTANT que sites-enabled/. apache2.conf inclut conf-enabled en
+# premier, ses directives sont donc au niveau serveur et s'appliquent partout.
+# Ne lister que les vhosts laisse hors du diagnostic l'endroit d'où vient le
+# problème — et se lit comme une inspection complète, ce qui est pire que rien.
+say "C. Directives de routage — vhosts ET configurations globales"
 grep -RnE "^[[:space:]]*(<VirtualHost|ServerName|ServerAlias|DocumentRoot|Rewrite|Proxy|Alias|Redirect)" \
-  /etc/apache2/sites-enabled/ 2>/dev/null | sed 's/^/   /'
+  /etc/apache2/conf-enabled/ /etc/apache2/sites-enabled/ 2>/dev/null | sed 's/^/   /'
+
+# Un Alias sans barre oblique finale capte tous les chemins qui COMMENCENT par
+# sa chaîne : `Alias /landing …` prend aussi /landing_tfb. mod_alias compare une
+# chaîne, pas des segments. Le piège est classique et invisible à la relecture.
+say "C bis. Préfixes qui pourraient capter ${BASE} par recouvrement de chaîne"
+grep -RnE "^[[:space:]]*(Alias|AliasMatch|ProxyPass|Redirect|RedirectMatch)[[:space:]]+\^?/[a-zA-Z0-9_-]+" \
+  /etc/apache2/conf-enabled/ /etc/apache2/sites-enabled/ 2>/dev/null \
+  | awk -v b="$BASE" '{ for (i=1;i<NF;i++)
+      if ($i ~ /^(Alias|AliasMatch|ProxyPass|Redirect|RedirectMatch)$/) {
+        p=$(i+1); sub(/^\^/,"",p); sub(/\/$/,"",p);
+        if (p != b && index(b, p) == 1) print "   " $0
+        break } }'
 
 say "D. Configurations globales actives"
 ls -1 /etc/apache2/conf-enabled/ 2>/dev/null | sed 's/^/   /'
