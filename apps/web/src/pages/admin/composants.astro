@@ -133,11 +133,11 @@ const pied = [
     </div>
 
     <!-- ── La barre de filtres ──────────────────────────────────────────── -->
-    <div class="filtres">
-      <form class="quete" method="get" action={lien('/admin/composants')}>
+    <div class="crible">
+      <form class="crible__quete" method="get" action={lien('/admin/composants')}>
         {filtre && <input type="hidden" name="module" value={filtre} />}
         {manque && <input type="hidden" name="manque" value={manque} />}
-        <Icone nom="search" taille={15} classe="quete__loupe" />
+        <Icone nom="search" taille={15} classe="crible__loupe" />
         <input
           type="search"
           name="q"
@@ -146,38 +146,38 @@ const pied = [
           aria-label="Rechercher un composant"
         />
         <button class="bouton bouton--sobre bouton--sm" type="submit">Chercher</button>
-        {quete && <a class="quete__vider" href={vers({ q: '' })} title="Effacer la recherche">Effacer</a>}
+        {quete && <a class="crible__quete__vider" href={vers({ q: '' })} title="Effacer la recherche">Effacer</a>}
       </form>
 
-      <div class="puces" role="group" aria-label="Filtrer par module">
-        <a class={`puce ${filtre ? '' : 'puce--on'}`} href={vers({ module: '' })}>
+      <div class="crible__rang" role="group" aria-label="Filtrer par module">
+        <a class={`tri ${filtre ? '' : 'tri--on'}`} href={vers({ module: '' })}>
           Tous <b>{trouves.length}</b>
         </a>
         {modules.map((m) => {
           const n = parModule.get(m.slug) || 0;
           return (
             <a
-              class={`puce ${filtre === m.slug ? 'puce--on' : ''} ${n === 0 ? 'puce--vide' : ''}`}
+              class={`tri ${filtre === m.slug ? 'tri--on' : ''} ${n === 0 ? 'tri--vide' : ''}`}
               href={vers({ module: m.slug })}
               title={m.nb_nouvelles > 0 ? `${m.nb_nouvelles} composant(s) à valider` : undefined}
             >
               {m.nom || m.slug} <b>{n}</b>
-              {m.nb_nouvelles > 0 && <i class="puce__point" aria-hidden="true"></i>}
+              {m.nb_nouvelles > 0 && <i class="tri__point" aria-hidden="true"></i>}
             </a>
           );
         })}
       </div>
 
-      <div class="puces" role="group" aria-label="Filtrer par manque">
-        <span class="puces__oeil">Repérer&nbsp;:</span>
+      <div class="crible__rang" role="group" aria-label="Filtrer par manque">
+        <span class="crible__oeil">Repérer&nbsp;:</span>
         {TROUS.map((t) => (
           <a
-            class={`puce puce--trou ${manque === t.cle ? 'puce--on' : ''} ${t.nombre === 0 ? 'puce--vide' : ''}`}
+            class={`tri tri--trou ${manque === t.cle ? 'tri--on' : ''} ${t.nombre === 0 ? 'tri--vide' : ''}`}
             href={vers({ manque: manque === t.cle ? '' : t.cle })}
           >{t.mot} <b>{t.nombre}</b></a>
         ))}
         {filtreActif && (
-          <a class="puce puce--net" href={lien('/admin/composants')}>Tout afficher</a>
+          <a class="tri tri--net" href={lien('/admin/composants')}>Tout afficher</a>
         )}
       </div>
     </div>
@@ -254,25 +254,36 @@ const pied = [
 
 <style>
   /* ── La barre de filtres ───────────────────────────────────────────────
-     Elle occupe toute la largeur du bloc, sous le titre : quatorze modules
-     tiennent alors sur deux lignes au lieu d'une colonne qui pousse la page
-     vers le bas. */
+     Trois rangs empilés : la recherche, les modules, les manques. Chacun
+     prend toute la largeur, et quatorze modules tiennent sur deux lignes au
+     lieu d'une colonne qui pousse la page vers le bas.
 
-  .quete { display: flex; align-items: center; gap: 8px; position: relative; max-inline-size: 34rem; }
-  .quete input[type='search'] { padding-inline-start: 32px; }
-  .quete :global(.quete__loupe) {
+     Elle s'appelait `.filtres`, et ce nom appartient déjà à Console.astro où
+     il désigne **une grille de champs de formulaire**. Les trois rangs se
+     retrouvaient donc côte à côte en colonnes, alignés par le bas : la
+     recherche à gauche, les puces en deux paquets flottants au milieu. Rien
+     n'était cassé au sens du build — juste illisible.
+
+     La leçon, et c'est la deuxième fois cette semaine : dans une console où
+     les styles sont globaux, un nom générique est déjà pris. `.crible` et
+     `.tri` n'appartiennent qu'à cet écran. */
+  .crible { display: flex; flex-direction: column; gap: 12px; }
+
+  .crible__quete { display: flex; align-items: center; gap: 8px; position: relative; max-inline-size: 34rem; }
+  .crible__quete input[type='search'] { padding-inline-start: 32px; }
+  .crible__quete :global(.crible__loupe) {
     position: absolute; inset-inline-start: 10px; color: var(--slate-400); pointer-events: none;
   }
-  .quete__vider { font: var(--type-body-sm); color: var(--slate-600); white-space: nowrap; }
+  .crible__quete__vider { font: var(--type-body-sm); color: var(--slate-600); white-space: nowrap; }
 
-  .puces { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .puces__oeil {
+  .crible__rang { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .crible__oeil {
     font: 600 var(--text-xs) / 1 var(--font-sans);
     letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--slate-400);
     margin-inline-end: 2px;
   }
 
-  .puce {
+  .tri {
     display: inline-flex; align-items: center; gap: 6px;
     padding: 5px 10px;
     border-radius: var(--radius-pill);
@@ -283,27 +294,27 @@ const pied = [
     text-decoration: none;
     transition: var(--transition-control);
   }
-  .puce:hover { border-color: var(--slate-300); color: var(--navy-900); background: var(--slate-50); text-decoration: none; }
-  .puce b {
+  .tri:hover { border-color: var(--slate-300); color: var(--navy-900); background: var(--slate-50); text-decoration: none; }
+  .tri b {
     font-family: var(--font-mono); font-variant-numeric: tabular-nums;
     font-weight: 500; font-size: 11px; color: var(--slate-400);
   }
-  .puce--on { background: var(--brand); border-color: var(--brand); color: #fff; }
-  .puce--on:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
-  .puce--on b { color: rgba(255, 255, 255, 0.72); }
+  .tri--on { background: var(--brand); border-color: var(--brand); color: #fff; }
+  .tri--on:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
+  .tri--on b { color: rgba(255, 255, 255, 0.72); }
   /* Un module que la recherche ne touche pas reste cliquable, mais s'efface. */
-  .puce--vide { opacity: 0.45; }
-  .puce--vide.puce--on { opacity: 1; }
+  .tri--vide { opacity: 0.45; }
+  .tri--vide.tri--on { opacity: 1; }
 
   /* Le point signale les composants encore à valider dans ce module. */
-  .puce__point {
+  .tri__point {
     inline-size: 6px; block-size: 6px; border-radius: 50%;
     background: var(--status-warning); flex: none;
   }
 
-  .puce--trou { border-style: dashed; }
-  .puce--trou.puce--on { border-style: solid; background: var(--text-warning); border-color: var(--text-warning); }
-  .puce--net { border-color: transparent; color: var(--brand-hover); text-decoration: underline; }
+  .tri--trou { border-style: dashed; }
+  .tri--trou.tri--on { border-style: solid; background: var(--text-warning); border-color: var(--text-warning); }
+  .tri--net { border-color: transparent; color: var(--brand-hover); text-decoration: underline; }
 
   .vide { text-align: center; color: var(--slate-600); padding-block: 32px; }
   .vide a { margin-inline-start: 8px; }
