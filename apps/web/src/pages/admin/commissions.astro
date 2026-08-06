@@ -323,19 +323,19 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
     background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c);
     border-color: var(--amber-200, #f0d9a8);
   }
-  .avertit--attention svg { color: var(--amber-700); }
+  .avertit--attention svg { color: var(--text-warning); }
 
   /* Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
      sans sa raison se lit comme un bug ; avec, c'est une information. */
   .raison {
     display: block; margin-block-start: 4px;
-    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--amber-700);
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
   }
   .taux {
     display: inline-block; margin-inline-end: 4px;
     font: 600 var(--text-xs) / 1 var(--font-mono);
     padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
-    background: var(--plum-50); color: var(--plum-700);
+    background: var(--brand-subtle); color: var(--brand-press);
   }
   .rattache { display: flex; gap: 8px; align-items: center; }
   .bloc__actions { display: flex; gap: 14px; align-items: center; margin-inline-start: auto; }
