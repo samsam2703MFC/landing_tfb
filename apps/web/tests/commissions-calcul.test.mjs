@@ -12,9 +12,11 @@ import {
   afficherTaux,
   appliquer,
   commissionContrat,
+  paliersDepuisTranches,
   paliersOrdonnes,
   resumerPlan,
   tauxAuMois,
+  tranchesDepuisPaliers,
 } from '../src/lib/commissions/calcul.mjs';
 
 const NEUF_VINGT = paliersOrdonnes([
@@ -146,16 +148,127 @@ describe('la commission d’un contrat', () => {
 });
 
 describe('l’écriture d’un plan', () => {
-  it('se relit en une phrase', () => {
-    assert.equal(resumerPlan(NEUF_VINGT), '90 %, puis 20 % à partir du mois 12');
+  it('se relit en une phrase, en durées et non en mois cumulés', () => {
+    // « à partir du mois 12 » demandait un calcul mental à chaque lecture.
+    // Une durée se lit telle qu'on la négocie.
+    assert.equal(resumerPlan(NEUF_VINGT), '90 % pendant 1 an, puis 20 %');
   });
 
   it('dit franchement qu’un plan est vide', () => {
-    assert.equal(resumerPlan([]), 'aucun palier');
+    assert.equal(resumerPlan([]), 'aucune tranche');
   });
 
   it('écrit les taux à la française', () => {
     assert.equal(afficherTaux(9000), '90 %');
     assert.equal(afficherTaux(1550), '15,5 %');
+  });
+});
+
+/**
+ * Les tranches : « 70 % pendant un an, puis 30 % ».
+ *
+ * C'est la phrase qu'un commercial indépendant entend en négociant sa
+ * rémunération. Le calcul, lui, a besoin de « à partir du mois 12, 30 % ».
+ * Une seule vérité en base — les mois cumulés — et deux lectures : stocker
+ * les deux garantirait qu'elles se contredisent le jour où l'une change sans
+ * l'autre, et personne ne saurait laquelle paie.
+ *
+ * L'aller-retour est donc le test qui compte : ce qui est saisi doit se
+ * relire à l'identique, sinon rouvrir un plan pour changer un chiffre en
+ * changerait un autre au passage.
+ */
+describe('les tranches d’un plan', () => {
+  const aller = paliersDepuisTranches;
+  const retour = tranchesDepuisPaliers;
+
+  it('traduisent « 70 % pendant un an, puis 30 % »', () => {
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: null, taux_bp: 3000 }]);
+    assert.deepEqual(paliers, [
+      { depuis_mois: 0, taux_bp: 7000 },
+      { depuis_mois: 12, taux_bp: 3000 },
+    ]);
+  });
+
+  it('se relisent à l’identique', () => {
+    const saisi = [{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: null, taux_bp: 3000 }];
+    assert.deepEqual(retour(aller(saisi)).tranches, saisi);
+  });
+
+  it('savent dire qu’un plan s’arrête', () => {
+    // Ce que les mois cumulés seuls ne permettaient pas : le dernier palier
+    // courait indéfiniment. La fin est un palier à 0 % — pas un trou.
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: 24, taux_bp: 3000 }]);
+    assert.deepEqual(paliers.at(-1), { depuis_mois: 36, taux_bp: 0 });
+    assert.equal(retour(paliers).finit, true);
+  });
+
+  it('ne prennent pas une fin de plan pour une tranche à zéro', () => {
+    const { tranches } = retour(aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: 24, taux_bp: 3000 }]));
+    assert.equal(tranches.length, 2);
+    assert.deepEqual(tranches.map((t) => t.taux_bp), [7000, 3000]);
+  });
+
+  it('refusent une tranche sans fin ailleurs qu’à la fin', () => {
+    // Sinon les suivantes ne commenceraient jamais, en silence.
+    assert.throws(
+      () => aller([{ duree_mois: null, taux_bp: 7000 }, { duree_mois: 12, taux_bp: 3000 }]),
+      /dernière tranche/,
+    );
+  });
+
+  it('refusent une durée nulle ou négative', () => {
+    assert.throws(() => aller([{ duree_mois: 0, taux_bp: 7000 }]), /au moins un/);
+    assert.throws(() => aller([{ duree_mois: -3, taux_bp: 7000 }]), /au moins un/);
+  });
+
+  it('gardent un début sans taux au lieu de le combler', () => {
+    // Un plan qui démarre au mois 3 laisse trois mois à découvert. Les combler
+    // ferait payer un pourcentage que personne n'a négocié.
+    const { tranches } = retour([{ depuis_mois: 3, taux_bp: 5000 }]);
+    assert.deepEqual(tranches[0], { duree_mois: 3, taux_bp: null });
+  });
+
+  it('ne posent pas de palier pour une période sans taux', () => {
+    const paliers = aller([{ duree_mois: 3, taux_bp: null }, { duree_mois: null, taux_bp: 5000 }]);
+    assert.deepEqual(paliers, [{ depuis_mois: 3, taux_bp: 5000 }]);
+  });
+
+  it('rendent une phrase lisible, et disent les ans en ans', () => {
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: null, taux_bp: 3000 }]);
+    assert.equal(resumerPlan(paliers), '70 % pendant 1 an, puis 30 %');
+  });
+
+  it('disent la fin dans la phrase', () => {
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: 24, taux_bp: 3000 }]);
+    assert.equal(resumerPlan(paliers), '70 % pendant 1 an, puis 30 % pendant 2 ans, puis plus rien');
+  });
+
+  it('ne rendent rien d’un plan vide', () => {
+    assert.deepEqual(aller([]), []);
+    assert.equal(resumerPlan([]), 'aucune tranche');
+  });
+
+  it('calculent bien la rémunération d’un indépendant à 70 puis 30', () => {
+    // Le cas réel, bout en bout : 1 000 € par mois facturés, contrat de deux
+    // ans. Douze mois à 70 %, douze à 30 % — et pas un centime d'écart.
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }, { duree_mois: null, taux_bp: 3000 }]);
+    const r = commissionContrat(
+      { statut: 'signe', duree_mois: 24 },
+      { unique_cents: 0, mensuel_cents: 100_000 },
+      paliers,
+    );
+    assert.equal(r.raison, 'ok');
+    assert.equal(r.total_cents, 12 * 70_000 + 12 * 30_000);
+  });
+
+  it('ne paie plus rien après la fin d’un plan qui s’arrête', () => {
+    // 12 mois à 70 %, puis plus rien, sur un contrat de 24 mois.
+    const paliers = aller([{ duree_mois: 12, taux_bp: 7000 }]);
+    const r = commissionContrat(
+      { statut: 'signe', duree_mois: 24 },
+      { unique_cents: 0, mensuel_cents: 100_000 },
+      paliers,
+    );
+    assert.equal(r.total_cents, 12 * 70_000);
   });
 });

@@ -13,7 +13,7 @@
  * faux.
  */
 import { connexion, table, viderCache } from '../db.mjs';
-import { commissionContrat, paliersOrdonnes } from '../commissions/calcul.mjs';
+import { commissionContrat, paliersDepuisTranches, paliersOrdonnes, tranchesDepuisPaliers } from '../commissions/calcul.mjs';
 import { calculerOffre } from '../offres/calcul.mjs';
 import { configDe, normaliserCle, normaliserOffre } from './donnees.mjs';
 
@@ -22,17 +22,27 @@ import { configDe, normaliserCle, normaliserOffre } from './donnees.mjs';
 /** Les plans, chacun avec ses paliers dans l'ordre. */
 export async function listerPlans() {
   const db = await connexion();
-  const [plans, paliers] = await Promise.all([
+  const [plans, paliers, portes] = await Promise.all([
     db.requete(`SELECT * FROM ${table('plans_commission')} ORDER BY ordre, nom`),
     db.requete(`SELECT * FROM ${table('paliers_commission')} ORDER BY plan_cle, depuis_mois`),
+    // Combien de commerciaux sont sur chaque plan : c'est ce qui dit si le
+    // modifier engage une personne ou toute l'équipe.
+    db.requete(
+      `SELECT plan_commission AS cle, COUNT(*) AS total FROM ${table('utilisateurs')}
+        WHERE plan_commission IS NOT NULL AND plan_commission <> '' GROUP BY plan_commission`,
+    ),
   ]);
-  return plans.map((p) => ({
-    ...p,
-    actif: Boolean(p.actif),
-    paliers: paliers
+  const comptes = new Map(portes.map((p) => [p.cle, Number(p.total)]));
+  return plans.map((p) => {
+    const siens = paliers
       .filter((x) => x.plan_cle === p.cle)
-      .map((x) => ({ depuis_mois: Number(x.depuis_mois), taux_bp: Number(x.taux_bp) })),
-  }));
+      .map((x) => ({ depuis_mois: Number(x.depuis_mois), taux_bp: Number(x.taux_bp) }));
+    // Les tranches accompagnent les paliers partout : les écrans les
+    // affichent, le calcul lit les paliers, et la conversion se fait ici une
+    // fois plutôt que dans chaque page.
+    const { tranches, finit } = tranchesDepuisPaliers(siens);
+    return { ...p, actif: Boolean(p.actif), paliers: siens, tranches, finit, comptes: comptes.get(p.cle) || 0 };
+  });
 }
 
 export async function ajouterPlan({ nom, paliers }) {
@@ -99,23 +109,63 @@ export async function rattacherAuPlan(utilisateurId, cle) {
 }
 
 /**
- * « 0:90, 12:20 » → des paliers.
+ * Les tranches d'un formulaire → des paliers.
  *
- * Une ligne de texte plutôt que six champs : l'échelle se lit et se corrige
- * d'un coup d'œil, et se recopie d'un plan à l'autre sans cliquer douze fois.
+ * Le formulaire pose deux colonnes répétées : une durée en mois et un
+ * pourcentage. « 12 mois à 70 %, puis 30 % » — la phrase qu'un commercial
+ * indépendant entend quand il négocie sa rémunération. La dernière durée
+ * laissée vide veut dire « pour le reste du contrat » ; renseignée, elle
+ * arrête le plan.
+ *
+ * L'ancienne saisie était une ligne de texte, « 0:90, 12:20 ». Elle tenait
+ * sur un champ, mais demandait de convertir des durées en mois cumulés de
+ * tête à chaque relecture — et personne ne fait deux fois la même conversion
+ * de la même façon.
+ *
+ * @param {Array|string} saisie tranches, ou paliers déjà faits
  */
 export function lirePaliers(saisie) {
-  if (Array.isArray(saisie)) return saisie;
-  const morceaux = String(saisie || '').split(',').map((s) => s.trim()).filter(Boolean);
-  return morceaux.map((m) => {
-    const trouve = /^(\d+)\s*:\s*(\d+(?:[.,]\d+)?)$/.exec(m);
-    if (!trouve) {
-      throw new Error(`« ${m} » ne se lit pas. Écrivez mois:pourcentage, par exemple « 0:90, 12:20 ».`);
+  if (Array.isArray(saisie)) {
+    // Des paliers déjà bâtis passent tels quels ; des tranches se convertissent.
+    if (saisie.length === 0) return [];
+    return 'depuis_mois' in saisie[0] ? saisie : paliersDepuisTranches(saisie);
+  }
+  return paliersDepuisTranches(lireTranches(saisie));
+}
+
+/**
+ * Les couples (durée, taux) d'un formulaire.
+ *
+ * Les deux listes arrivent en parallèle et se lisent par rang. Une ligne dont
+ * les deux champs sont vides est ignorée : le formulaire en propose toujours
+ * une de plus qu'il n'en faut, et refuser cette ligne-là ferait échouer tous
+ * les enregistrements.
+ */
+export function lireTranches(formulaire) {
+  if (!formulaire || typeof formulaire.getAll !== 'function') return [];
+  const durees = formulaire.getAll('duree_mois');
+  const taux = formulaire.getAll('taux');
+  const tranches = [];
+  for (let i = 0; i < Math.max(durees.length, taux.length); i += 1) {
+    const d = String(durees[i] ?? '').trim();
+    const t = String(taux[i] ?? '').trim();
+    if (!d && !t) continue;
+    if (!t) throw new Error(`La tranche ${i + 1} n’a pas de pourcentage.`);
+    const pourcent = Number(t.replace(',', '.'));
+    if (!Number.isFinite(pourcent) || pourcent < 0) {
+      throw new Error(`« ${t} » n’est pas un pourcentage.`);
     }
-    const pourcent = Number(trouve[2].replace(',', '.'));
-    if (pourcent > 100) throw new Error(`« ${m} » dépasse 100 % : un plan ne peut pas payer plus que la facture.`);
-    return { depuis_mois: Number(trouve[1]), taux_bp: Math.round(pourcent * 100) };
-  });
+    // Un plan ne peut pas reverser plus que ce qui est facturé : au-delà de
+    // cent pour cent, chaque contrat signé coûterait de l'argent.
+    if (pourcent > 100) {
+      throw new Error(`« ${t} % » dépasse 100 % : un plan ne peut pas payer plus que la facture.`);
+    }
+    tranches.push({
+      duree_mois: d === '' ? null : Number(d),
+      taux_bp: Math.round(pourcent * 100),
+    });
+  }
+  return tranches;
 }
 
 async function ecrirePaliers(db, cle, paliers) {
@@ -156,7 +206,7 @@ export function montantsDeLOffre(ligneOffre) {
  */
 export async function commissionsParCommercial() {
   const db = await connexion();
-  const [comptes, plans, contrats] = await Promise.all([
+  const [comptes, plans, contrats, portefeuilles] = await Promise.all([
     db.requete(
       `SELECT id, nom, identifiant, role, actif, plan_commission
        FROM ${table('utilisateurs')} ORDER BY actif DESC, nom, identifiant`,
@@ -175,6 +225,16 @@ export async function commissionsParCommercial() {
        LEFT JOIN ${table('prospects')} p ON p.id = c.prospect_id
        ORDER BY c.signe_le DESC, c.id DESC`,
     ),
+    // Le portefeuille : les clients **assignés** à quelqu'un, contrat ou pas.
+    //
+    // Les contrats seuls ne disent qu'une moitié du lien. Un commercial qui
+    // vient de reprendre huit clients n'a encore signé pour aucun ; son écran
+    // dirait « aucun client à son nom » alors qu'il en suit huit, et c'est
+    // précisément le moment où il a besoin de les voir.
+    db.requete(
+      `SELECT id, raison_sociale, commercial_id FROM ${table('prospects')}
+        WHERE commercial_id IS NOT NULL ORDER BY raison_sociale`,
+    ),
   ]);
 
   const planDe = new Map(plans.map((p) => [p.cle, p]));
@@ -183,6 +243,7 @@ export async function commissionsParCommercial() {
     const plan = u.plan_commission ? planDe.get(u.plan_commission) || null : null;
     const paliers = plan ? paliersOrdonnes(plan.paliers) : null;
     const siens = contrats.filter((c) => Number(c.cree_par) === Number(u.id));
+    const assignes = portefeuilles.filter((p) => Number(p.commercial_id) === Number(u.id));
 
     let total = 0;
     let calculables = 0;
@@ -224,6 +285,16 @@ export async function commissionsParCommercial() {
     // Les clients qui rapportent en premier ; ceux dont rien ne se calcule
     // ensuite, par ordre alphabétique — ils ne se perdent pas dans la liste,
     // et ils ne la commandent pas non plus.
+    // Les clients assignés qui n'ont encore aucun contrat à son nom : ils
+    // complètent la liste au lieu d'en être absents. Zéro contrat n'est pas
+    // rien à montrer — c'est le travail en cours.
+    for (const a of assignes) {
+      const cle = a.raison_sociale || `Client ${a.id}`;
+      if (!parClient.has(cle)) {
+        parClient.set(cle, { nom: cle, contrats: [], total_cents: null, sans_contrat: true });
+      }
+    }
+
     const clients = [...parClient.values()].sort((a, b) => {
       if ((b.total_cents || 0) !== (a.total_cents || 0)) return (b.total_cents || 0) - (a.total_cents || 0);
       return a.nom.localeCompare(b.nom);
@@ -238,6 +309,9 @@ export async function commissionsParCommercial() {
       plan,
       clients,
       lignes,
+      // Combien de clients lui sont assignés — le lien qui ne passe pas par
+      // un contrat, et qui existe dès qu'on lui confie quelqu'un.
+      portefeuille: assignes.length,
       contrats: siens.length,
       signes: siens.filter((c) => c.statut === 'signe').length,
       calculables,

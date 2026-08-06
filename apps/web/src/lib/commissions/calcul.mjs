@@ -151,17 +151,123 @@ export function commissionContrat(contrat, montants, paliers) {
   return { total_cents: total, lignes, raison: 'ok' };
 }
 
+/* ------------------------------------------------------------- tranches -- */
+
+/*
+ * Un plan se **dit** en durées, et se **range** en mois cumulés.
+ *
+ * « 70 % pendant un an, puis 30 % » est la phrase que quelqu'un prononce en
+ * négociant. « À partir du mois 12, 30 % » est la même chose vue par le
+ * calcul, et c'est ce qui est stocké parce que c'est ce dont il a besoin.
+ *
+ * Une seule vérité en base, deux lectures. Stocker les deux garantirait
+ * qu'elles se contredisent le jour où l'une est modifiée sans l'autre — et
+ * personne ne saurait laquelle paie.
+ *
+ * Ce que les durées permettent et que les mois cumulés ne permettaient pas :
+ * **que la commission s'arrête**. « 12 mois à 70 %, 24 mois à 30 %, puis plus
+ * rien » n'était pas exprimable, le dernier palier courant indéfiniment. En
+ * base, la fin est un dernier palier à 0 % — pas un trou, une décision.
+ */
+
 /**
- * Le résumé d'un plan pour un écran : « 90 % puis 20 % à partir du mois 12 ».
+ * Des tranches vers des paliers.
+ *
+ * @param {Array<{duree_mois: number|null, taux_bp: number|null}>} tranches
+ *   Dans l'ordre. `duree_mois` vide sur la dernière = « pour le reste du
+ *   contrat » ; renseignée = le plan s'arrête après elle. `taux_bp` vide =
+ *   une période sans commission convenue, qui n'est pas la même chose que
+ *   zéro pour cent — voir `tauxAuMois`.
+ */
+export function paliersDepuisTranches(tranches) {
+  const paliers = [];
+  let curseur = 0;
+  const liste = (tranches || []).filter(
+    (t) => t && (t.duree_mois !== '' || t.taux_bp !== '') && !(t.duree_mois == null && t.taux_bp == null),
+  );
+
+  liste.forEach((t, i) => {
+    const dernier = i === liste.length - 1;
+    const duree = t.duree_mois === null || t.duree_mois === '' || t.duree_mois === undefined
+      ? null
+      : Number(t.duree_mois);
+    const taux = t.taux_bp === null || t.taux_bp === '' || t.taux_bp === undefined ? null : Number(t.taux_bp);
+
+    if (duree !== null && (!Number.isInteger(duree) || duree <= 0)) {
+      throw new Error('Une tranche dure un nombre entier de mois, au moins un.');
+    }
+    if (duree === null && !dernier) {
+      throw new Error('Seule la dernière tranche peut courir sans fin : les autres ont une durée.');
+    }
+    // Un taux absent ne pose pas de palier : c'est une période que le plan ne
+    // couvre pas, et le calcul la laisse à découvert au lieu de l'inventer.
+    if (taux !== null) paliers.push({ depuis_mois: curseur, taux_bp: taux });
+    if (duree === null) {
+      curseur = null;
+      return;
+    }
+    curseur += duree;
+  });
+
+  // Le plan s'arrête : on l'écrit, au lieu de laisser le dernier taux courir.
+  if (curseur !== null && paliers.length > 0) {
+    paliers.push({ depuis_mois: curseur, taux_bp: 0 });
+  }
+  return paliersOrdonnes(paliers);
+}
+
+/**
+ * Des paliers vers des tranches — la lecture inverse, pour réafficher.
+ *
+ * Un dernier palier à 0 % ne devient pas une tranche : c'est la fin du plan,
+ * et l'écran la montre comme telle.
+ */
+export function tranchesDepuisPaliers(paliers) {
+  const propres = paliersOrdonnes(paliers || []);
+  if (propres.length === 0) return { tranches: [], finit: false };
+
+  // Le dernier palier à zéro est une fin, pas une tranche à zéro pour cent.
+  const finit = propres.length > 1 && propres[propres.length - 1].taux_bp === 0;
+  const utiles = finit ? propres.slice(0, -1) : propres;
+
+  const tranches = [];
+  // Un plan qui démarre après le mois 0 laisse un début sans taux. On le rend
+  // tel quel : le combler ferait payer un pourcentage que personne n'a
+  // négocié, et le taire ferait disparaître le trou de l'écran.
+  if (utiles[0].depuis_mois > 0) {
+    tranches.push({ duree_mois: utiles[0].depuis_mois, taux_bp: null });
+  }
+  utiles.forEach((p, i) => {
+    const suivant = utiles[i + 1];
+    const fin = suivant ? suivant.depuis_mois : (finit ? propres[propres.length - 1].depuis_mois : null);
+    tranches.push({ duree_mois: fin === null ? null : fin - p.depuis_mois, taux_bp: p.taux_bp });
+  });
+  return { tranches, finit };
+}
+
+/**
+ * Le résumé d'un plan pour un écran : « 70 % pendant 12 mois, puis 30 % ».
  *
  * Écrit à partir des paliers et non saisi à côté d'eux : une phrase recopiée à
  * la main finit toujours par décrire un plan qui a changé depuis.
  */
 export function resumerPlan(paliers) {
-  if (!paliers || paliers.length === 0) return 'aucun palier';
-  return paliers
-    .map((p, i) => (i === 0 && p.depuis_mois === 0
-      ? afficherTaux(p.taux_bp)
-      : `${afficherTaux(p.taux_bp)} à partir du mois ${p.depuis_mois}`))
-    .join(', puis ');
+  const { tranches, finit } = tranchesDepuisPaliers(paliers);
+  if (tranches.length === 0) return 'aucune tranche';
+
+  const dit = tranches.map((t) => {
+    const taux = t.taux_bp === null ? 'rien' : afficherTaux(t.taux_bp);
+    if (t.duree_mois === null) return taux;
+    return `${taux} pendant ${moisDits(t.duree_mois)}`;
+  });
+  if (finit) dit.push('plus rien');
+  return dit.join(', puis ');
+}
+
+/** « 12 mois » devient « 1 an » : c'est ainsi qu'on le dit à l'oral. */
+function moisDits(mois) {
+  const n = Number(mois) || 0;
+  if (n === 12) return '1 an';
+  if (n % 12 === 0) return `${n / 12} ans`;
+  return `${n} mois`;
 }
