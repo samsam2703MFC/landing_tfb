@@ -428,6 +428,19 @@ function modele(pg) {
         // plusieurs — d'où le lien plutôt qu'un champ texte recopié sur
         // chaque fiche, qui se serait écrit de trois façons différentes.
         ['marque_id', 'INT'],
+        // Ce que ce client EST dans son réseau.
+        //
+        //   franchiseur · la tête de réseau, qui possède la marque
+        //   franchise   · un franchisé, qui l'exploite sous licence
+        //   groupe      · une société mère, plusieurs enseignes
+        //   filiale     · une société d'un groupe
+        //   independant · ni réseau ni groupe
+        //
+        // Ce n'est pas de la décoration : un franchiseur et un franchisé
+        // n'achètent pas la même chose, ne signent pas le même contrat et ne
+        // se facturent pas au même endroit. La colonne le dit une fois, au
+        // lieu de se deviner du nombre de boutiques.
+        ['nature', t.chaine(20)],
         ['cree_par', 'INT'],
         ['cree_le', t.horodatage],
       ],

@@ -1814,6 +1814,8 @@ export async function listerFichesClients() {
       commercial_origine: qui.origine,
       commercial_inactif: qui.inactif,
       marque: p.marque_nom || null,
+      nature: p.nature || null,
+      nature_dite: natureDite(p.nature),
       offres: siennes.length,
       contrats_signes: signes.length,
       packs: [...new Set(siennes.flatMap((o) => (lireJson(o.packs, []) || []).map((x) => x.nom || x.cle)))],
@@ -2028,9 +2030,36 @@ export async function supprimerProspect(id) {
   return { nom: fiche.raison_sociale, bilan };
 }
 
+/**
+ * Ce qu'un client est dans son réseau.
+ *
+ * Un franchiseur et un franchisé n'achètent pas la même chose, ne signent pas
+ * le même contrat et ne se facturent pas au même endroit. Le deviner du nombre
+ * de boutiques marchait une fois sur deux ; la question se pose une fois, au
+ * premier rendez-vous, et la réponse tient dans un mot.
+ */
+export const NATURES_CLIENT = [
+  { cle: 'franchiseur', libelle: 'Franchiseur', aide: 'la tête de réseau, qui possède la marque' },
+  { cle: 'franchise', libelle: 'Franchisé', aide: 'exploite la marque sous licence' },
+  { cle: 'groupe', libelle: 'Groupe de sociétés', aide: 'une société mère, plusieurs enseignes' },
+  { cle: 'filiale', libelle: 'Filiale', aide: 'une société d’un groupe' },
+  { cle: 'independant', libelle: 'Indépendant', aide: 'ni réseau ni groupe' },
+];
+
+/** Le libellé d'une nature, ou rien — une valeur inconnue ne s'invente pas. */
+export function natureDite(cle) {
+  return (NATURES_CLIENT.find((n) => n.cle === cle) || {}).libelle || null;
+}
+
 /** Les champs du prospect, dans l'ordre du formulaire. */
 export const CHAMPS_PROSPECT = [
   { nom: 'raison_sociale', libelle: 'Raison sociale', requis: true },
+  {
+    nom: 'nature',
+    libelle: 'Nature',
+    choix: NATURES_CLIENT.map((n) => [n.cle, n.libelle]),
+    aide: 'Franchiseur, franchisé, groupe, filiale — ce qu’il est dans son réseau.',
+  },
   { nom: 'tva', libelle: 'Numéro de TVA', exemple: 'BE0123456789' },
   { nom: 'adresse', libelle: 'Adresse', zone: true },
   { nom: 'pays', libelle: 'Pays', exemple: 'BE', taille: 2 },
@@ -2141,6 +2170,29 @@ export async function appliquerViesProspect(id, resultat, champs = {}) {
   if (champs.adresse !== false && resultat.adresse) {
     sets.push('adresse = ?');
     params.push(resultat.adresse);
+  }
+  // L'adresse complète du registre, telle qu'elle doit figurer sur un contrat
+  // et sur une facture. VIES rend la rue, le code postal et la ville
+  // séparément ; on les recompose ici plutôt que dans chaque appelant.
+  const complete = [
+    resultat.adresse,
+    [resultat.code_postal, resultat.ville].filter(Boolean).join(' '),
+  ].filter(Boolean).join('\n');
+  if (champs.siege && complete) {
+    sets.push('adresse_siege = ?');
+    params.push(complete);
+  }
+  if (champs.facturation && complete) {
+    sets.push('facturation_adresse = ?');
+    params.push(complete);
+  }
+  // Le numéro d'entreprise : c'est le numéro de TVA sans son préfixe pays.
+  // Pas une déduction hasardeuse — c'est la même immatriculation, et la
+  // recopier à la main est le geste que personne ne fait avant d'éditer un
+  // contrat, si bien que le dossier reste incomplet pour ça.
+  if (champs.registre && resultat.tva) {
+    sets.push('numero_registre = ?');
+    params.push(String(resultat.tva).replace(/^[A-Z]{2}/, ''));
   }
   if (resultat.pays) {
     sets.push('pays = ?');

@@ -39,7 +39,8 @@ try {
 
 const q = (Astro.url.searchParams.get('q') || '').trim().toLowerCase();
 const visibles = q
-  ? clients.filter((c) => `${c.nom} ${c.ville || ''} ${c.commercial || ''} ${c.marque || ''}`.toLowerCase().includes(q))
+  ? clients.filter((c) => `${c.nom} ${c.ville || ''} ${c.commercial || ''} ${c.marque || ''} ${c.nature_dite || ''}`
+    .toLowerCase().includes(q))
   : clients;
 
 const sansCommercial = clients.filter((c) => c.offres > 0 && !c.commercial);
@@ -114,7 +115,7 @@ const actifs = clients.filter((c) => c.contrats_signes > 0);
           <thead>
             <tr>
               <th>Client</th>
-              <th style="inline-size:10rem">Marque</th>
+              <th style="inline-size:11rem">Marque</th>
               <th style="inline-size:12rem">Commercial</th>
               <th style="inline-size:7rem">Offres</th>
               <th style="inline-size:7rem">Signés</th>
@@ -130,7 +131,10 @@ const actifs = clients.filter((c) => c.contrats_signes > 0);
                   <a href={lien(`/admin/prospects/${c.id}`)}><strong>{c.nom}</strong></a>
                   {c.ville && <span class="champ__aide">{c.ville}</span>}
                 </td>
-                <td>{c.marque || <span class="champ__aide">—</span>}</td>
+                <td>
+                  {c.marque || <span class="champ__aide">—</span>}
+                  {c.nature_dite && <span class="champ__aide">{c.nature_dite}</span>}
+                </td>
                 <td>
                   {c.commercial
                     ? (
