@@ -353,6 +353,15 @@ function modele(pg) {
         ['raison_sociale', `${t.chaine(200)} NOT NULL`],
         ['tva', t.chaine(20)],
         ['adresse', t.texte],
+        // Le code postal et la ville, extraits de l'adresse.
+        //
+        // L'adresse est un bloc de texte libre — c'est ce qui s'imprime sur un
+        // contrat, et le découper en champs pour le recoller ensuite ne
+        // rapporte rien. La ville, elle, se lit à part : c'est ce qui
+        // distingue deux clients du même nom dans une liste, et VIES la rend
+        // déjà séparément.
+        ['code_postal', t.chaine(20)],
+        ['ville', t.chaine(120)],
         ['pays', t.chaine(2)],
         ['site_web', t.chaine(255)],
         ['contact_nom', t.chaine(160)],
