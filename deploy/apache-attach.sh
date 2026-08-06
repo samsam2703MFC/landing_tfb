@@ -60,11 +60,13 @@ fi
 # d'envoyer chercher une RewriteRule — une piste fausse quand le coupable est un
 # ProxyPass concurrent.
 #
-# Cas observé : /landing_tfb était déjà proxifié vers une application Astro, avec
-# retrait du préfixe. La réponse était un 404 propre, indiscernable d'un chemin
-# inexistant.
+# -R et non -r : sites-enabled/ ne contient QUE des liens symboliques vers
+# sites-available/, et `grep -r` les ignore lors du parcours d'un répertoire. Un
+# `grep -rn` sur sites-enabled/ ne renvoie donc jamais rien, quoi que contiennent
+# les vhosts — un faux négatif silencieux qui a fait conclure à tort qu'aucune
+# règle n'existait.
 if [ "$REMOVE" != "1" ]; then
-  CONFLICTS="$(grep -rnE "^[[:space:]]*(ProxyPass|ProxyPassMatch|Alias|AliasMatch|RedirectMatch|RewriteRule)[[:space:]].*${BASE}(/|[[:space:]]|$)" \
+  CONFLICTS="$(grep -RnE "^[[:space:]]*(ProxyPass|ProxyPassMatch|Alias|AliasMatch|RedirectMatch|RewriteRule)[[:space:]].*${BASE}(/|[[:space:]]|$)" \
                  /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/ 2>/dev/null \
                | grep -v 'TFB landing' \
                | grep -v "127.0.0.1:${PORT}${BASE}" || true)"
@@ -215,7 +217,7 @@ case "$VIA" in
     warn "L'app répond en direct, mais pas à travers Apache. Vhost modifié : $TARGET."
     echo "   Une règle placée AVANT la nôtre gagne — Apache retient la première"
     echo "   qui correspond. Cherchez qui d'autre revendique ${BASE} :"
-    echo "     sudo grep -rn '${BASE}' /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/"
+    echo "     sudo grep -Rn '${BASE}' /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/"
     echo "   Restauration :  sudo cp $BACKUP $TARGET && sudo systemctl reload apache2"
     ;;
 esac
