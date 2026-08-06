@@ -30,7 +30,6 @@ import {
   listerPieces,
   rattacherAMarque,
   supprimerProspect,
-  noterViesProspect,
   supprimerPiece,
 } from '../../../lib/admin/donnees.mjs';
 import { cheminAutorise } from '../../../lib/admin/session.mjs';
@@ -85,51 +84,39 @@ if (Astro.request.method === 'POST') {
       await supprimerPiece(f.get('piece_id'));
       dit = 'Pièce retirée.';
     } else if (action === 'vies') {
-      // On enregistre d'abord les coordonnées : vérifier un numéro qu'on
-      // vient de taper sans l'enregistrer vérifierait celui d'avant, et le
-      // message porterait sur autre chose que ce qui est à l'écran.
+      // On enregistre d'abord la saisie : vérifier un numéro qu'on vient de
+      // taper sans l'enregistrer vérifierait celui d'avant, et le message
+      // porterait sur autre chose que ce qui est à l'écran.
       await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
       const r = await serviceVies().verifier(f.get('tva'), f.get('pays'));
       if (!r.ok) throw new Error(r.message);
-      // On ne recopie **jamais** le nom d'ici : la fiche d'un prospect porte
-      // souvent un nom d'usage — « Le Pain Quotidien » plutôt que « LPQ
-      // HOLDING SA » — et l'écraser sans le demander ferait perdre le nom que
-      // le commercial emploie au téléphone. L'étape « Votre entreprise » du
-      // parcours, elle, le propose avec une case à cocher.
-      await noterViesProspect(id, r);
-      // Ce que le registre a rendu voyage dans l'URL, pour l'AFFICHAGE seul.
-      // C'est le second bouton qui écrit, et il revérifie — voir plus bas.
-      const suite = new URLSearchParams({
-        ok: r.nom
-          ? `TVA vérifiée auprès de VIES — le registre dit « ${r.nom} ».`
-          : 'TVA vérifiée auprès de VIES : le numéro est valide. Cet État membre ne publie pas le nom.',
-        vu: JSON.stringify({
-          nom: r.nom, adresse: r.adresse, pays: r.pays,
-          ville: r.ville, code_postal: r.code_postal,
-        }),
-      });
-      return Astro.redirect(`${BASE}/admin/prospects/${id}?${suite}`, 303);
-    } else if (action === 'vies-reprendre') {
-      // On revérifie au lieu de croire l'URL.
+
+      // Le registre écrase la saisie, sans rien demander.
       //
-      // La page précédente a mis le résultat dans l'adresse pour l'afficher.
-      // Écrire à partir de là reviendrait à enregistrer une adresse — et
-      // surtout une référence de consultation, qui sert de preuve en cas de
-      // contrôle fiscal — que n'importe qui pourrait avoir tapée à la main.
-      // Un appel de plus est le prix d'une preuve qui en est une.
-      const r = await serviceVies().verifier(prospect0?.tva, prospect0?.pays);
-      if (!r.ok) throw new Error(r.message);
+      // Un panneau proposait chaque champ à cocher, et la raison sociale
+      // restait décochée pour protéger le nom d'usage. C'était deux écrans
+      // pour une décision déjà prise : si l'on interroge le registre, c'est
+      // qu'on veut ce qu'il dit. Et le nom d'usage a maintenant un endroit à
+      // lui — la marque, qui porte l'enseigne pendant que la fiche porte la
+      // personne morale.
+      //
+      // Ce qui est remplacé est nommé dans le message : un écrasement qu'on
+      // ne voulait pas se voit alors tout de suite, tant qu'on a encore
+      // l'ancienne valeur sous les yeux pour la retaper.
+      const avant = { nom: prospect0?.raison_sociale || null, adresse: prospect0?.adresse || null };
       await appliquerViesProspect(id, r, {
-        // Le nom d'usage ne se remplace que si on le demande : la fiche porte
-        // souvent « Le Pain Quotidien » là où le registre dit « LPQ HOLDING
-        // SA », et l'écraser ferait perdre le nom employé au téléphone.
-        nom: f.get('reprendre_nom') === '1',
-        adresse: f.get('reprendre_adresse') === '1',
-        siege: f.get('reprendre_siege') === '1',
-        facturation: f.get('reprendre_facturation') === '1',
-        registre: f.get('reprendre_registre') === '1',
+        nom: true, adresse: true, siege: true, facturation: true, registre: true,
       });
-      dit = 'Données du registre reprises dans le dossier.';
+
+      const ecrases = [
+        r.nom && avant.nom && r.nom !== avant.nom ? `la raison sociale (« ${avant.nom} »)` : null,
+        r.adresse && avant.adresse && r.adresse !== avant.adresse ? 'l’adresse' : null,
+      ].filter(Boolean);
+      dit = [
+        r.nom ? `Registre : « ${r.nom} ».` : 'Numéro valide — cet État membre ne publie pas le nom.',
+        r.adresse ? 'Adresse, code postal, ville, pays, siège, facturation et numéro d’entreprise repris.' : null,
+        ecrases.length > 0 ? `Remplacé : ${ecrases.join(' et ')}.` : null,
+      ].filter(Boolean).join(' ');
     } else {
       await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
     }
@@ -191,22 +178,6 @@ if (!prospect && !erreur) return new Response('Client introuvable', { status: 40
 
 const message = Astro.url.searchParams.get('ok');
 
-/**
- * Ce que le registre vient de rendre, s'il vient de rendre quelque chose.
- *
- * Affiché et non enregistré : c'est le bouton « Reprendre » qui écrit, après
- * avoir revérifié. Une adresse illisible dans l'URL ne casse rien — on
- * n'affiche simplement pas le panneau.
- */
-let registre = null;
-try {
-  const brut = Astro.url.searchParams.get('vu');
-  if (brut) registre = JSON.parse(brut);
-} catch { registre = null; }
-
-// L'adresse du registre, telle qu'elle sera écrite. Elle porte déjà le code
-// postal et la ville — les rajouter les écrivait deux fois.
-const adresseRegistre = registre ? String(registre.adresse || '').trim() || null : null;
 ---
 
 <Console
@@ -221,100 +192,6 @@ const adresseRegistre = registre ? String(registre.adresse || '').trim() || null
     <>
       <OngletsClient prospect={prospect.id} actif="fiche" />
 
-      {/* Ce que VIES a répondu, et ce qu'on veut en garder.
-          Le message seul disait « le registre dit “Asima Spółka Z…” » et
-          s'arrêtait là : il fallait recopier l'adresse à la main dans le
-          dossier, ce que personne ne fait avant d'éditer un contrat — si bien
-          que le dossier restait incomplet pour ça. */}
-      {registre && (
-        <section class="bloc" style="margin-block-end:20px">
-          <form method="post">
-            <input type="hidden" name="action" value="vies-reprendre" />
-            <div class="bloc__tete">
-              <div>
-                <h2>Le registre européen répond</h2>
-                <p>
-                  Cochez ce qui doit entrer dans le dossier. Rien n'est écrit tant que vous
-                  n'avez pas validé, et le numéro sera revérifié à ce moment-là — c'est cette
-                  vérification-là qui fait preuve, pas celle affichée ici.
-                </p>
-              </div>
-              <button class="bouton bouton--marque bouton--sm" type="submit">Reprendre</button>
-            </div>
-            <div class="bloc__corps">
-              <div class="registre">
-                {registre.nom && (
-                  <label class="registre__ligne">
-                    <input type="checkbox" name="reprendre_nom" value="1" />
-                    <span>
-                      <b>Raison sociale</b>
-                      <em>{registre.nom}</em>
-                      <span class="champ__aide">
-                        Décoché par défaut : la fiche porte « {prospect.raison_sociale} », qui est
-                        peut-être le nom d'usage — celui qu'on emploie au téléphone.
-                      </span>
-                    </span>
-                  </label>
-                )}
-                {adresseRegistre && (
-                  <>
-                    <label class="registre__ligne">
-                      <input type="checkbox" name="reprendre_siege" value="1" checked={!prospect.adresse_siege} />
-                      <span>
-                        <b>Siège social</b>
-                        <em>{adresseRegistre}</em>
-                        {prospect.adresse_siege && (
-                          <span class="champ__aide">Remplacerait : {prospect.adresse_siege}</span>
-                        )}
-                      </span>
-                    </label>
-                    <label class="registre__ligne">
-                      <input type="checkbox" name="reprendre_facturation" value="1"
-                        checked={!prospect.facturation_adresse} />
-                      <span>
-                        <b>Adresse de facturation</b>
-                        <em>{adresseRegistre}</em>
-                        <span class="champ__aide">
-                          {prospect.facturation_adresse
-                            ? `Remplacerait : ${prospect.facturation_adresse}`
-                            : 'Souvent la même que le siège — un franchiseur au centre, la comptabilité ailleurs, est le cas qui demande de la changer ensuite.'}
-                        </span>
-                      </span>
-                    </label>
-                    <label class="registre__ligne">
-                      <input type="checkbox" name="reprendre_adresse" value="1" checked={!prospect.adresse} />
-                      <span>
-                        <b>Adresse de contact</b>
-                        <em>{adresseRegistre}</em>
-                        {registre.ville && (
-                          <span class="champ__aide">
-                            Renseigne aussi la ville ({registre.ville}) et le code postal.
-                          </span>
-                        )}
-                      </span>
-                    </label>
-                  </>
-                )}
-                <label class="registre__ligne">
-                  <input type="checkbox" name="reprendre_registre" value="1" checked={!prospect.numero_registre} />
-                  <span>
-                    <b>Numéro d'entreprise</b>
-                    <em>{String(prospect.tva || '').replace(/^[A-Z]{2}/, '')}</em>
-                    <span class="champ__aide">
-                      Le numéro de TVA sans son préfixe pays — la même immatriculation, exigée
-                      par le dossier avant d'éditer un contrat.
-                    </span>
-                  </span>
-                </label>
-              </div>
-            </div>
-          </form>
-        </section>
-      )}
-
-      {/* Son commercial, en tête de fiche et modifiable ici.
-          C'est la première question posée sur un client, et il fallait
-          jusqu'ici ouvrir une de ses offres pour y répondre. */}
       <section class="bloc" style="margin-block-end:20px">
         <form method="post" class="portefeuille">
           <input type="hidden" name="action" value="commercial" />
@@ -503,6 +380,21 @@ const adresseRegistre = registre ? String(registre.adresse || '').trim() || null
             <div class="groupe">
               <span class="groupe__titre">{g.titre}</span>
               <p class="champ__aide">{g.aide}</p>
+              {/* La marque commerciale se rappelle ici sans se ressaisir.
+                  C'est le nom sous lequel le franchiseur est connu, et il
+                  figure sur ce qu'on lui envoie — mais il vit sur la marque,
+                  où il porte aussi le logo et l'histoire. Le retaper dans le
+                  dossier en ferait une seconde version, qui divergerait. */}
+              {g.cle === 'facturation' && (
+                <p class="champ__aide">
+                  {prospect.marque_nom
+                    ? <>Marque commerciale : <strong>{prospect.marque_nom}</strong> — c'est ce nom-là qui
+                      apparaît sur ses documents. Il se change en haut de cette fiche.</>
+                    : <>Aucune marque commerciale rattachée. Le nom d'enseigne se choisit en haut de
+                      cette fiche : c'est lui qui figure sur ce qu'on lui envoie, et il n'est pas
+                      toujours celui de la personne morale.</>}
+                </p>
+              )}
               <div class="duo">
                 {CHAMPS_DOSSIER.filter((c) => c.groupe === g.cle).map((c) => (
                   <div class="champ" style={c.zone ? 'grid-column:1/-1' : undefined}>
@@ -737,18 +629,6 @@ const adresseRegistre = registre ? String(registre.adresse || '').trim() || null
   /* Le bloc de suppression se voit sans crier : un filet rouge et rien
      d'autre. Un encadré alarmant en bas de chaque fiche finit par ne plus se
      voir du tout, et c'est le jour où il compte qu'on ne le lit pas. */
-  /* Une ligne du panneau VIES : la case, l'intitulé, la valeur proposée telle
-     qu'elle sera écrite. La valeur en chasse fixe et sur plusieurs lignes —
-     une adresse recopiée doit se relire comme elle s'imprimera. */
-  .registre { display: flex; flex-direction: column; gap: 14px; }
-  .registre__ligne { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
-  .registre__ligne input { margin-block-start: 3px; flex: none; inline-size: auto; }
-  .registre__ligne b { display: block; font: 600 var(--text-sm) / 1.3 var(--font-sans); }
-  .registre__ligne em {
-    display: block; margin-block-start: 2px; font-style: normal;
-    font: 13px / 1.5 var(--font-mono); color: var(--slate-700); white-space: pre-line;
-  }
-
   .bloc.danger { border-color: var(--red-200, #f3c6cd); }
   .bloc.danger .bloc__tete h2 { color: var(--red-700); }
 </style>
