@@ -51,6 +51,35 @@ if [ -e /etc/apache2/sites-enabled/landing_tfb-ip.conf ]; then
   ok "vhost concurrent landing_tfb-ip désactivé"
 fi
 
+# Quelqu'un d'autre revendique-t-il déjà ce sous-chemin ?
+#
+# Apache retient le PREMIER ProxyPass/Alias qui correspond, dans l'ordre
+# d'apparition. Ce script insère son bloc juste avant </VirtualHost>, donc en
+# dernier : une règle préexistante sur le même chemin gagne toujours, et le bloc
+# inséré ne sert jamais. Le script se contentait alors de constater l'échec et
+# d'envoyer chercher une RewriteRule — une piste fausse quand le coupable est un
+# ProxyPass concurrent.
+#
+# Cas observé : /landing_tfb était déjà proxifié vers une application Astro, avec
+# retrait du préfixe. La réponse était un 404 propre, indiscernable d'un chemin
+# inexistant.
+if [ "$REMOVE" != "1" ]; then
+  CONFLICTS="$(grep -rnE "^[[:space:]]*(ProxyPass|ProxyPassMatch|Alias|AliasMatch|RedirectMatch|RewriteRule)[[:space:]].*${BASE}(/|[[:space:]]|$)" \
+                 /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/ 2>/dev/null \
+               | grep -v 'TFB landing' \
+               | grep -v "127.0.0.1:${PORT}${BASE}" || true)"
+  if [ -n "$CONFLICTS" ]; then
+    printf '\n\033[31m   %s est déjà revendiqué ailleurs :\033[0m\n' "$BASE"
+    printf '%s\n' "$CONFLICTS" | sed 's/^/     /'
+    printf '\n   Apache retient la PREMIÈRE règle qui correspond. Insérer la nôtre\n'
+    printf '   en fin de vhost ne servirait à rien : celle-ci gagnerait encore.\n'
+    printf '   Retirez ou déplacez la règle ci-dessus, puis relancez ce script.\n'
+    printf '   Pour servir les deux, il faut deux sous-chemins distincts.\n\n'
+    die "Conflit de sous-chemin — rien n'a été modifié."
+  fi
+  ok "aucune autre règle ne revendique $BASE"
+fi
+
 # sites-enabled/ ne contient que des liens symboliques vers sites-available/.
 # `cp -a` préserve les liens plutôt que le contenu : il faut résoudre la cible,
 # sinon la sauvegarde pointe sur le fichier qu'on s'apprête à modifier.
@@ -147,7 +176,11 @@ ok "Apache rechargé"
 [ "$REMOVE" = "1" ] && { ok "Proxy retiré."; exit 0; }
 
 say "Vérification"
-echo "   app directe : $(curl -sS "http://127.0.0.1:${PORT}${BASE}/api/health" 2>&1 || true)"
+# Deux sondes, et l'ordre compte : sans l'application, aucune configuration Apache
+# ne peut réussir, et diagnostiquer le proxy pendant que le service est arrêté
+# fait perdre l'essentiel du temps.
+DIRECT="$(curl -sS "http://127.0.0.1:${PORT}${BASE}/api/health" 2>&1 || true)"
+echo "   app directe : ${DIRECT}"
 VIA="$(curl -skS "https://${IP}${BASE}/api/health" 2>&1 | head -c 200 || true)"
 echo "   via Apache  : ${VIA}"
 
@@ -158,9 +191,31 @@ case "$VIA" in
     echo "   Pour revenir en arrière :  sudo bash $0 --remove"
     ;;
   *)
-    warn "Toujours pas. Le vhost modifié est $TARGET."
-    echo "   Cherchez une RewriteRule qui passe devant le proxy :"
-    echo "     grep -n 'Rewrite' $TARGET"
+    # L'application d'abord. Un « Connection refused » sur le 3000 n'est pas un
+    # problème de proxy, et l'envoyer chercher une RewriteRule est une fausse piste.
+    case "$DIRECT" in
+      *'"db":"up"'*) ;;
+      *refused*|*'(7)'*)
+        warn "L'application ne tourne pas — rien n'écoute sur le port ${PORT}."
+        echo "   Le proxy est en place ; c'est en amont que ça bloque."
+        echo "     sudo systemctl status tfb-landing --no-pager -l"
+        echo "     sudo journalctl -u tfb-landing -n 50 --no-pager"
+        echo "     sudo systemctl restart tfb-landing"
+        echo "   Puis relancez ce script — il est idempotent."
+        exit 1 ;;
+      *)
+        warn "L'application répond mal en direct sur le port ${PORT} :"
+        echo "     ${DIRECT}"
+        echo "   Un 404 ici signifie que le build ne porte pas ${BASE} :"
+        echo "     grep NEXT_PUBLIC_BASE_PATH ${ENV_FILE}"
+        echo "   La valeur est inlinée au build — la changer impose un npm run build."
+        exit 1 ;;
+    esac
+
+    warn "L'app répond en direct, mais pas à travers Apache. Vhost modifié : $TARGET."
+    echo "   Une règle placée AVANT la nôtre gagne — Apache retient la première"
+    echo "   qui correspond. Cherchez qui d'autre revendique ${BASE} :"
+    echo "     sudo grep -rn '${BASE}' /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/"
     echo "   Restauration :  sudo cp $BACKUP $TARGET && sudo systemctl reload apache2"
     ;;
 esac
