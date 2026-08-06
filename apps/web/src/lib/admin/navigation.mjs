@@ -15,9 +15,17 @@
  * parcourt du regard sans rien trouver — et les entrées les plus ouvertes, les
  * clients et les demandes, étaient tout en bas.
  *
- * Cinq rubriques qui suivent le travail réel, dix-neuf entrées, et cinq écrans
- * à onglets. Ce qui disparaît du rail n'est pas supprimé : Prestations vit
- * maintenant sous « Catalogue et prix », à un clic et non à un scroll.
+ * Cinq rubriques qui suivent le travail réel, une quinzaine d'entrées, et des
+ * écrans à onglets. Ce qui disparaît du rail n'est pas supprimé : Prestations
+ * vit sous « Modules et prix », à un clic et non à un scroll.
+ *
+ * ── Une rubrique peut être une chaîne ─────────────────────────────────────
+ *
+ * « Vendre » n'est pas une liste : on fait une offre, elle devient un contrat,
+ * le contrat paie une commission. C'est un seul geste étalé dans le temps, et
+ * l'aligner comme trois rubriques indépendantes cachait l'ordre — celui qu'on
+ * a précisément besoin de connaître quand on ne connaît pas encore l'outil.
+ * `chaine: true` fait numéroter les entrées et les relie d'un trait.
  *
  * ── La règle du regroupement ──────────────────────────────────────────────
  *
@@ -63,6 +71,12 @@ export const SECTIONS = [
     onglets: [
       { cle: 'fiches-clients', libelle: 'Les clients', href: '/admin/prospects' },
       { cle: 'clients', libelle: 'Vitrine landing', href: '/admin/clients' },
+      // La charte **maison** — les défauts dont tout le monde hérite. Celle
+      // d'un client vit sur sa fiche, en onglet ; l'ancienne entrée « Chartes »
+      // du rail n'était plus qu'une seconde liste de clients par-dessus la
+      // première, et la seule chose qu'elle portait en propre était ce
+      // lien-ci, qui ne se trouve nulle part ailleurs.
+      { cle: 'charte-maison', libelle: 'Charte maison', href: '/admin/charte/0' },
     ],
     // Les six écrans d'un client ont déjà leur bandeau. En empiler un second
     // au-dessus donnerait deux rangées d'onglets qui ne parlent pas de la même
@@ -71,14 +85,21 @@ export const SECTIONS = [
   },
   {
     cle: 'contenu',
-    libelle: 'Modules',
+    libelle: 'Modules et prix',
     icone: 'layers',
     // Un composant est une entrée de menu d'un module : la liste à plat sert à
     // repérer les trous — sans levier, sans gain, sans capture — sur les cent
     // six d'un coup. C'est la même matière vue de deux hauteurs.
+    //
+    // La grille tarifaire les rejoint parce qu'elle les chiffre : le prix d'un
+    // module se saisit sur le module, celui d'un poste ou d'une vue sur la
+    // grille, et les deux se relisent ensemble ou pas du tout. Rangée sous
+    // « Vendre », elle obligeait à changer de rubrique au milieu d'un geste.
     onglets: [
       { cle: 'modules', libelle: 'Modules', href: '/admin/modules' },
       { cle: 'composants', libelle: 'Composants', href: '/admin/composants' },
+      { cle: 'tarifs', libelle: 'Tarifs', href: '/admin/tarifs' },
+      { cle: 'prestations', libelle: 'Prestations', href: '/admin/prestations' },
     ],
   },
   {
@@ -90,19 +111,22 @@ export const SECTIONS = [
     // entrées du rail, c'était les éloigner de la seule question qui les relie.
     onglets: [
       { cle: 'contrats', libelle: 'Les contrats', href: '/admin/contrats' },
-      { cle: 'gabarits', libelle: 'Gabarits', href: '/admin/contrats/gabarits' },
+      // Hors de `/admin/contrats`, qui est ouvert en sous-arbre au commercial :
+      // ranger les gabarits dessous lui donnerait le droit de réécrire les
+      // clauses, sans qu'aucune règle ne soit violée.
+      { cle: 'gabarits', libelle: 'Gabarits', href: '/admin/gabarits' },
     ],
   },
   {
-    cle: 'catalogue',
-    libelle: 'Catalogue et prix',
-    icone: 'percent',
-    // Ce qu'on prépare le même jour : la grille, ce qu'on y vend à la
-    // prestation, et les étapes par lesquelles une offre passe.
+    cle: 'vente',
+    libelle: 'Offres',
+    icone: 'receipt',
+    // Les étapes ne sont pas un écran de plus : elles décrivent le chemin
+    // qu'une offre parcourt. Les régler à côté des offres qu'elles rangent,
+    // plutôt qu'entre la grille tarifaire et les prestations.
     onglets: [
-      { cle: 'tarifs', libelle: 'Tarifs', href: '/admin/tarifs' },
-      { cle: 'prestations', libelle: 'Prestations', href: '/admin/prestations' },
-      { cle: 'etapes', libelle: 'Étapes', href: '/admin/etapes' },
+      { cle: 'offres', libelle: 'Les offres', href: '/admin/offres' },
+      { cle: 'etapes', libelle: 'Étapes du pipeline', href: '/admin/etapes' },
     ],
   },
   {
@@ -206,13 +230,20 @@ export function rubriquesConsole(compteurs = {}) {
         section('reseau', { compte: compteurs.prospects }),
         { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'mail', compte: compteurs.leads },
         { cle: 'onboarding', href: '/admin/onboarding', libelle: 'Mises en route', icone: 'play', compte: compteurs.parcours },
-        { cle: 'charte', href: '/admin/charte', libelle: 'Chartes', icone: 'sparkles' },
       ],
     },
     {
+      // Une chaîne, et non une liste.
+      //
+      // Ces trois écrans sont un seul geste étalé dans le temps : on fait une
+      // offre, elle devient un contrat, le contrat paie une commission. Les
+      // aligner comme quatre rubriques indépendantes cachait l'ordre — et
+      // l'ordre est ce qu'on a besoin de savoir quand on ne connaît pas
+      // encore l'outil. Le rail les numérote et les relie.
       titre: 'Vendre',
+      chaine: true,
       entrees: [
-        { cle: 'offres', href: '/admin/offres', libelle: 'Offres', icone: 'receipt', compte: compteurs.offres },
+        section('vente', { compte: compteurs.offres }),
         section('contractuel', { compte: compteurs.contrats }),
         // L'alerte plutôt qu'un compte : le nombre de plans n'apprend rien,
         // alors qu'un commercial qui a signé sans plan ne se calcule pas — et
@@ -221,12 +252,15 @@ export function rubriquesConsole(compteurs = {}) {
           cle: 'commissions', href: '/admin/commissions', libelle: 'Commissions', icone: 'wallet',
           alerte: compteurs.commissionsSansPlan > 0 ? compteurs.commissionsSansPlan : null,
         },
-        section('catalogue'),
       ],
     },
     {
       titre: 'Plateforme',
       entrees: [
+        section('contenu', {
+          compte: compteurs.modules,
+          alerte: compteurs.aValider > 0 ? compteurs.aValider : null,
+        }),
         section('acces'),
         { cle: 'bases', href: '/admin/bases', libelle: 'Bases clientes', icone: 'store' },
         section('branchements', { compte: compteurs.connexions }),
@@ -235,10 +269,6 @@ export function rubriquesConsole(compteurs = {}) {
     {
       titre: 'Landing',
       entrees: [
-        section('contenu', {
-          compte: compteurs.modules,
-          alerte: compteurs.aValider > 0 ? compteurs.aValider : null,
-        }),
         section('vitrine'),
         // Pas de compteur : un groupe de trois écrans n'a pas un nombre, il en
         // a trois, et en montrer un seul ferait lire le compte des langues
@@ -284,6 +314,11 @@ export function railPour(role, actif, compteurs = {}) {
           return {
             ...e,
             cle: e.groupe,
+            // Les onglets rendus sont ceux que ce rôle peut ouvrir, et non la
+            // déclaration entière. Le bandeau les refiltrait de son côté, donc
+            // l'écran était juste — mais tout autre lecteur de cette structure
+            // aurait cru le groupe plus large qu'il ne l'est pour ce rôle.
+            onglets: permis,
             href: permis[0].href,
             // `couvre` : des écrans qui appartiennent au groupe sans être un de
             // ses onglets — la fiche d'un client, qui porte déjà son propre

@@ -1,102 +1,21 @@
 ---
 /**
- * Les chartes clients — une ligne par prospect, et ce qu'il personnalise.
+ * L'ancienne liste des chartes clients — devenue une redirection.
  *
- * Un prospect sans surcharge sert exactement la charte maison. C'est le cas
- * sain, pas une fiche vide : la liste le dit plutôt que de laisser croire qu'il
- * manque quelque chose.
+ * Elle affichait une ligne par prospect avec son nombre de surcharges. Deux
+ * écrans le disent désormais mieux : la liste des clients porte une colonne
+ * « Charte », et chaque fiche porte l'onglet qui l'édite. Une troisième liste
+ * des mêmes clients ne faisait qu'ajouter un endroit où les chercher.
+ *
+ * Ce qu'elle portait en propre — le lien vers la charte maison, les défauts
+ * dont tout le monde hérite — est devenu un onglet du groupe Clients.
+ *
+ * Une redirection plutôt qu'une suppression : l'adresse a pu être mise en
+ * favori, et un 404 sur un écran qui existait hier se lit comme une panne.
  */
-import Console from '../../components/Console.astro';
-import Icone from '../../components/Icone.astro';
-import { lien } from '../../lib/lien.mjs';
-import { compteurs, listerProspects } from '../../lib/admin/donnees.mjs';
-import { compteursCharte } from '../../lib/admin/charte.mjs';
-import { cleCharte } from '../../lib/admin/session.mjs';
-import { REGISTRE } from '../../lib/charte/registre.mjs';
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 
-const [chiffres, prospects, chartes] = await Promise.all([
-  compteurs(),
-  listerProspects(),
-  compteursCharte(),
-]);
+// 302 et non 301 : un permanent se grave dans le cache du navigateur et
+// survivrait à un changement d'avis, y compris en développement.
+return Astro.redirect(`${BASE}/admin/charte/0`, 302);
 ---
-
-<Console titre="Chartes clients" actif="charte" compteurs={chiffres}>
-  <p class="intro">
-    La charte d'un client est une liste de valeurs, pas une feuille de style : rien n'est compilé
-    par client, et changer une couleur ne demande aucun déploiement. Ce qu'un client ne surcharge
-    pas, il l'hérite de la charte maison.
-  </p>
-
-  <a class="bouton bouton--sobre maison" href={lien('/admin/charte/0')}>
-    <Icone nom="settings" taille={15} />
-    Charte maison — les défauts de tout le monde
-  </a>
-
-  {prospects.length === 0 ? (
-    <p class="vide">Aucun prospect pour l'instant.</p>
-  ) : (
-    <div class="bloc">
-      <table>
-        <thead>
-          <tr>
-            <th>Client</th>
-            <th>Personnalisation</th>
-            <th>Version servie</th>
-            <th>État</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {prospects.map((p) => {
-            const c = chartes.get(Number(p.id)) || { surcharges: 0, version: 0, brouillon: false };
-            return (
-              <tr>
-                <td>
-                  <a href={lien(`/admin/charte/${p.id}`)}>{p.raison_sociale}</a>
-                </td>
-                <td class="chiffre">{c.surcharges} / {REGISTRE.length}</td>
-                <td class="chiffre">v{c.version}</td>
-                <td>
-                  {/* « À jour » sur un client qui n'a jamais rien personnalisé
-                      laisserait croire à un réglage validé. Il suit la charte
-                      maison, et c'est le cas sain — la colonne le dit. */}
-                  {c.brouillon
-                    ? <span class="etat etat--attente">brouillon en attente</span>
-                    : c.surcharges === 0
-                      ? <span class="etat etat--neutre">suit la charte maison</span>
-                      : <span class="etat etat--ok">à jour</span>}
-                </td>
-                <td class="fin">
-                  <a class="lien" href={lien(`/charte/${p.id}?cle=${cleCharte(p.id)}`)} target="_blank" rel="noreferrer">
-                    page client <Icone nom="external-link" taille={12} />
-                  </a>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  )}
-</Console>
-
-<style>
-  .intro { max-inline-size: 70ch; color: var(--slate-600); margin-block-end: var(--space-4); }
-  .vide { color: var(--slate-500); }
-  /* `.page` de la console est une colonne flex : sans `align-self`, un lien
-     s'étire sur toute la largeur et son intitulé se retrouve centré au milieu
-     de l'écran, sans que rien n'explique pourquoi. */
-  .maison { align-self: flex-start; }
-  table { inline-size: 100%; border-collapse: collapse; }
-  th { text-align: start; font: 600 var(--text-xs) / 1.4 var(--font-sans); text-transform: uppercase;
-       letter-spacing: .09em; color: var(--slate-500); padding: 10px 14px; }
-  td { padding: 11px 14px; border-block-start: 1px solid var(--slate-200); font: var(--text-sm) / 1.4 var(--font-sans); }
-  .chiffre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
-  .fin { text-align: end; }
-  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px; }
-  .etat--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
-  .etat--attente { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
-  .etat--neutre { background: var(--slate-100); color: var(--slate-600); }
-  .lien { display: inline-flex; align-items: center; gap: 5px; color: var(--slate-600); }
-</style>

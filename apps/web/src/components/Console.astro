@@ -100,6 +100,33 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
         font-weight: var(--weight-semibold);
         box-shadow: inset 3px 0 0 var(--teal-300);
       }
+      /* Le rang d'une étape dans une rubrique-chaîne, et le trait qui la relie
+         à la suivante. Le trait est un pseudo-élément sur le lien plutôt qu'une
+         bordure sur le groupe : il doit s'arrêter à la dernière étape, et une
+         bordure de conteneur descendrait jusqu'au bas du bloc. */
+      .rail__rang {
+        flex: none;
+        inline-size: 18px; block-size: 18px;
+        display: inline-flex; align-items: center; justify-content: center;
+        border-radius: 50%;
+        background: var(--alpha-white-08);
+        color: rgba(255, 255, 255, 0.62);
+        font: 600 10px/1 var(--font-mono);
+        position: relative;
+      }
+      .rail__groupe--chaine .rail__lien:not(:last-child) .rail__rang::after {
+        content: '';
+        position: absolute; inset-block-start: 100%; inset-inline-start: 50%;
+        inline-size: 1px; block-size: 12px;
+        transform: translateX(-50%);
+        background: var(--alpha-white-16);
+      }
+      .rail__lien[aria-current] .rail__rang {
+        background: var(--teal-300); color: var(--navy-900);
+      }
+      /* Les étapes se touchent : l'espacement par défaut couperait le trait. */
+      .rail__groupe--chaine { gap: 6px; }
+
       .rail__compte {
         margin-inline-start: auto;
         font: 500 11px/1 var(--font-mono);
@@ -784,11 +811,16 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
           </span>
         </a>
 
+        {/* Une rubrique « chaîne » se lit comme une suite d'étapes : on fait une
+            offre, elle devient un contrat, le contrat paie une commission. Le
+            numéro et le trait disent l'ordre, que trois liens alignés ne
+            disaient pas. */}
         {RUBRIQUES.map((rubrique) => (
-          <div class="rail__groupe">
+          <div class={`rail__groupe${rubrique.chaine ? ' rail__groupe--chaine' : ''}`}>
             {rubrique.titre && <div class="rail__titre">{rubrique.titre}</div>}
-            {rubrique.entrees.map((e) => (
+            {rubrique.entrees.map((e, rang) => (
               <a class="rail__lien" href={lien(e.href)} aria-current={e.courant ? 'page' : undefined}>
+                {rubrique.chaine && <span class="rail__rang" aria-hidden="true">{rang + 1}</span>}
                 <Icone nom={e.icone} taille={18} />
                 {e.libelle}
                 {e.alerte ? (
