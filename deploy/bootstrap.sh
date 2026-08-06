@@ -4,7 +4,7 @@
 #
 # À lancer EN ROOT, SUR LE VPS qui héberge MySQL :
 #
-#   curl -fsSL https://raw.githubusercontent.com/samsam2703MFC/landing_tfb/main/deploy/bootstrap.sh -o bootstrap.sh
+#   curl -fsSL https://raw.githubusercontent.com/samsam2703MFC/tfb/main/deploy/bootstrap.sh -o bootstrap.sh
 #   less bootstrap.sh          # lisez-le avant de l'exécuter
 #   sudo bash bootstrap.sh
 #
@@ -29,7 +29,7 @@ APP_USER="${APP_USER:-tfb}"
 DB_NAME="${DB_NAME:-tfb_landing}"
 DB_USER="${DB_USER:-tfb_app}"
 PORT="${PORT:-3000}"
-# Sous-chemin de service. Vide = racine.  BASE_PATH_CFG=/landing_tfb pour un sous-chemin.
+# Sous-chemin de service. Vide = racine.  BASE_PATH_CFG=/tfb pour un sous-chemin.
 BASE_PATH_CFG="${BASE_PATH_CFG:-}"
 
 say()  { printf '\n\033[1m== %s\033[0m\n' "$*"; }
@@ -316,7 +316,7 @@ if [ ! -f "$APP_DIR/package.json" ]; then
   die "La branche « $BRANCH » ne contient pas l'application ($APP_DIR/package.json absent).
    Si la pull request n'est pas encore fusionnée, main est vide. Relancez en
    désignant la branche de travail :
-     sudo BRANCH=deploy-test BASE_PATH_CFG=${BASE_PATH_CFG:-/landing_tfb} bash $0"
+     sudo BRANCH=deploy-test BASE_PATH_CFG=${BASE_PATH_CFG:-/tfb} bash $0"
 fi
 [ -f "$APP_DIR/package-lock.json" ] \
   || die "package-lock.json absent sur « $BRANCH » — npm ci ne peut pas fonctionner."

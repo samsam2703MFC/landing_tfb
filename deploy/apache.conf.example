@@ -1,7 +1,7 @@
 # Apache — proxy vers l'app Next, servie sous /landing_tfb.
 #
 # Votre serveur tourne sous Apache 2.4 (c'est lui qui sert phpMyAdmin, et lui qui
-# renvoie le « Not Found » tant qu'aucune règle ne couvre /landing_tfb).
+# renvoie le « Not Found » tant qu'aucune règle ne couvre /tfb).
 #
 #   sudo a2enmod proxy proxy_http headers
 #   # collez le bloc <Location> ci-dessous dans le VirtualHost *:443 existant
@@ -16,19 +16,19 @@
     ProxyRequests Off
 
     # Pas de réécriture de chemin : l'app est BUILDÉE avec
-    # NEXT_PUBLIC_BASE_PATH=/landing_tfb, donc elle attend le chemin complet,
-    # /landing_tfb compris. Les deux côtés de ProxyPass portent le même préfixe.
-    ProxyPass        /landing_tfb  http://127.0.0.1:3000/landing_tfb
-    ProxyPassReverse /landing_tfb  http://127.0.0.1:3000/landing_tfb
+    # NEXT_PUBLIC_BASE_PATH=/tfb, donc elle attend le chemin complet,
+    # /tfb compris. Les deux côtés de ProxyPass portent le même préfixe.
+    ProxyPass        /tfb  http://127.0.0.1:3000/tfb
+    ProxyPassReverse /tfb  http://127.0.0.1:3000/tfb
 
-    <Location /landing_tfb>
+    <Location /tfb>
         # Next lit X-Forwarded-Proto pour savoir qu'il est derrière du TLS.
         RequestHeader set X-Forwarded-Proto "https"
         RequestHeader set X-Forwarded-Port  "443"
 
         # Le back office n'est pas pour les moteurs de recherche. L'app envoie
         # déjà `robots: noindex` sur /admin ; ceci est la ceinture.
-        <If "%{REQUEST_URI} =~ m#^/landing_tfb/admin#">
+        <If "%{REQUEST_URI} =~ m#^/tfb/admin#">
             Header always set X-Robots-Tag "noindex, nofollow"
         </If>
 
@@ -37,7 +37,7 @@
 
     # Le webhook Stripe a besoin du corps brut pour la vérification de signature.
     # Aucun filtre de sortie ne doit y toucher.
-    <Location /landing_tfb/api/stripe/webhook>
+    <Location /tfb/api/stripe/webhook>
         SetEnv proxy-sendchunked 1
     </Location>
 
@@ -54,7 +54,7 @@
 # Le 404 vient d'Apache, pas de l'app. Deux causes possibles, à distinguer
 # DEPUIS LE SERVEUR :
 #
-#   curl -sS http://127.0.0.1:3000/landing_tfb/api/health
+#   curl -sS http://127.0.0.1:3000/tfb/api/health
 #
 #   • Réponse {"ok":true,...}  → l'app tourne, c'est Apache qui ne proxifie pas.
 #                                 Appliquez le bloc ci-dessus.
@@ -67,7 +67,7 @@
 #
 #   • 404 depuis le port 3000  → l'app tourne mais a été buildée SANS
 #                                 NEXT_PUBLIC_BASE_PATH=/landing_tfb. Rebuild :
-#                                 sudo BASE_PATH_CFG=/landing_tfb bash bootstrap.sh
+#                                 sudo BASE_PATH_CFG=/tfb bash bootstrap.sh
 #
 # ============================================================================
 # phpMyAdmin

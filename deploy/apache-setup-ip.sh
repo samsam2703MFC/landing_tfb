@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Sert la landing sur https://<IP>/landing_tfb, sans modifier aucun vhost existant.
+# Sert la landing sur https://<IP>/tfb, sans modifier aucun vhost existant.
 #
 #   sudo bash /srv/tfb-landing/deploy/apache-setup-ip.sh 185.180.206.46
 #
