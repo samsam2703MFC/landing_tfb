@@ -262,6 +262,33 @@ prend le relais à chaque `main` vert.
 | `SSH_KNOWN_HOSTS` | sortie de `ssh-keyscan VOTRE-HOTE` — optionnel mais recommandé |
 | `SSH_PORT` | seulement si ce n'est pas 22 |
 
+Et dans l'onglet **Variables** de la même page :
+
+| Variable | Contenu |
+| --- | --- |
+| `PUBLIC_URL` | l'URL publique, **sous-chemin compris** — `http://185.180.206.46/landing_tfb` |
+| `HEALTH_PATH` | seulement si ce n'est pas `/api/health` |
+| `APP_DIR`, `APP_USER` | seulement si ce n'est pas `/srv/tfb-landing` et `tfb` |
+
+`PUBLIC_URL` mérite un mot, parce que son absence a coûté cher. Le déploiement contrôle
+la santé de deux façons, et elles ne prouvent pas la même chose :
+
+- **Le contrôle interne** interroge `127.0.0.1:3000` depuis le serveur. Il prouve que
+  l'application est bâtie, démarrée, et qu'elle lit la base.
+- **Le contrôle public** interroge `PUBLIC_URL` depuis le runner, par l'internet, comme un
+  utilisateur. Il prouve que le frontal envoie bien ce chemin vers cette application.
+
+Le second a manqué longtemps. Résultat : des déploiements verts, un service qui tournait
+réellement, et une URL publique qui servait **une autre application** — un back office
+inatteignable pendant des jours sans qu'une seule alerte ne se déclenche. Le contrôle
+compare le corps de la réponse à `"db":"up"`, pas le code HTTP : un `200` prouve que
+quelque chose a répondu, cette chaîne prouve que c'est nous.
+
+Sans `PUBLIC_URL`, le déploiement passe mais pose une **annotation d'avertissement** disant
+qu'aucune vérification publique n'a eu lieu. Avec, un échec de routage rend le déploiement
+rouge — ce qui est le comportement correct : une application que personne n'atteint n'est
+pas déployée.
+
 Le compte de déploiement a besoin de `sudo` sans mot de passe sur trois commandes
 seulement :
 
