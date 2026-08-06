@@ -2062,6 +2062,8 @@ export const CHAMPS_PROSPECT = [
   },
   { nom: 'tva', libelle: 'Numéro de TVA', exemple: 'BE0123456789' },
   { nom: 'adresse', libelle: 'Adresse', zone: true },
+  { nom: 'code_postal', libelle: 'Code postal', exemple: '1000', taille: 20 },
+  { nom: 'ville', libelle: 'Ville', exemple: 'Bruxelles' },
   { nom: 'pays', libelle: 'Pays', exemple: 'BE', taille: 2 },
   { nom: 'site_web', libelle: 'Site web' },
   { nom: 'contact_nom', libelle: 'Contact', requis: true },
@@ -2171,13 +2173,11 @@ export async function appliquerViesProspect(id, resultat, champs = {}) {
     sets.push('adresse = ?');
     params.push(resultat.adresse);
   }
-  // L'adresse complète du registre, telle qu'elle doit figurer sur un contrat
-  // et sur une facture. VIES rend la rue, le code postal et la ville
-  // séparément ; on les recompose ici plutôt que dans chaque appelant.
-  const complete = [
-    resultat.adresse,
-    [resultat.code_postal, resultat.ville].filter(Boolean).join(' '),
-  ].filter(Boolean).join('\n');
+  // `resultat.adresse` est **déjà** l'adresse entière, code postal et ville
+  // compris : `code_postal` et `ville` en sont extraits pour les écrans qui
+  // ont des champs séparés, ils ne s'y ajoutent pas. Les recoller donnait
+  // « Ul. Prosta 51 / 00-838 Warszawa / 00-838 Warszawa » sur le contrat.
+  const complete = String(resultat.adresse || '').trim();
   if (champs.siege && complete) {
     sets.push('adresse_siege = ?');
     params.push(complete);
@@ -2190,6 +2190,14 @@ export async function appliquerViesProspect(id, resultat, champs = {}) {
   // Pas une déduction hasardeuse — c'est la même immatriculation, et la
   // recopier à la main est le geste que personne ne fait avant d'éditer un
   // contrat, si bien que le dossier reste incomplet pour ça.
+  // La ville et le code postal, quand le registre les a isolés. Ils suivent
+  // l'adresse de contact : ce sont les mêmes informations, prises au même
+  // endroit, et les dissocier créerait un client dont la ville dit Wrocław et
+  // l'adresse Varsovie.
+  if (champs.adresse !== false && resultat.ville) {
+    sets.push('ville = ?', 'code_postal = ?');
+    params.push(resultat.ville, resultat.code_postal || null);
+  }
   if (champs.registre && resultat.tva) {
     sets.push('numero_registre = ?');
     params.push(String(resultat.tva).replace(/^[A-Z]{2}/, ''));

@@ -99,12 +99,16 @@ if (Astro.request.method === 'POST') {
       await noterViesProspect(id, r);
       // Ce que le registre a rendu voyage dans l'URL, pour l'AFFICHAGE seul.
       // C'est le second bouton qui écrit, et il revérifie — voir plus bas.
-      const vu = new URLSearchParams({
+      const suite = new URLSearchParams({
+        ok: r.nom
+          ? `TVA vérifiée auprès de VIES — le registre dit « ${r.nom} ».`
+          : 'TVA vérifiée auprès de VIES : le numéro est valide. Cet État membre ne publie pas le nom.',
         vu: JSON.stringify({
-          nom: r.nom, adresse: r.adresse, ville: r.ville, code_postal: r.code_postal, pays: r.pays,
+          nom: r.nom, adresse: r.adresse, pays: r.pays,
+          ville: r.ville, code_postal: r.code_postal,
         }),
       });
-      return Astro.redirect(`${BASE}/admin/prospects/${id}?${vu}`, 303);
+      return Astro.redirect(`${BASE}/admin/prospects/${id}?${suite}`, 303);
     } else if (action === 'vies-reprendre') {
       // On revérifie au lieu de croire l'URL.
       //
@@ -200,11 +204,9 @@ try {
   if (brut) registre = JSON.parse(brut);
 } catch { registre = null; }
 
-// L'adresse du registre, recomposée comme elle figurera sur un contrat.
-const adresseRegistre = registre
-  ? [registre.adresse, [registre.code_postal, registre.ville].filter(Boolean).join(' ')]
-    .filter(Boolean).join('\n')
-  : null;
+// L'adresse du registre, telle qu'elle sera écrite. Elle porte déjà le code
+// postal et la ville — les rajouter les écrivait deux fois.
+const adresseRegistre = registre ? String(registre.adresse || '').trim() || null : null;
 ---
 
 <Console
@@ -284,6 +286,11 @@ const adresseRegistre = registre
                       <span>
                         <b>Adresse de contact</b>
                         <em>{adresseRegistre}</em>
+                        {registre.ville && (
+                          <span class="champ__aide">
+                            Renseigne aussi la ville ({registre.ville}) et le code postal.
+                          </span>
+                        )}
                       </span>
                     </label>
                   </>
