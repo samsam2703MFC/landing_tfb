@@ -16,6 +16,7 @@ import Icone from '../../../components/Icone.astro';
 import {
   CHAMPS_PROSPECT,
   ajouterPiece,
+  appliquerViesProspect,
   assignerCommercial,
   cequiPartAvecLeClient,
   chargerProspect,
@@ -44,6 +45,10 @@ import {
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 const { id } = Astro.params;
 let erreur = null;
+
+// La fiche telle qu'elle est **avant** le POST : « Reprendre » revérifie le
+// numéro enregistré, et n'a donc rien à lire dans le formulaire.
+const prospect0 = Astro.request.method === 'POST' ? await chargerProspect(id).catch(() => null) : null;
 
 if (Astro.request.method === 'POST') {
   try {
@@ -92,9 +97,35 @@ if (Astro.request.method === 'POST') {
       // le commercial emploie au téléphone. L'étape « Votre entreprise » du
       // parcours, elle, le propose avec une case à cocher.
       await noterViesProspect(id, r);
-      dit = r.nom
-        ? `TVA vérifiée auprès de VIES — le registre dit « ${r.nom} ».`
-        : 'TVA vérifiée auprès de VIES : le numéro est valide. Cet État membre ne publie pas le nom.';
+      // Ce que le registre a rendu voyage dans l'URL, pour l'AFFICHAGE seul.
+      // C'est le second bouton qui écrit, et il revérifie — voir plus bas.
+      const vu = new URLSearchParams({
+        vu: JSON.stringify({
+          nom: r.nom, adresse: r.adresse, ville: r.ville, code_postal: r.code_postal, pays: r.pays,
+        }),
+      });
+      return Astro.redirect(`${BASE}/admin/prospects/${id}?${vu}`, 303);
+    } else if (action === 'vies-reprendre') {
+      // On revérifie au lieu de croire l'URL.
+      //
+      // La page précédente a mis le résultat dans l'adresse pour l'afficher.
+      // Écrire à partir de là reviendrait à enregistrer une adresse — et
+      // surtout une référence de consultation, qui sert de preuve en cas de
+      // contrôle fiscal — que n'importe qui pourrait avoir tapée à la main.
+      // Un appel de plus est le prix d'une preuve qui en est une.
+      const r = await serviceVies().verifier(prospect0?.tva, prospect0?.pays);
+      if (!r.ok) throw new Error(r.message);
+      await appliquerViesProspect(id, r, {
+        // Le nom d'usage ne se remplace que si on le demande : la fiche porte
+        // souvent « Le Pain Quotidien » là où le registre dit « LPQ HOLDING
+        // SA », et l'écraser ferait perdre le nom employé au téléphone.
+        nom: f.get('reprendre_nom') === '1',
+        adresse: f.get('reprendre_adresse') === '1',
+        siege: f.get('reprendre_siege') === '1',
+        facturation: f.get('reprendre_facturation') === '1',
+        registre: f.get('reprendre_registre') === '1',
+      });
+      dit = 'Données du registre reprises dans le dossier.';
     } else {
       await enregistrerProspect(id, Object.fromEntries(CHAMPS_PROSPECT.map((c) => [c.nom, f.get(c.nom)])));
     }
@@ -155,6 +186,25 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
 if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
 
 const message = Astro.url.searchParams.get('ok');
+
+/**
+ * Ce que le registre vient de rendre, s'il vient de rendre quelque chose.
+ *
+ * Affiché et non enregistré : c'est le bouton « Reprendre » qui écrit, après
+ * avoir revérifié. Une adresse illisible dans l'URL ne casse rien — on
+ * n'affiche simplement pas le panneau.
+ */
+let registre = null;
+try {
+  const brut = Astro.url.searchParams.get('vu');
+  if (brut) registre = JSON.parse(brut);
+} catch { registre = null; }
+
+// L'adresse du registre, recomposée comme elle figurera sur un contrat.
+const adresseRegistre = registre
+  ? [registre.adresse, [registre.code_postal, registre.ville].filter(Boolean).join(' ')]
+    .filter(Boolean).join('\n')
+  : null;
 ---
 
 <Console
@@ -168,6 +218,92 @@ const message = Astro.url.searchParams.get('ok');
   {prospect && (
     <>
       <OngletsClient prospect={prospect.id} actif="fiche" />
+
+      {/* Ce que VIES a répondu, et ce qu'on veut en garder.
+          Le message seul disait « le registre dit “Asima Spółka Z…” » et
+          s'arrêtait là : il fallait recopier l'adresse à la main dans le
+          dossier, ce que personne ne fait avant d'éditer un contrat — si bien
+          que le dossier restait incomplet pour ça. */}
+      {registre && (
+        <section class="bloc" style="margin-block-end:20px">
+          <form method="post">
+            <input type="hidden" name="action" value="vies-reprendre" />
+            <div class="bloc__tete">
+              <div>
+                <h2>Le registre européen répond</h2>
+                <p>
+                  Cochez ce qui doit entrer dans le dossier. Rien n'est écrit tant que vous
+                  n'avez pas validé, et le numéro sera revérifié à ce moment-là — c'est cette
+                  vérification-là qui fait preuve, pas celle affichée ici.
+                </p>
+              </div>
+              <button class="bouton bouton--marque bouton--sm" type="submit">Reprendre</button>
+            </div>
+            <div class="bloc__corps">
+              <div class="registre">
+                {registre.nom && (
+                  <label class="registre__ligne">
+                    <input type="checkbox" name="reprendre_nom" value="1" />
+                    <span>
+                      <b>Raison sociale</b>
+                      <em>{registre.nom}</em>
+                      <span class="champ__aide">
+                        Décoché par défaut : la fiche porte « {prospect.raison_sociale} », qui est
+                        peut-être le nom d'usage — celui qu'on emploie au téléphone.
+                      </span>
+                    </span>
+                  </label>
+                )}
+                {adresseRegistre && (
+                  <>
+                    <label class="registre__ligne">
+                      <input type="checkbox" name="reprendre_siege" value="1" checked={!prospect.adresse_siege} />
+                      <span>
+                        <b>Siège social</b>
+                        <em>{adresseRegistre}</em>
+                        {prospect.adresse_siege && (
+                          <span class="champ__aide">Remplacerait : {prospect.adresse_siege}</span>
+                        )}
+                      </span>
+                    </label>
+                    <label class="registre__ligne">
+                      <input type="checkbox" name="reprendre_facturation" value="1"
+                        checked={!prospect.facturation_adresse} />
+                      <span>
+                        <b>Adresse de facturation</b>
+                        <em>{adresseRegistre}</em>
+                        <span class="champ__aide">
+                          {prospect.facturation_adresse
+                            ? `Remplacerait : ${prospect.facturation_adresse}`
+                            : 'Souvent la même que le siège — un franchiseur au centre, la comptabilité ailleurs, est le cas qui demande de la changer ensuite.'}
+                        </span>
+                      </span>
+                    </label>
+                    <label class="registre__ligne">
+                      <input type="checkbox" name="reprendre_adresse" value="1" checked={!prospect.adresse} />
+                      <span>
+                        <b>Adresse de contact</b>
+                        <em>{adresseRegistre}</em>
+                      </span>
+                    </label>
+                  </>
+                )}
+                <label class="registre__ligne">
+                  <input type="checkbox" name="reprendre_registre" value="1" checked={!prospect.numero_registre} />
+                  <span>
+                    <b>Numéro d'entreprise</b>
+                    <em>{String(prospect.tva || '').replace(/^[A-Z]{2}/, '')}</em>
+                    <span class="champ__aide">
+                      Le numéro de TVA sans son préfixe pays — la même immatriculation, exigée
+                      par le dossier avant d'éditer un contrat.
+                    </span>
+                  </span>
+                </label>
+              </div>
+            </div>
+          </form>
+        </section>
+      )}
 
       {/* Son commercial, en tête de fiche et modifiable ici.
           C'est la première question posée sur un client, et il fallait
@@ -290,6 +426,16 @@ const message = Astro.url.searchParams.get('ok');
                 </label>
                 {c.zone ? (
                   <textarea id={`p-${c.nom}`} name={c.nom} rows="2">{prospect[c.nom] || ''}</textarea>
+                ) : c.choix ? (
+                  /* Une liste fermée plutôt qu'un champ libre : « franchisé »,
+                     « franchisée » et « FR » sont la même chose écrite de
+                     trois façons, et aucune ne se compte. */
+                  <select id={`p-${c.nom}`} name={c.nom}>
+                    <option value="">— non précisé —</option>
+                    {c.choix.map(([cle, libelle]) => (
+                      <option value={cle} selected={prospect[c.nom] === cle}>{libelle}</option>
+                    ))}
+                  </select>
                 ) : (
                   <input
                     id={`p-${c.nom}`}
@@ -301,6 +447,7 @@ const message = Astro.url.searchParams.get('ok');
                     placeholder={c.exemple}
                   />
                 )}
+                {c.aide && <span class="champ__aide">{c.aide}</span>}
               </div>
             ))}
           </div>
@@ -583,6 +730,18 @@ const message = Astro.url.searchParams.get('ok');
   /* Le bloc de suppression se voit sans crier : un filet rouge et rien
      d'autre. Un encadré alarmant en bas de chaque fiche finit par ne plus se
      voir du tout, et c'est le jour où il compte qu'on ne le lit pas. */
+  /* Une ligne du panneau VIES : la case, l'intitulé, la valeur proposée telle
+     qu'elle sera écrite. La valeur en chasse fixe et sur plusieurs lignes —
+     une adresse recopiée doit se relire comme elle s'imprimera. */
+  .registre { display: flex; flex-direction: column; gap: 14px; }
+  .registre__ligne { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; }
+  .registre__ligne input { margin-block-start: 3px; flex: none; inline-size: auto; }
+  .registre__ligne b { display: block; font: 600 var(--text-sm) / 1.3 var(--font-sans); }
+  .registre__ligne em {
+    display: block; margin-block-start: 2px; font-style: normal;
+    font: 13px / 1.5 var(--font-mono); color: var(--slate-700); white-space: pre-line;
+  }
+
   .bloc.danger { border-color: var(--red-200, #f3c6cd); }
   .bloc.danger .bloc__tete h2 { color: var(--red-700); }
 </style>
