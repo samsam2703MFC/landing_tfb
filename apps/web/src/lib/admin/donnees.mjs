@@ -1432,15 +1432,49 @@ export const UNITES_PACK = [
   { cle: 'poste_mois', libelle: 'par mois et par point de vente', aide: 'Multiplié par le nombre de points de vente de l’offre.' },
 ];
 
+/**
+ * Un identifiant Stripe, ou null.
+ *
+ * Le préfixe est vérifié — `prod_` pour un produit, `price_` pour un prix. Les
+ * deux se ressemblent, se copient depuis le même écran de Stripe, et se
+ * confondent une fois sur trois. Interverties, elles ne cassent rien
+ * visiblement : le pack s'affiche comme vendable, et c'est au premier paiement
+ * que ça se voit.
+ */
+function identifiantStripe(valeur, prefixe, quoi) {
+  const brut = String(valeur ?? '').trim();
+  if (!brut) return null;
+  if (!brut.startsWith(prefixe)) {
+    throw new Error(`${quoi} doit commencer par « ${prefixe} » — reçu « ${brut.slice(0, 24)} ».`);
+  }
+  return brut;
+}
+
+/**
+ * Pourquoi ce pack ne peut pas être vendu, ou null s'il le peut.
+ *
+ * Deux façons d'être invendable, et elles n'ont rien à voir. Sans produit
+ * Stripe, rien ne peut être facturé. Sans module, le client paierait pour
+ * n'ouvrir aucune application — le second cas est le plus embarrassant, parce
+ * que le paiement, lui, fonctionne.
+ */
+export function packNonSouscriptible(pack) {
+  if (!pack.stripe_product_id) return 'aucun produit Stripe — rien ne peut être facturé';
+  if (!(pack.modules || []).length) return 'aucun module — ce pack n’ouvrirait rien';
+  return null;
+}
+
 export async function ajouterPack(valeurs) {
   const db = await connexion();
   const cle = normaliserCle(valeurs.cle || valeurs.nom);
   if (!cle) throw new Error('Un pack a besoin d’un nom.');
   const dejaLa = await db.requete(`SELECT id FROM ${table('packs')} WHERE cle = ? LIMIT 1`, [cle]);
   if (dejaLa.length > 0) throw new Error(`Le pack « ${cle} » existe déjà.`);
+  const produit = identifiantStripe(valeurs.stripe_product_id, 'prod_', 'L’identifiant de produit Stripe');
   await db.executer(
-    `INSERT INTO ${table('packs')} (cle, nom, description, prix_cents, unite, base, actif, ordre)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO ${table('packs')} (cle, nom, description, prix_cents, unite, base, actif, ordre,
+                                    stripe_product_id, stripe_price_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       cle,
       String(valeurs.nom || '').trim() || cle,
@@ -1450,6 +1484,8 @@ export async function ajouterPack(valeurs) {
       vrai(valeurs.base === '1' || valeurs.base === true),
       vrai(true),
       Number(valeurs.ordre) || 100,
+      produit,
+      identifiantStripe(valeurs.stripe_price_id, 'price_', 'L’identifiant de prix Stripe'),
     ],
   );
   viderCache();
@@ -1458,9 +1494,22 @@ export async function ajouterPack(valeurs) {
 
 export async function enregistrerPack(cle, valeurs) {
   const db = await connexion();
+  // Un même produit Stripe sur deux packs, ce sont deux compositions pour un
+  // seul paiement : le module ouvert dépend alors du pack qu'on regarde.
+  const produit = identifiantStripe(valeurs.stripe_product_id, 'prod_', 'L’identifiant de produit Stripe');
+  if (produit) {
+    const pris = await db.requete(
+      `SELECT cle FROM ${table('packs')} WHERE stripe_product_id = ? AND cle <> ? LIMIT 1`,
+      [produit, String(cle)],
+    );
+    if (pris.length > 0) {
+      throw new Error(`Le produit ${produit} est déjà rattaché au pack « ${pris[0].cle} ».`);
+    }
+  }
   await db.executer(
     `UPDATE ${table('packs')}
-     SET nom = ?, description = ?, prix_cents = ?, unite = ?, base = ?, ordre = ?
+     SET nom = ?, description = ?, prix_cents = ?, unite = ?, base = ?, ordre = ?,
+         stripe_product_id = ?, stripe_price_id = ?
      WHERE cle = ?`,
     [
       String(valeurs.nom || '').trim() || String(cle),
@@ -1469,6 +1518,8 @@ export async function enregistrerPack(cle, valeurs) {
       UNITES_PACK.some((u) => u.cle === valeurs.unite) ? String(valeurs.unite) : 'mois',
       vrai(valeurs.base === '1' || valeurs.base === true),
       Number(valeurs.ordre) || 100,
+      produit,
+      identifiantStripe(valeurs.stripe_price_id, 'price_', 'L’identifiant de prix Stripe'),
       String(cle),
     ],
   );

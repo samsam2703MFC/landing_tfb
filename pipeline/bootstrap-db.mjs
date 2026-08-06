@@ -1122,6 +1122,19 @@ function modele(pg) {
         ['base', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
         ['ordre', 'INT DEFAULT 100'],
+        // Le produit Stripe que ce pack représente, et le prix qui le facture.
+        //
+        // Stripe dit ce qui est payé ; `landing_modules.pack` dit ce que ça
+        // ouvre. La composition ne part jamais dans les métadonnées Stripe : un
+        // modèle d'autorisation modifiable depuis le tableau de bord d'un tiers
+        // n'est pas un modèle d'autorisation.
+        //
+        // Les deux colonnes sont facultatives. Un pack sans produit ne peut pas
+        // être souscrit — il reste visible et signalé comme tel, plutôt que
+        // masqué : un pack qu'on ne voit plus est un pack qu'on oublie de
+        // rattacher.
+        ['stripe_product_id', `${t.chaine(120)}`],
+        ['stripe_price_id', `${t.chaine(120)}`],
       ],
     },
     {
