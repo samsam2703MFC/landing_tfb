@@ -10,7 +10,9 @@ Rien ici ne demande de toucher à la base de données ni au code de la landing.
 ## 1. Décrire le changement dans `.tfb/module.json`
 
 C'est le seul fichier à modifier. Il porte le nom du module, sa description, et
-une entrée par composant.
+une entrée par composant. Le contrat complet des champs est dans
+[tfb-module.schema.md](tfb-module.schema.md), avec un exemple entier dans
+[tfb-module.example.json](tfb-module.example.json).
 
 ### Un composant ajouté
 
