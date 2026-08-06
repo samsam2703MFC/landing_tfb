@@ -46,6 +46,7 @@ import { construireCourriel, serviceCourriel } from '../../../lib/offres/courrie
 import { depuisCents, depuisPoints, enCents, enEntier, enPoints } from '../../../lib/offres/montants.mjs';
 import { cleAnnexe } from '../../../lib/admin/session.mjs';
 import { deposerMaquette, listerMaquettes, listerVisas, retirerMaquette } from '../../../lib/admin/maquettes.mjs';
+import { listerGabarits } from '../../../lib/admin/gabarits.mjs';
 import { visaAJour, vuesSansMaquette } from '../../../lib/offres/visa.mjs';
 
 /**
@@ -236,7 +237,9 @@ if (Astro.request.method === 'POST') {
     }
 
     if (action === 'contrat') {
-      const { reference: ref, regenere } = await genererContrat(courante.id, session.id);
+      const { reference: ref, regenere } = await genererContrat(courante.id, session.id, {
+        gabaritCle: String(f.get('gabarit') || ''),
+      });
       return Astro.redirect(
         `${BASE}/admin/contrats/${ref}?ok=${encodeURIComponent(regenere ? 'Contrat régénéré.' : 'Contrat édité.')}`,
         303,
@@ -353,6 +356,7 @@ let etapes = [];
 let suivi = [];
 let langues = [];
 let vigueur = null;
+let gabarits = [];
 let chiffres = {};
 try {
   offre = await chargerOffre(reference, versionDemandee);
@@ -362,6 +366,7 @@ try {
   packs = await packsVendables();
   etapes = await listerEtapes({ activesSeulement: true });
   vigueur = await tarifsEnVigueur();
+  gabarits = await listerGabarits({ actifsSeulement: true });
   chiffres = await compteurs();
 } catch (err) {
   erreur = erreur || `Base injoignable : ${err.message}`;
@@ -1313,11 +1318,27 @@ const ETAT_STATUT = {
             ) : (
               <>
                 <p class="champ__aide" style="margin:0">
-                  Aucun contrat pour cette offre. Il se rédige depuis le gabarit et le dossier
+                  Aucun contrat pour cette offre. Il se rédige depuis un gabarit et le dossier
                   du client — s'il en manque une pièce, l'écran le dira nommément.
                 </p>
                 <form method="post" class="actions actions--case">
                   <input type="hidden" name="action" value="contrat" />
+                  {/* Le gabarit décide de la durée, du préavis et de la
+                      reconduction autant que du texte : le choisir ici, c'est
+                      choisir les clauses. Un seul gabarit proposé ne mérite
+                      pas un menu — le défaut s'applique sans qu'on demande. */}
+                  {gabarits.length > 1 && (
+                    <label class="champ" style="margin-inline-end:10px">
+                      <span class="legende">Gabarit</span>
+                      <select name="gabarit">
+                        {gabarits.map((g) => (
+                          <option value={g.cle} selected={g.defaut}>
+                            {g.nom}{g.duree_mois > 0 ? ` — ${g.duree_mois} mois` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
                   <button class="bouton bouton--marque bouton--sm" type="submit">
                     <Icone nom="handshake" taille={16} /> Éditer le contrat
                   </button>

@@ -608,7 +608,49 @@ function modele(pg) {
         ['signature_enveloppe', t.chaine(120)],
         ['signature_statut', t.chaine(40)],
         ['signature_maj_le', t.horodatage],
+        // Quel gabarit a produit ce texte.
+        //
+        // Sans elle, « quelles conditions ce client a-t-il signées » n'a pas
+        // de réponse dès qu'il existe deux gabarits — et regénérer un contrat
+        // le referait avec le gabarit du jour, donc avec d'autres clauses que
+        // celles qui ont été signées. Le texte reste dans `corps` : la clé
+        // sert à savoir d'où il vient, pas à le reconstituer.
+        ['gabarit_cle', t.chaine(60)],
         ['cree_par', 'INT'],
+      ],
+    },
+    {
+      // Les gabarits de contrat.
+      //
+      // Il n'y en avait qu'un, rangé dans une ligne de la table des tarifs et
+      // modifiable depuis l'écran « Tarifs » — un endroit où personne ne va
+      // chercher un contrat. Un seul suffisait tant qu'on ne vendait qu'une
+      // chose ; il en faut un par nature d'accord dès qu'un pilote, une
+      // franchise et un contrat-cadre ne s'écrivent pas pareil.
+      //
+      // Les conditions vivent AVEC le texte. Une durée de trente-six mois et
+      // un préavis de six mois sont des clauses : les laisser dans les
+      // réglages généraux, c'est garantir qu'un pilote de trois mois parte
+      // avec la durée du contrat-cadre — et le texte l'écrira noir sur blanc,
+      // puisqu'il lit le même jeton.
+      nom: table('contrat_gabarits'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['description', t.texte],
+        ['corps', t.texte],
+        ['duree_mois', 'INT DEFAULT 0'],
+        ['preavis_jours', 'INT DEFAULT 0'],
+        ['reconduction', t.chaine(120)],
+        // Celui qu'on prend quand personne ne choisit. Un seul à la fois :
+        // c'est `designerDefaut()` qui l'assure, pas la base — une contrainte
+        // d'unicité partielle ne s'écrit pas pareil dans les deux dialectes.
+        ['defaut', `${t.booleen} DEFAULT ${pg ? 'FALSE' : '0'}`],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['ordre', 'INT DEFAULT 100'],
+        ['maj_le', t.horodatage],
+        ['maj_par', t.chaine(200)],
       ],
     },
     {
@@ -1466,6 +1508,7 @@ const INDEX = [
   { suffixe: 'suivi_offre', table: 'suivi', colonnes: 'offre_id, id' },
   { suffixe: 'contrats_offre', table: 'contrats', colonnes: 'offre_id' },
   { suffixe: 'contrats_statut', table: 'contrats', colonnes: 'statut' },
+  { suffixe: 'gabarits_ordre', table: 'contrat_gabarits', colonnes: 'actif, ordre' },
   { suffixe: 'pieces_prospect', table: 'pieces', colonnes: 'prospect_id, type' },
   // Une seule maquette par vue : redéposer remplace, il n'y a pas d'historique
   // de captures à tenir. Ce qui compte est ce qui a été signé, et cela vit
@@ -1574,6 +1617,44 @@ async function principal() {
         ['Demander une démonstration', '#contact'],
       );
       console.log(`✓ ligne unique de ${table('site')} créée`);
+    }
+
+    // Le gabarit unique devient le premier de la bibliothèque.
+    //
+    // Une seule fois, et seulement si la bibliothèque est vide : rejouée, la
+    // reprise écraserait un gabarit qu'on aurait modifié depuis. La ligne de
+    // tarif n'est pas supprimée — on ne détruit pas la source d'une reprise
+    // le jour où on la fait, et `genererContrat` s'y replie encore.
+    const dejaLa = await db.requete(`SELECT id FROM ${table('contrat_gabarits')} LIMIT 1`);
+    if (dejaLa.length === 0) {
+      const [ancien] = await db.requete(
+        `SELECT valeur FROM ${table('tarifs')} WHERE cle = ? LIMIT 1`, ['contrat_gabarit'],
+      );
+      const corps = String(ancien?.valeur || '').trim();
+      if (corps) {
+        const lu = async (cle, defaut) => {
+          const [l] = await db.requete(`SELECT valeur FROM ${table('tarifs')} WHERE cle = ? LIMIT 1`, [cle]);
+          const n = Number(l?.valeur);
+          return Number.isFinite(n) && l?.valeur !== '' && l?.valeur !== null ? n : defaut;
+        };
+        const [rec] = await db.requete(
+          `SELECT valeur FROM ${table('tarifs')} WHERE cle = ? LIMIT 1`, ['contrat_reconduction'],
+        );
+        await db.executer(
+          `INSERT INTO ${table('contrat_gabarits')}
+             (cle, nom, description, corps, duree_mois, preavis_jours, reconduction, defaut, actif, ordre, maj_le)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            'standard', 'Contrat standard',
+            'Repris de l’ancien gabarit unique, qui vivait dans les réglages tarifaires.',
+            corps,
+            await lu('contrat_duree_mois', 0), await lu('contrat_preavis_jours', 0),
+            String(rec?.valeur || ''),
+            pg ? true : 1, pg ? true : 1, 10, new Date(),
+          ],
+        );
+        console.log(`✓ gabarit « standard » repris depuis les tarifs`);
+      }
     }
 
     console.log('\nSchéma à jour.');

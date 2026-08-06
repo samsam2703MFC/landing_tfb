@@ -82,6 +82,18 @@ export const SECTIONS = [
     ],
   },
   {
+    cle: 'contractuel',
+    libelle: 'Contrats',
+    icone: 'handshake',
+    // Le contrat et le gabarit dont il sort. On ouvre le second en se
+    // demandant pourquoi le premier dit ce qu'il dit — les tenir sur deux
+    // entrées du rail, c'était les éloigner de la seule question qui les relie.
+    onglets: [
+      { cle: 'contrats', libelle: 'Les contrats', href: '/admin/contrats' },
+      { cle: 'gabarits', libelle: 'Gabarits', href: '/admin/contrats/gabarits' },
+    ],
+  },
+  {
     cle: 'catalogue',
     libelle: 'Catalogue et prix',
     icone: 'percent',
@@ -201,7 +213,7 @@ export function rubriquesConsole(compteurs = {}) {
       titre: 'Vendre',
       entrees: [
         { cle: 'offres', href: '/admin/offres', libelle: 'Offres', icone: 'receipt', compte: compteurs.offres },
-        { cle: 'contrats', href: '/admin/contrats', libelle: 'Contrats', icone: 'handshake', compte: compteurs.contrats },
+        section('contractuel', { compte: compteurs.contrats }),
         // L'alerte plutôt qu'un compte : le nombre de plans n'apprend rien,
         // alors qu'un commercial qui a signé sans plan ne se calcule pas — et
         // ne se verrait nulle part ailleurs.

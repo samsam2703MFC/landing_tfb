@@ -207,6 +207,16 @@ const textes = tarifs.filter((t) => t.type === 'texte' && !aPart.has(t.cle));
             reconduction — sont <strong>recopiées sur le contrat</strong> au moment de son
             édition : les changer ici ne touche pas un contrat déjà signé.
           </p>
+          {/* Ces champs ne commandent plus rien tant qu'un gabarit existe. Les
+              laisser sans le dire ferait modifier une durée ici pendant qu'un
+              contrat part avec une autre — et personne ne verrait pourquoi. */}
+          <p class="champ__aide">
+            <strong>Ces réglages ne servent plus que de repli.</strong> Chaque gabarit porte
+            désormais son propre texte et ses propres conditions, dans
+            <a href={`${BASE}/admin/contrats/gabarits`}> la bibliothèque de gabarits</a> —
+            un pilote de trois mois et un contrat-cadre n'ont ni la même durée ni les mêmes
+            clauses. Ce qui est saisi ici ne s'applique que si la bibliothèque est vide.
+          </p>
         </div>
       </div>
 
