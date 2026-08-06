@@ -213,105 +213,244 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
           )}
       </div>
     ) : (
-      <div class="roule">
-        <table class="offres">
-          <thead>
-            <tr>
-              <th style="inline-size:10rem">Référence</th>
-              <th style="inline-size:14rem">Client</th>
-              <th style="inline-size:13rem">Étape</th>
-              <th style="inline-size:8rem">Suivi</th>
-              <th style="inline-size:7rem">État</th>
-              <th style="inline-size:9rem">Commercial</th>
-              <th style="inline-size:7rem">Valable au</th>
-              <th class="nombre" style="inline-size:8rem">Une fois</th>
-              <th class="nombre" style="inline-size:7rem">Par mois</th>
-              <th class="nombre" style="inline-size:7rem">Par an</th>
-            </tr>
-          </thead>
-          <tbody>
-            {offres.map((o) => {
-              const t = calculerTotauxOffre(o);
-              return (
-                <tr>
-                  <td>
-                    <a href={`${BASE}/admin/offres/${o.reference}`}><strong>{o.reference}</strong></a>
-                    {o.version > 1 && <code class="slug">version {o.version}</code>}
-                  </td>
-                  <td>
-                    {o.raison_sociale || '—'}
-                    {o.contact_nom && <code class="slug">{o.contact_nom}</code>}
-                  </td>
-                  <td>
-                    <form method="post" class="ligne-serree">
-                      <input type="hidden" name="id" value={o.id} />
-                      <select name="etape" aria-label={`Étape de ${o.reference}`}>
-                        <option value="">— hors pipeline —</option>
-                        {etapes.map((e) => (
-                          <option value={e.cle} selected={e.cle === o.etape}>{e.nom}</option>
-                        ))}
-                      </select>
-                      <button class="bouton bouton--sobre bouton--sm" type="submit">OK</button>
-                    </form>
-                  </td>
-                  <td class="champ__aide">
-                    {(() => {
-                      const etape = etapes.find((e) => e.cle === o.etape) || null;
-                      const r = aRelancer(o, etape);
-                      const suivante = prochaineRelance(o, etape);
-                      return (
-                        <>
-                          <span class={r.relancer ? 'etat etat--manque' : undefined}>
-                            {r.dort} j sans bouger
-                          </span>
-                          {suivante && <code class="slug">relance le {jour(suivante)}</code>}
-                        </>
-                      );
-                    })()}
-                  </td>
-                  <td>
-                    <span class={ETAT_STATUT[o.statut] || 'etat'}>{o.statut}</span>
-                  </td>
-                  <td class="champ__aide">{o.auteur_nom || '—'}</td>
-                  <td class="fb-num champ__aide">{jour(o.valide_jusqu_au)}</td>
-                  <td class="nombre fb-num">{t.seaux.unique.ttc > 0 ? formater(t.seaux.unique.ttc, o.langue, o.devise) : '—'}</td>
-                  <td class="nombre fb-num">{t.seaux.mensuel.ttc > 0 ? formater(t.seaux.mensuel.ttc, o.langue, o.devise) : '—'}</td>
-                  <td class="nombre fb-num">{t.seaux.annuel.ttc > 0 ? formater(t.seaux.annuel.ttc, o.langue, o.devise) : '—'}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      /*
+       * Une liste de cartes, et non un tableau.
+       *
+       * C'est l'écran qu'on ouvre le matin et qu'on rouvre entre deux
+       * rendez-vous — souvent depuis un téléphone, dans une voiture ou un
+       * couloir. Un tableau de onze colonnes n'y survit pas : il défile de
+       * côté, et l'action qu'on vient faire — déplacer une offre — se trouve
+       * dans la colonne trois, hors de l'écran.
+       *
+       * Une seule structure pour les deux tailles. Le duo table/cartes
+       * demanderait d'écrire deux fois le même contenu, et le second finirait
+       * par prendre du retard sur le premier.
+       */
+      <div class="offres">
+        {offres.map((o) => {
+          const t = calculerTotauxOffre(o);
+          const etape = etapes.find((e) => e.cle === o.etape) || null;
+          const r = aRelancer(o, etape);
+          const suivante = prochaineRelance(o, etape);
+          const rang = etape ? etapes.findIndex((e) => e.cle === etape.cle) : -1;
+          return (
+            <article class="offre">
+              <div class="offre__qui">
+                <a class="offre__client" href={`${BASE}/admin/offres/${o.reference}`}>
+                  {o.raison_sociale || 'Client inconnu'}
+                </a>
+                <span class="offre__ref">
+                  {o.reference}
+                  {o.version > 1 && ` · v${o.version}`}
+                  {o.contact_nom && ` · ${o.contact_nom}`}
+                </span>
+              </div>
+
+              <div class="offre__sous">
+                {/* Le mensuel d'abord : c'est le chiffre qui décide, et le
+                    ponctuel se lit à côté. Un montant nul ne s'affiche pas —
+                    « — » sur trois colonnes ne dit rien de plus que rien. */}
+                {t.seaux.mensuel.ttc > 0 && (
+                  <strong class="fb-num">{formater(t.seaux.mensuel.ttc, o.langue, o.devise)}<span> /mois</span></strong>
+                )}
+                {t.seaux.annuel.ttc > 0 && (
+                  <strong class="fb-num">{formater(t.seaux.annuel.ttc, o.langue, o.devise)}<span> /an</span></strong>
+                )}
+                {t.seaux.unique.ttc > 0 && (
+                  <strong class="fb-num">{formater(t.seaux.unique.ttc, o.langue, o.devise)}<span> une fois</span></strong>
+                )}
+                <span class={r.relancer ? 'etat etat--manque' : 'champ__aide'}>
+                  {r.dort} j sans bouger
+                </span>
+                {o.auteur_nom && <span class="champ__aide">{o.auteur_nom}</span>}
+                {suivante && <span class="champ__aide">relance le {jour(suivante)}</span>}
+                <span class="champ__aide">valable au {jour(o.valide_jusqu_au)}</span>
+              </div>
+
+              {/*
+                Les étapes en boutons, et non dans une liste déroulante.
+                Déplacer une offre était : ouvrir le menu, chercher la ligne,
+                choisir, viser « OK ». Quatre gestes pour un, et sur un
+                téléphone un menu natif recouvre l'écran — on ne voit plus de
+                quelle offre il s'agit au moment de choisir.
+
+                Un seul formulaire, un bouton par étape : c'est le bouton qui
+                porte la valeur. Aucun JavaScript, et l'étape franchie part au
+                premier appui.
+              */}
+              <form method="post" class="offre__etapes" aria-label={`Étape de ${o.reference}`}>
+                <input type="hidden" name="id" value={o.id} />
+                {etapes.map((e, i) => (
+                  <button
+                    type="submit" name="etape" value={e.cle}
+                    class={`pas ${e.cle === o.etape ? 'pas--ici' : i < rang ? 'pas--fait' : ''}`}
+                    aria-current={e.cle === o.etape ? 'step' : undefined}
+                    disabled={e.cle === o.etape}
+                    title={e.cle === o.etape ? `${o.reference} est à cette étape` : `Déplacer ${o.reference} vers ${e.nom}`}
+                  >{e.nom}</button>
+                ))}
+                {/* Sortir du pipeline reste possible, mais ne se propose pas
+                    au milieu des étapes : c'est l'exception, pas une étape. */}
+                {o.etape && (
+                  <button type="submit" name="etape" value="" class="pas pas--hors"
+                    title={`Sortir ${o.reference} du pipeline`}>hors pipeline</button>
+                )}
+              </form>
+
+              <div class="offre__etat">
+                <span class={ETAT_STATUT[o.statut] || 'etat'}>{o.statut}</span>
+              </div>
+            </article>
+          );
+        })}
       </div>
     )}
 
     <div class="bloc__pied">
-      Montants TTC. Une seule ligne par référence, à sa dernière version — les précédentes
-      se lisent depuis la fiche.
-      L'étape commande, l'état suit : c'est elle qui décide si l'offre se modifie encore,
-      et le lien se règle sur l'écran Étapes. Une offre déjà partie ne redevient pas un
-      brouillon, même ramenée en début de pipeline.
+      Montants TTC, une ligne par référence, à sa dernière version.
+      <strong> Appuyer sur une étape y déplace l'offre</strong> — celle où elle se trouve est
+      pleine, les franchies sont cochées. L'étape commande, l'état suit : c'est elle qui décide
+      si l'offre se modifie encore, et le lien se règle sur l'écran Étapes. Une offre déjà
+      partie ne redevient pas un brouillon, même ramenée en début de pipeline.
     </div>
   </section>
 </Console>
 
 <style is:global>
+  /* ── La liste des offres ─────────────────────────────────────────────────
+     Une carte par offre, en grille. Large, la grille donne quatre colonnes et
+     la liste se lit comme un tableau ; étroite, elle passe à une colonne et
+     chaque carte s'empile. Une seule structure : le duo table/cartes
+     demanderait d'écrire deux fois le même contenu, et le second finirait par
+     prendre du retard sur le premier. */
+  .offres { display: flex; flex-direction: column; }
 
-  /* Onze colonnes, dont deux listes déroulantes : sous cette largeur, les
-     sélecteurs s'écrasent jusqu'à ne plus montrer que leur flèche et la
-     référence se coupe en trois lignes. La table défile plutôt que de se
-     tasser — c'est le rôle du rouleau qui l'entoure. */
-  /* La somme des colonnes fait cent rems : en deçà, le nom du client — seul
-     champ à retour à la ligne — encaisse tout le manque et se coupe en
-     trois. */
-  .offres { min-inline-size: 100rem; }
-  .offres td, .offres th { white-space: nowrap; }
-  /* …sauf le nom du client, seul champ dont la longueur est imprévisible.
-     Une largeur plancher lui évite de tomber en trois lignes quand les deux
-     sélecteurs s'élargissent à côté de lui. */
-  .offres td:nth-child(2) { white-space: normal; }
-  .offres th:nth-child(2), .offres td:nth-child(2) { min-inline-size: 14rem; }
-  /* Assez large pour « En attente de décision », la plus longue des étapes
-     semées : une étape coupée au milieu ne se choisit pas de mémoire. */
-  .offres .ligne-serree select { min-inline-size: 14rem; }
+  .offre {
+    display: grid;
+    grid-template-columns: minmax(14rem, 20rem) minmax(12rem, 1fr) auto 6.5rem;
+    gap: 8px 18px;
+    align-items: center;
+    padding: 14px 20px;
+    border-block-start: 1px solid var(--slate-100);
+  }
+  .offre:first-child { border-block-start: 0; }
+  .offre:hover { background: var(--slate-25); }
+
+  .offre__qui { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+  .offre__client {
+    font: 600 var(--text-base) / 1.25 var(--font-sans);
+    color: var(--navy-900); text-decoration: none;
+    /* La cible la plus grande de la carte : c'est le geste le plus fréquent
+       après le déplacement d'étape, et sur un téléphone on vise le nom. */
+    padding-block: 2px;
+  }
+  .offre__client:hover { color: var(--brand); text-decoration: underline; }
+  .offre__ref { font: 400 var(--text-xs) / 1.4 var(--font-mono); color: var(--slate-500); }
+
+  .offre__sous { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+  .offre__sous strong { font: 600 var(--text-sm) / 1.3 var(--font-mono); white-space: nowrap; }
+  /* L'unité en gris et en petit : le chiffre porte l'information, « /mois »
+     n'est là que pour lever l'ambiguïté. */
+  .offre__sous strong span { font: 400 var(--text-xs) var(--font-sans); color: var(--slate-500); }
+
+  .offre__etat { justify-self: end; }
+
+  /* ── Les étapes, en boutons ──────────────────────────────────────────────
+     Déplacer une offre était : ouvrir un menu, chercher la ligne, choisir,
+     viser « OK ». Quatre gestes pour un — et sur un téléphone, un menu natif
+     recouvre l'écran, si bien qu'on ne voit plus de quelle offre il s'agit au
+     moment de choisir. */
+  .offre__etapes {
+    display: flex; flex-wrap: wrap; gap: 4px;
+    justify-self: start;
+  }
+  .pas {
+    /* 36 px de haut au bureau, 44 au doigt — voir la requête média. C'est la
+       taille en dessous de laquelle on rate le bouton d'à côté. */
+    min-block-size: 36px;
+    display: inline-flex; align-items: center;
+    padding-inline: 12px;
+    border: 1px solid var(--slate-200);
+    border-radius: var(--radius-pill);
+    background: #fff;
+    font: 500 var(--text-xs) / 1.2 var(--font-sans);
+    color: var(--slate-600);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: var(--transition-control);
+  }
+  .pas:hover { border-color: var(--brand); color: var(--brand); background: var(--brand-subtle); }
+  /* Là où l'offre se trouve. Pleine, et non bordée : c'est le seul état qu'on
+     doit reconnaître sans lire, en parcourant vingt lignes du regard. */
+  .pas--ici {
+    background: var(--brand); border-color: var(--brand); color: #fff;
+    font-weight: var(--weight-semibold);
+    cursor: default;
+  }
+  .pas--ici:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+  /* `disabled` : le navigateur grise et réduit l'opacité de lui-même, ce qui
+     ferait de l'étape courante la moins visible de la bande — l'inverse de ce
+     qu'on veut. On reprend la main sur les deux. */
+  .pas:disabled { opacity: 1; }
+  .pas--ici:disabled { background: var(--brand); border-color: var(--brand); color: #fff; }
+  /* Ce qui est derrière : lisible, mais qui ne réclame pas l'œil. Un pipeline
+     où toutes les étapes crient autant ne se lit plus. */
+  .pas--fait { color: var(--slate-400); border-color: var(--slate-100); }
+  .pas--fait::before { content: '✓'; margin-inline-end: 5px; color: var(--status-success); }
+  /* Sortir du pipeline est l'exception : à l'écart, et jamais coloré comme
+     une étape. */
+  .pas--hors { color: var(--slate-400); border-style: dashed; margin-inline-start: 8px; }
+
+  /* ── Au doigt ────────────────────────────────────────────────────────────
+     Sous 900 px, la grille tombe à une colonne. La bande d'étapes défile
+     plutôt que de s'enrouler : enroulée, elle fait cinq rangées et pousse la
+     carte suivante hors de l'écran — on perd la liste en voulant la lire. */
+  @media (max-width: 900px) {
+    .offre {
+      grid-template-columns: 1fr auto;
+      gap: 10px 12px;
+      padding: 16px;
+    }
+    .offre__qui { grid-column: 1; }
+    .offre__etat { grid-column: 2; grid-row: 1; align-self: start; }
+    .offre__sous { grid-column: 1 / -1; }
+    /* L'ordre change au doigt, et c'est le point le plus important de cet
+       écran.
+
+       Dans l'ordre du pipeline, l'étape courante d'une offre avancée se trouve
+       au milieu de la bande — donc hors de l'écran à l'ouverture. On ouvrait la
+       liste sans voir où était l'offre, et il fallait faire défiler chaque
+       bande une par une pour le savoir. Sans JavaScript, rien ne recentre une
+       bande au chargement.
+
+       Alors on la réordonne : l'étape courante en tête, les suivantes après —
+       ce vers quoi on peut avancer —, les franchies à la fin, où elles ne
+       servent que de rappel. L'ordre du DOM ne bouge pas : un lecteur d'écran
+       entend toujours le pipeline dans son ordre. */
+    .pas { order: 1; }
+    .pas--ici { order: 0; }
+    .pas--fait { order: 2; }
+    .pas--hors { order: 3; }
+
+    .offre__etapes {
+      grid-column: 1 / -1;
+      flex-wrap: nowrap;
+      overflow-x: auto;
+      scrollbar-width: none;
+      /* Le rembourrage rendu à la carte : la bande touche les bords, pour
+         qu'on voie qu'elle continue au-delà. */
+      margin-inline: -16px;
+      padding-inline: 16px;
+      padding-block: 2px;
+      scroll-snap-type: x proximity;
+    }
+    .offre__etapes::-webkit-scrollbar { display: none; }
+    .pas {
+      min-block-size: 44px;
+      padding-inline: 14px;
+      font-size: var(--text-sm);
+      scroll-snap-align: start;
+    }
+    .offre__client { font-size: var(--text-lg); }
+  }
 </style>
