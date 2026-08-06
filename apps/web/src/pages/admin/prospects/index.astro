@@ -9,11 +9,10 @@
  *
  * Ce que la liste répond, et pourquoi ces colonnes-là :
  *
- *   · **son commercial**, la question la plus posée sur un client et la seule
- *     qui n'était écrite nulle part. Elle vient de la dernière offre à son nom,
- *     pas d'une colonne « commercial » sur le prospect : celle-ci créerait une
- *     seconde vérité, et le jour où elle contredirait l'offre, personne ne
- *     saurait laquelle croire ;
+ *   · **son commercial** — celui que sa fiche lui a assigné, et à défaut celui
+ *     de sa dernière offre. La colonne dit toujours de laquelle des deux
+ *     sources elle tient son nom : un commercial déduit change tout seul à la
+ *     prochaine offre, et ne doit pas se lire comme une décision ;
  *   · **ses offres et ses contrats signés**, comptés ;
  *   · **ses packs**, tirés des offres ;
  *   · **sa charte**, ou l'absence de surcharge — qui est le cas sain, pas une
@@ -80,8 +79,9 @@ const actifs = clients.filter((c) => c.contrats_signes > 0);
       <Icone nom="triangle-alert" taille={17} />
       <span>
         <strong>{sansCommercial.map((c) => c.nom).join(', ')} — des offres, aucun commercial.</strong>
-        Le commercial se lit sur l'offre : une offre créée par un compte supprimé n'en a plus.
-        Rien ne se commissionne pour ces clients tant que c'est le cas.
+        Ni assigné sur la fiche, ni déductible de leurs offres — celles-ci ont été créées par un
+        compte depuis supprimé. Rien ne se commissionne pour ces clients tant que c'est le cas :
+        ouvrez la fiche et assignez-leur quelqu'un.
       </span>
     </p>
   )}
@@ -92,7 +92,8 @@ const actifs = clients.filter((c) => c.contrats_signes > 0);
         <h2>Les clients</h2>
         <p>
           <span class="jeton">landing_prospects</span> — chaque fiche mène à ses offres, ses
-          contrats, et sa charte graphique. Le commercial vient de la dernière offre à son nom.
+          contrats, et sa charte graphique. Le commercial est celui que la fiche lui a assigné ;
+          à défaut, celui de sa dernière offre.
         </p>
       </div>
       <form method="get" class="bloc__actions">
@@ -128,7 +129,15 @@ const actifs = clients.filter((c) => c.contrats_signes > 0);
                 </td>
                 <td>
                   {c.commercial
-                    ? c.commercial
+                    ? (
+                      <>
+                        {c.commercial}
+                        {/* Assigné ou déduit : la colonne le dit, sinon un nom
+                            deviné se lit comme un nom décidé. */}
+                        {c.commercial_origine === 'offres' && <span class="champ__aide">d’après ses offres</span>}
+                        {c.commercial_inactif && <span class="champ__aide">compte désactivé</span>}
+                      </>
+                    )
                     : <span class="champ__aide">{c.offres > 0 ? 'aucun' : '—'}</span>}
                 </td>
                 <td class="num">{c.offres || <span class="champ__aide">—</span>}</td>

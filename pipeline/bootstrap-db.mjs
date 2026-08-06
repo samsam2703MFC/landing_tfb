@@ -393,6 +393,19 @@ function modele(pg) {
         // La demande de démonstration d'où vient le prospect, s'il en vient
         // une : de quoi éviter la ressaisie et garder le fil.
         ['lead_id', 'INT'],
+        // À qui appartient ce client. Distinct de `offres.cree_par`, et il
+        // faut que les deux existent :
+        //
+        //   · `commercial_id` dit qui SUIT le client aujourd'hui. Il vaut
+        //     avant la première offre, il survit à un client repris, et c'est
+        //     lui qu'on assigne à la main depuis la fiche ;
+        //   · `offres.cree_par` dit qui a fait CETTE offre-là, et c'est lui
+        //     qu'elle commissionne — pour toujours, même après une reprise.
+        //
+        // Ce ne sont pas deux écritures du même fait : les confondre ferait
+        // qu'assigner un client changerait rétroactivement qui a été payé sur
+        // ses anciens contrats.
+        ['commercial_id', 'INT'],
         ['cree_par', 'INT'],
         ['cree_le', t.horodatage],
       ],
@@ -1440,6 +1453,8 @@ const INDEX = [
   { suffixe: 'offres_prospect', table: 'offres', colonnes: 'prospect_id' },
   { suffixe: 'offres_statut', table: 'offres', colonnes: 'statut' },
   { suffixe: 'offres_auteur', table: 'offres', colonnes: 'cree_par' },
+  // « Les clients d'Untel » se demande à chaque ouverture de la liste.
+  { suffixe: 'prospects_commercial', table: 'prospects', colonnes: 'commercial_id' },
   // Deux paliers au même mois rendraient l'échelle de commission dépendante de
   // l'ordre des lignes en base. Le code le refuse déjà ; la base aussi, parce
   // qu'un import ou une correction en SQL ne passe pas par le code.

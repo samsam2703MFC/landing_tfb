@@ -16,7 +16,10 @@ import Icone from '../../../components/Icone.astro';
 import {
   CHAMPS_PROSPECT,
   ajouterPiece,
+  assignerCommercial,
   chargerProspect,
+  commercialDuClient,
+  commerciauxAssignables,
   compteurs,
   enregistrerDossier,
   enregistrerProspect,
@@ -53,6 +56,12 @@ if (Astro.request.method === 'POST') {
         deposePar: (Astro.locals.session || {}).id || null,
       });
       dit = 'Pièce déposée.';
+    } else if (action === 'commercial') {
+      const qui = f.get('commercial_id');
+      await assignerCommercial(id, qui);
+      dit = qui
+        ? 'Client assigné. Ses prochaines offres partiront à ce nom ; les anciennes gardent le leur.'
+        : 'Client retiré de son portefeuille.';
     } else if (action === 'piece-suppression') {
       await supprimerPiece(f.get('piece_id'));
       dit = 'Pièce retirée.';
@@ -84,12 +93,14 @@ if (Astro.request.method === 'POST') {
 let prospect = null;
 let offres = [];
 let pieces = [];
+let commerciaux = [];
 let chiffres = {};
 try {
   prospect = await chargerProspect(id);
   if (prospect) {
     offres = (await listerOffres()).filter((o) => o.prospect_id === prospect.id);
     pieces = await listerPieces(prospect.id);
+    commerciaux = await commerciauxAssignables();
   }
   chiffres = await compteurs();
 } catch (err) {
@@ -97,17 +108,26 @@ try {
 }
 
 /**
- * Son commercial.
+ * Son commercial. Assigné ici, déduit de ses offres à défaut.
  *
- * Il se lit sur les offres, jamais sur une colonne du prospect : une seconde
- * écriture du même fait finirait par contredire la première, et le jour venu
- * personne ne saurait laquelle paie. La plus récente offre à porter un auteur
- * donne celui qui suit le client aujourd'hui — c'est aussi la règle de la
- * liste, et les deux écrans doivent dire la même chose.
+ * La même règle que la liste — `commercialDuClient()` la porte une seule fois,
+ * pour que les deux écrans ne puissent pas se contredire.
  */
 const dateOffre = (o) => new Date(o.cree_le || 0).getTime() || 0;
 const recentes = [...offres].sort((a, b) => dateOffre(b) - dateOffre(a));
-const commercial = (recentes.find((o) => o.auteur_nom) || {}).auteur_nom || null;
+const commercial = commercialDuClient(prospect || {}, recentes);
+
+// Un compte désactivé qui garde des clients disparaîtrait du menu, et le
+// formulaire l'effacerait au premier enregistrement sans que personne ne
+// l'ait demandé. On le remet dans la liste, nommé pour ce qu'il est.
+const choixCommerciaux = [...commerciaux];
+if (prospect?.commercial_id && !choixCommerciaux.some((u) => Number(u.id) === Number(prospect.commercial_id))) {
+  choixCommerciaux.unshift({
+    id: prospect.commercial_id,
+    nom: `${prospect.commercial_nom || prospect.commercial_identifiant || `Compte ${prospect.commercial_id}`} (compte désactivé)`,
+    identifiant: prospect.commercial_identifiant,
+  });
+}
 
 const etat = prospect ? dossierComplet(prospect, { pieces }) : { complet: false, manque: [] };
 const libellePiece = (cle) => (TYPES_PIECE.find((t) => t.cle === cle) || {}).libelle || cle;
@@ -130,6 +150,44 @@ const message = Astro.url.searchParams.get('ok');
   {prospect && (
     <>
       <OngletsClient prospect={prospect.id} actif="fiche" />
+
+      {/* Son commercial, en tête de fiche et modifiable ici.
+          C'est la première question posée sur un client, et il fallait
+          jusqu'ici ouvrir une de ses offres pour y répondre. */}
+      <section class="bloc bloc--portefeuille" style="margin-block-end:20px">
+        <form method="post" class="portefeuille">
+          <input type="hidden" name="action" value="commercial" />
+          <div class="portefeuille__dit">
+            <label class="champ__nom" for="commercial_id">Son commercial</label>
+            <p class="champ__aide">
+              {commercial.origine === 'assigne' && commercial.inactif && (
+                <strong>Son compte est désactivé — personne ne suit ce client. </strong>
+              )}
+              {commercial.origine === 'offres' && (
+                <>
+                  Personne ne lui est assigné : <strong>{commercial.nom}</strong> est déduit de sa
+                  dernière offre, et changera tout seul à la prochaine.{' '}
+                </>
+              )}
+              Ses <strong>prochaines</strong> offres partiront à ce nom. Les anciennes gardent le leur,
+              et c'est celui-là qu'elles commissionnent — assigner un client ne reprend pas
+              le travail déjà fait.
+            </p>
+          </div>
+          <div class="portefeuille__geste">
+            <select id="commercial_id" name="commercial_id">
+              <option value="">— personne —</option>
+              {choixCommerciaux.map((u) => (
+                <option value={u.id} selected={Number(prospect.commercial_id) === Number(u.id)}>
+                  {u.nom || u.identifiant}{u.role === 'admin' ? ' · admin' : ''}
+                </option>
+              ))}
+            </select>
+            <button class="bouton bouton--sm" type="submit">Assigner</button>
+          </div>
+        </form>
+      </section>
+
       <section class="bloc" style="margin-block-end:20px">
         <div class="bloc__tete">
           <div>
@@ -143,8 +201,13 @@ const message = Astro.url.searchParams.get('ok');
               sur un client, et il fallait jusqu'ici ouvrir une offre pour y
               répondre. « Aucun » n'est écrit que s'il y a des offres — sur un
               client sans offre, l'absence n'est pas une anomalie. */}
-          {commercial
-            ? <span class="etat">Commercial · {commercial}</span>
+          {commercial.nom
+            ? (
+              <span class={commercial.origine === 'assigne' ? 'etat etat--on' : 'etat'}>
+                Commercial · {commercial.nom}
+                {commercial.origine === 'offres' && ' (d’après ses offres)'}
+              </span>
+            )
             : offres.length > 0 && <span class="etat etat--manque">Aucun commercial</span>}
           <span class={prospect.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
             {prospect.tva_verifiee_le ? `TVA vérifiée le ${jour(prospect.tva_verifiee_le)}` : 'TVA non vérifiée'}
@@ -403,4 +466,22 @@ const message = Astro.url.searchParams.get('ok');
      lire sans rien dire. Et sans `legend` non plus : une légende se pose sur
      la bordure de son cadre et ignore le rembourrage du haut, si bien que le
      titre du deuxième groupe se collait à la dernière saisie du premier. */
+
+  /* L'assignation : une phrase et un geste, côte à côte tant qu'il y a la
+     place. Le bloc n'a pas de `bloc__tete` — un titre de section pour un
+     seul champ pèse plus lourd que ce qu'il annonce. */
+  .portefeuille {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 16px 20px;
+  }
+  .portefeuille__dit { flex: 1 1 22rem; min-inline-size: 0; }
+  .portefeuille__dit .champ__aide { margin-block-start: 4px; }
+  /* `flex: none` : le menu ne doit pas rétrécir sous le nom le plus long
+     qu'il contient, sinon le choix courant s'affiche tronqué. */
+  .portefeuille__geste { display: flex; gap: 8px; align-items: center; flex: none; }
+  .portefeuille__geste select { inline-size: 15rem; }
 </style>

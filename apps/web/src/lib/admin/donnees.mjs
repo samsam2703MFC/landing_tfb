@@ -1680,11 +1680,9 @@ export async function listerProspects() {
  *
  * Ce que la liste porte, et pourquoi chaque colonne y est :
  *
- *   · **son commercial** — la question la plus posée sur un client, et la seule
- *     qui n'était écrite nulle part. Il vient de la dernière offre à son nom :
- *     le prospect ne porte pas de propriétaire, l'offre porte `cree_par`, et
- *     inventer une colonne « commercial » sur le prospect créerait une seconde
- *     vérité qui divergerait de la première ;
+ *   · **son commercial** — celui à qui la fiche l'a assigné, et à défaut celui
+ *     de sa dernière offre. Voir `commercialDuClient()` : ce sont deux faits
+ *     différents, pas deux versions du même ;
  *   · **ses offres et contrats**, comptés — un client sans offre n'est pas un
  *     client, c'est une fiche ;
  *   · **ses packs**, tirés des offres réellement signées ;
@@ -1696,7 +1694,12 @@ export async function listerProspects() {
 export async function listerFichesClients() {
   const db = await connexion();
   const [prospects, offres, contrats, chartes] = await Promise.all([
-    db.requete(`SELECT * FROM ${table('prospects')} ORDER BY raison_sociale`),
+    db.requete(
+      `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif
+         FROM ${table('prospects')} p
+         LEFT JOIN ${table('utilisateurs')} c ON c.id = p.commercial_id
+        ORDER BY p.raison_sociale`,
+    ),
     db.requete(
       `SELECT o.prospect_id, o.reference, o.statut, o.packs, o.cree_le,
               u.nom AS auteur_nom, u.identifiant AS auteur_identifiant
@@ -1713,17 +1716,21 @@ export async function listerFichesClients() {
   return prospects.map((p) => {
     const siennes = offres.filter((o) => Number(o.prospect_id) === Number(p.id));
     const signes = contrats.filter((c) => Number(c.prospect_id) === Number(p.id) && c.statut === 'signe');
-    // Les offres sont déjà triées du plus récent au plus ancien : la première
-    // qui porte un auteur donne le commercial en cours.
-    const derniere = siennes.find((o) => o.auteur_nom || o.auteur_identifiant);
     const charte = charteDe.get(Number(p.id));
     const surcharges = charte ? Object.keys(lireJson(charte.donnees, {}) || {}).length : 0;
+    const qui = commercialDuClient(p, siennes);
 
     return {
       id: p.id,
       nom: p.raison_sociale || `Client ${p.id}`,
       ville: p.ville || null,
-      commercial: derniere ? (derniere.auteur_nom || derniere.auteur_identifiant) : null,
+      commercial: qui.nom,
+      commercial_id: p.commercial_id ? Number(p.commercial_id) : null,
+      // D'où vient le nom : assigné à la main, ou déduit des offres. La liste
+      // le montre — un commercial déduit n'engage personne et peut changer
+      // tout seul à la prochaine offre.
+      commercial_origine: qui.origine,
+      commercial_inactif: qui.inactif,
       offres: siennes.length,
       contrats_signes: signes.length,
       packs: [...new Set(siennes.flatMap((o) => (lireJson(o.packs, []) || []).map((x) => x.nom || x.cle)))],
@@ -1733,9 +1740,97 @@ export async function listerFichesClients() {
   });
 }
 
+/**
+ * Qui suit ce client — l'assignation d'abord, ses offres à défaut.
+ *
+ * Deux sources, dans cet ordre, et l'écran dit toujours laquelle a parlé :
+ *
+ *   · **assigné** (`prospects.commercial_id`) — quelqu'un l'a décidé depuis la
+ *     fiche. Ça vaut avant la première offre, et ça survit à un client repris ;
+ *   · **déduit** — la dernière offre à porter un auteur. C'est une supposition
+ *     raisonnable, pas une décision : elle change toute seule à la prochaine
+ *     offre, et on ne la présente donc jamais comme acquise.
+ *
+ * Ce que cette fonction ne fait **pas** : décider qui est payé. La commission
+ * se calcule sur `offres.cree_par`, offre par offre. Réassigner un client ne
+ * réécrit pas qui a signé ses anciens contrats — sinon une reprise de
+ * portefeuille reprendrait aussi les commissions déjà acquises.
+ *
+ * @param {object} prospect ligne de `prospects`, jointe sur son commercial
+ * @param {Array}  offres   ses offres, de la plus récente à la plus ancienne
+ */
+export function commercialDuClient(prospect = {}, offres = []) {
+  if (prospect.commercial_id && (prospect.commercial_nom || prospect.commercial_identifiant)) {
+    return {
+      nom: prospect.commercial_nom || prospect.commercial_identifiant,
+      origine: 'assigne',
+      // Un compte désactivé qui garde des clients : ils ne sont suivis par
+      // personne sans que rien ne le dise. L'écran le signale.
+      inactif: !prospect.commercial_actif,
+    };
+  }
+  const derniere = offres.find((o) => o.auteur_nom || o.auteur_identifiant);
+  if (derniere) {
+    return {
+      nom: derniere.auteur_nom || derniere.auteur_identifiant,
+      origine: 'offres',
+      inactif: false,
+    };
+  }
+  return { nom: null, origine: null, inactif: false };
+}
+
+/** Les comptes à qui l'on peut confier un client. */
+export async function commerciauxAssignables() {
+  const db = await connexion();
+  // Les administrateurs y figurent : dans une petite structure, le patron
+  // vend. Le rôle `technique`, non — lui confier un client ne veut rien dire.
+  // Les comptes désactivés non plus, mais celui déjà assigné reste affiché par
+  // la fiche : le retirer de la liste ferait taire une assignation existante.
+  return db.requete(
+    `SELECT id, nom, identifiant, role FROM ${table('utilisateurs')}
+      WHERE actif = ? AND role IN ('commercial', 'admin')
+      ORDER BY role DESC, nom, identifiant`,
+    [vrai(true)],
+  );
+}
+
+/**
+ * Confie un client à un commercial, ou le laisse sans.
+ *
+ * Aucun effet rétroactif : les offres déjà faites gardent leur auteur, et donc
+ * leur commission. C'est la seule lecture qui tienne — sinon assigner un
+ * client à quelqu'un lui donnerait le travail d'un autre.
+ */
+export async function assignerCommercial(prospectId, utilisateurId) {
+  const db = await connexion();
+  const qui = Number(utilisateurId) || null;
+  if (qui) {
+    const [compte] = await db.requete(
+      `SELECT id, role FROM ${table('utilisateurs')} WHERE id = ? LIMIT 1`,
+      [qui],
+    );
+    if (!compte) throw new Error('Ce compte n’existe pas.');
+    if (compte.role === 'technique') {
+      throw new Error('Un compte technique ne suit pas de client : choisissez un commercial ou un administrateur.');
+    }
+  }
+  await db.executer(
+    `UPDATE ${table('prospects')} SET commercial_id = ? WHERE id = ?`,
+    [qui, Number(prospectId)],
+  );
+  viderCache();
+}
+
 export async function chargerProspect(id) {
   const db = await connexion();
-  const lignes = await db.requete(`SELECT * FROM ${table('prospects')} WHERE id = ? LIMIT 1`, [Number(id)]);
+  const lignes = await db.requete(
+    `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif
+       FROM ${table('prospects')} p
+       LEFT JOIN ${table('utilisateurs')} c ON c.id = p.commercial_id
+      WHERE p.id = ? LIMIT 1`,
+    [Number(id)],
+  );
   return lignes[0] || null;
 }
 
@@ -1909,6 +2004,20 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
   const tarifs = await tarifsEnVigueur();
   const annee = new Date().getFullYear();
 
+  // L'offre part au nom du commercial du client, pas de qui clique.
+  //
+  // Sans ça, un administrateur qui ouvre une offre pour un client suivi par
+  // quelqu'un d'autre s'en attribue la commission — silencieusement, puisque
+  // `cree_par` ne se corrige nulle part ensuite. C'est le sens de « son
+  // commercial est repris sur l'offre » : l'assignation de la fiche décide.
+  //
+  // Sans assignation, c'est bien l'auteur du clic : il faut quelqu'un.
+  const [proprietaire] = await db.requete(
+    `SELECT commercial_id FROM ${table('prospects')} WHERE id = ? LIMIT 1`,
+    [Number(prospectId)],
+  );
+  const porteur = Number(proprietaire?.commercial_id) || Number(auteurId) || null;
+
   const valideJusquAu = new Date();
   valideJusquAu.setDate(valideJusquAu.getDate() + (tarifs.validite_jours || 30));
 
@@ -1928,7 +2037,7 @@ export async function creerOffre({ prospectId, auteurId = 0, langue = 'fr' }) {
           packs, socle_pos)
          VALUES (?, ?, 1, 'brouillon', ?, 'EUR', ?, ?, ?, 'pourcent', 0, ?, ?, 'aucune', 0, ?, ?, ?, ?, ?, ?, ?, 0, ?, 0, ?, 0, ?, 0, ?, ?, 'pos')`,
         [
-          Number(prospectId), reference, langue, Number(auteurId) || null, new Date(), valideJusquAu,
+          Number(prospectId), reference, langue, porteur, new Date(), valideJusquAu,
           tarifs.tva_defaut, vrai(false), json([]), json([]), json([]),
           tarifs.prix_par_vue_cents, tarifs.multiplicateur_achat,
           tarifs.taux_annuel, tarifs.prix_jour_formation_cents, tarifs.prix_poste_cents,
