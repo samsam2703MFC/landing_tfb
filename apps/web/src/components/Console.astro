@@ -565,6 +565,50 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
       }
       .puce--cap { background: var(--brand-subtle-hover); color: var(--brand-press); }
 
+      /* ── Puces de tri ──────────────────────────────────────────────────── */
+      /*
+       * Une puce de tri est un LIEN qui filtre une liste, et qui dit combien de
+       * lignes il laissera. À ne pas confondre avec `.puce` juste au-dessus,
+       * qui est une étiquette inerte — même mot, deux objets, et c'est déjà ce
+       * qui a cassé la barre de Composants une fois.
+       *
+       * Ici et non dans une page : la liste des composants et celle des offres
+       * s'en servent toutes deux, et la troisième qui les reprendra ne devra
+       * pas les recopier.
+       */
+      .tri {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px;
+      border-radius: var(--radius-pill);
+      border: 1px solid var(--slate-200);
+      background: #fff;
+      font: 500 var(--text-xs) / 1.2 var(--font-sans);
+      color: var(--slate-600);
+      text-decoration: none;
+      transition: var(--transition-control);
+      }
+      .tri:hover { border-color: var(--slate-300); color: var(--navy-900); background: var(--slate-50); text-decoration: none; }
+      .tri b {
+      font-family: var(--font-mono); font-variant-numeric: tabular-nums;
+      font-weight: 500; font-size: 11px; color: var(--slate-400);
+      }
+      .tri--on { background: var(--brand); border-color: var(--brand); color: #fff; }
+      .tri--on:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
+      .tri--on b { color: rgba(255, 255, 255, 0.72); }
+      /* Un module que la recherche ne touche pas reste cliquable, mais s'efface. */
+      .tri--vide { opacity: 0.45; }
+      .tri--vide.tri--on { opacity: 1; }
+
+      /* Le point signale les composants encore à valider dans ce module. */
+      .tri__point {
+      inline-size: 6px; block-size: 6px; border-radius: 50%;
+      background: var(--status-warning); flex: none;
+      }
+
+      .tri--trou { border-style: dashed; }
+      .tri--trou.tri--on { border-style: solid; background: var(--text-warning); border-color: var(--text-warning); }
+      .tri--net { border-color: transparent; color: var(--brand-hover); text-decoration: underline; }
+
       /* Du texte de machine : traces d'appel, réponse brute d'une caisse. */
       .trace {
         margin: 8px 0 0; padding: 12px 14px; border-radius: 10px;

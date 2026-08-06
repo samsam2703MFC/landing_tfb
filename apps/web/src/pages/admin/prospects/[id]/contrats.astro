@@ -1,0 +1,219 @@
+---
+/**
+ * Ses contrats, du côté du papier.
+ *
+ * L'onglet Facturation dit ce que chaque contrat engage en euros ; celui-ci dit
+ * où en est le document. Deux questions qui ne se posent jamais le même jour —
+ * l'une au moment de facturer, l'autre pendant qu'on attend une signature.
+ *
+ * Pour agir sur un contrat — le générer, l'envoyer, rafraîchir sa signature —
+ * c'est sa fiche. Ici on regarde, on repère ce qui traîne, et on y va.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import OngletsClient from '../../../../components/OngletsClient.astro';
+import { lien } from '../../../../lib/lien.mjs';
+import { chargerProspect, compteurs, listerPieces } from '../../../../lib/admin/donnees.mjs';
+import { contratsDuClient } from '../../../../lib/admin/fiche-client.mjs';
+import { TYPES_PIECE, dossierComplet } from '../../../../lib/contrats/gabarit.mjs';
+
+const { id } = Astro.params;
+let erreur = null;
+let prospect = null;
+let dossier = { contrats: [], signes: 0, en_attente: 0, sans_piece: [] };
+let pieces = [];
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) {
+    dossier = await contratsDuClient(prospect.id);
+    pieces = await listerPieces(prospect.id);
+  }
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : null);
+
+// Le dossier doit être complet avant qu'un contrat puisse être généré : autant
+// le dire ici, où l'on vient chercher pourquoi il n'y en a pas.
+const etat = prospect ? dossierComplet(prospect, { pieces }) : { complet: true, manque: [] };
+const libellePiece = (cle) => (TYPES_PIECE.find((t) => t.cle === cle) || {}).libelle || cle;
+
+const ETAT = {
+  brouillon: 'etat',
+  envoye: 'etat etat--manque',
+  signe: 'etat etat--on',
+  refuse: 'etat etat--manque',
+  expire: 'etat etat--manque',
+};
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Client · ${prospect?.raison_sociale || ''} · Contrats`}
+  actif="fiche-client"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <OngletsClient prospect={prospect.id} actif="contrats" />
+
+      <div class="cartouches">
+        <div class="cartouche">
+          <span class="cartouche__k">Signés</span>
+          <strong class="cartouche__v">{dossier.signes}</strong>
+          <span class="cartouche__d">sur {dossier.contrats.length} contrat(s)</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">En attente</span>
+          <strong class="cartouche__v">{dossier.en_attente}</strong>
+          <span class="cartouche__d">partis, pas encore revenus</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Dossier</span>
+          <strong class="cartouche__v" style="font-size:var(--text-lg)">
+            {etat.complet ? 'Complet' : `${etat.manque.length} manque(s)`}
+          </strong>
+          <span class="cartouche__d">ce qu'il faut pour éditer un contrat</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Pièces</span>
+          <strong class="cartouche__v">{pieces.length}</strong>
+          <span class="cartouche__d">au dossier de ce client</span>
+        </div>
+      </div>
+
+      {!etat.complet && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>Le dossier est incomplet :</strong> {etat.manque.map((m) => m.libelle).join(', ')}.
+            Aucun contrat ne peut être édité tant que c'est le cas — le refus vient au moment de
+            générer, autant le savoir avant.
+            <a href={lien(`/admin/prospects/${prospect.id}`)}> Compléter la fiche</a>.
+          </span>
+        </p>
+      )}
+
+      {/* Signé chez le prestataire, absent du dossier : le jour où il faudra
+          produire le document, il ne sera pas là. */}
+      {dossier.sans_piece.length > 0 && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>{dossier.sans_piece.map((c) => c.reference).join(', ')} — signé, mais aucun
+            exemplaire au dossier.</strong>
+            Le PDF signé se dépose sur la fiche du client. Sans lui, on ne pourra pas produire le
+            contrat le jour où on en aura besoin.
+          </span>
+        </p>
+      )}
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Ses contrats</h2>
+            <p>Où en est chaque document, et chez qui.</p>
+          </div>
+        </div>
+        {dossier.contrats.length === 0 ? (
+          <div class="bloc__pied">
+            Aucun contrat. Un contrat s'édite depuis une offre acceptée, sur la fiche de l'offre.
+          </div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr>
+                  <th>Contrat</th>
+                  <th style="inline-size:8rem">État</th>
+                  <th style="inline-size:13rem">Signature</th>
+                  <th style="inline-size:10rem">Effet</th>
+                  <th style="inline-size:10rem">Durée</th>
+                  <th style="inline-size:10rem">Par</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dossier.contrats.map((c) => (
+                  <tr>
+                    <td>
+                      <a href={lien(`/admin/contrats/${c.reference}`)}><strong>{c.reference}</strong></a>
+                      {c.offre_reference && (
+                        <span class="champ__aide">offre {c.offre_reference} v{c.offre_version}</span>
+                      )}
+                    </td>
+                    <td><span class={ETAT[c.statut] || 'etat'}>{c.statut}</span></td>
+                    <td>
+                      {c.signature_service ? (
+                        <>
+                          <span class="etat">{c.signature_service}</span>
+                          <span class="champ__aide">
+                            {c.signature_statut || 'sans état'}
+                            {c.signature_maj_le && ` · relevé le ${jourHeure(c.signature_maj_le)}`}
+                          </span>
+                        </>
+                      ) : c.signe_le ? (
+                        <span class="champ__aide">signé à la main le {jour(c.signe_le)}</span>
+                      ) : (
+                        <span class="champ__aide">pas encore parti</span>
+                      )}
+                    </td>
+                    <td>{jour(c.date_effet) || <span class="champ__aide">—</span>}</td>
+                    <td>
+                      {c.duree_mois > 0
+                        ? <>{c.duree_mois} mois<span class="champ__aide">préavis {c.preavis_jours} j</span></>
+                        : <span class="champ__aide">—</span>}
+                    </td>
+                    <td>{c.auteur_nom || c.auteur_identifiant || <span class="champ__aide">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Les pièces du dossier</h2>
+            <p>Ce qui a été déposé pour ce client. Le dépôt se fait sur sa fiche.</p>
+          </div>
+          <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/prospects/${prospect.id}`)}>
+            Déposer une pièce
+          </a>
+        </div>
+        {pieces.length === 0 ? (
+          <div class="bloc__pied">Aucune pièce déposée.</div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pièce</th>
+                  <th style="inline-size:14rem">Type</th>
+                  <th style="inline-size:11rem">Déposée</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pieces.map((p) => (
+                  <tr>
+                    <td><a href={lien(`/admin/pieces/${p.id}`)}>{p.nom}</a></td>
+                    <td>{libellePiece(p.type)}</td>
+                    <td>{jour(p.depose_le) || <span class="champ__aide">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  )}
+</Console>

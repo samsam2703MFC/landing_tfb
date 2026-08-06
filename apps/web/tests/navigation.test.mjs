@@ -230,7 +230,9 @@ describe('les écrans et le rail se répondent', () => {
         for (const c of e.couvre || []) declarees.add(c);
       }
     }
-    const ongletsDUnClient = new Set(['fiche', 'charte', 'modules', 'applications', 'journal', 'facturation']);
+    const ongletsDUnClient = new Set([
+      'fiche', 'charte', 'modules', 'contrats', 'applications', 'journal', 'facturation',
+    ]);
     const inconnues = [...actifsUtilises()].filter((a) => !declarees.has(a) && !ongletsDUnClient.has(a));
     assert.deepEqual(inconnues, [], `clés qui ne surlignent rien : ${inconnues.join(', ')}`);
   });

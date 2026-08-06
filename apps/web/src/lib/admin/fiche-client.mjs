@@ -415,6 +415,66 @@ export async function modulesDuClient(prospectId) {
   };
 }
 
+/* ------------------------------------------------------------- contrats --- */
+
+/**
+ * Ses contrats, du côté du papier et de la signature.
+ *
+ * L'onglet Facturation dit ce que chaque contrat engage en euros. Celui-ci dit
+ * où en est le document : généré, parti, signé, et par quel prestataire. Ce
+ * sont deux questions qui ne se posent jamais le même jour — l'une au moment
+ * de facturer, l'autre pendant qu'on attend une signature.
+ */
+export async function contratsDuClient(prospectId) {
+  const db = await connexion();
+  const id = Number(prospectId);
+
+  const [lignes, pieces] = await Promise.all([
+    db.requete(
+      `SELECT c.id, c.reference, c.statut, c.genere_le, c.envoye_le, c.signe_le,
+              c.date_effet, c.duree_mois, c.preavis_jours, c.reconduction,
+              c.signature_service, c.signature_enveloppe, c.signature_statut, c.signature_maj_le,
+              o.reference AS offre_reference, o.version AS offre_version,
+              u.nom AS auteur_nom, u.identifiant AS auteur_identifiant
+         FROM ${table('contrats')} c
+         LEFT JOIN ${table('offres')} o ON o.id = c.offre_id
+         LEFT JOIN ${table('utilisateurs')} u ON u.id = c.cree_par
+        WHERE c.prospect_id = ?
+        ORDER BY c.signe_le DESC, c.id DESC`,
+      [id],
+    ),
+    db.requete(
+      `SELECT contrat_id, type, nom FROM ${table('pieces')} WHERE prospect_id = ?`,
+      [id],
+    ),
+  ]);
+
+  const contrats = lignes.map((c) => {
+    const siennes = pieces.filter((p) => Number(p.contrat_id) === Number(c.id));
+    return {
+      ...c,
+      duree_mois: Number(c.duree_mois) || 0,
+      preavis_jours: Number(c.preavis_jours) || 0,
+      pieces: siennes,
+      // Le PDF signé déposé au dossier. Un contrat « signé » chez le
+      // prestataire mais sans pièce au dossier, c'est un document qu'on ne
+      // pourra pas produire le jour où on en aura besoin.
+      signe_au_dossier: siennes.some((p) => p.type === 'contrat_signe'),
+      // Parti en signature et toujours pas revenu. Ce n'est pas une erreur —
+      // c'est ce qu'il faut relancer.
+      en_attente: c.statut === 'envoye',
+    };
+  });
+
+  return {
+    contrats,
+    signes: contrats.filter((c) => c.statut === 'signe').length,
+    en_attente: contrats.filter((c) => c.en_attente).length,
+    // Ce que le contrat dit signé et que le dossier ne porte pas.
+    sans_piece: contrats.filter((c) => c.statut === 'signe' && !c.signe_au_dossier),
+  };
+}
+
 /* --------------------------------------------------------- facturation ---- */
 
 /**
