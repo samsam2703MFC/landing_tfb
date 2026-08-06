@@ -66,7 +66,13 @@ fi
 # les vhosts — un faux négatif silencieux qui a fait conclure à tort qu'aucune
 # règle n'existait.
 if [ "$REMOVE" != "1" ]; then
-  CONFLICTS="$(grep -RnE "^[[:space:]]*(ProxyPass|ProxyPassMatch|Alias|AliasMatch|RedirectMatch|RewriteRule)[[:space:]].*${BASE}(/|[[:space:]]|$)" \
+  # Le motif est ancré sur le PREMIER argument de la directive — le chemin
+  # d'URL — et non sur la ligne entière. Sans cette ancre, `Alias /kitchen
+  # /var/www/html/tfb/kitchen/public` est signalé comme un conflit sur /tfb :
+  # le préfixe apparaît dans la destination, sur le disque, où il ne veut rien
+  # dire. Un détecteur qui crie au loup sur la moitié des vhosts d'une machine
+  # partagée est un détecteur qu'on désactive.
+  CONFLICTS="$(grep -RnE "^[[:space:]]*(ProxyPass|ProxyPassMatch|Alias|AliasMatch|RedirectMatch|RewriteRule)[[:space:]]+\^?${BASE}(/|[[:space:]]|$)" \
                  /etc/apache2/sites-enabled/ /etc/apache2/conf-enabled/ 2>/dev/null \
                | grep -v 'TFB landing' \
                | grep -v "127.0.0.1:${PORT}${BASE}" || true)"
