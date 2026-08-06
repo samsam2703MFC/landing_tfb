@@ -43,10 +43,10 @@ if (Astro.request.method === 'POST') {
     let dit = 'Enregistré.';
 
     if (action === 'plan-ajout') {
-      const cle = await ajouterPlan({ nom: f.get('nom'), paliers: f.get('paliers') });
+      const cle = await ajouterPlan({ nom: f.get('nom'), paliers: f });
       dit = `Plan « ${cle} » créé.`;
     } else if (action === 'plan-paliers') {
-      await enregistrerPaliers(f.get('cle'), f.get('paliers'));
+      await enregistrerPaliers(f.get('cle'), f);
       dit = 'Paliers enregistrés. Les commissions déjà versées gardent leur taux.';
     } else if (action === 'plan-suppression') {
       await supprimerPlan(f.get('cle'));
@@ -140,9 +140,11 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
         <h2>Les plans</h2>
         <p>
           <span class="jeton">landing_plans_commission</span> — un accord nommé, réutilisable.
-          L'échelle s'écrit <code>mois:pourcentage</code> : <code>0:90, 12:20</code> se lit
-          « 90 % la première année, puis 20 % ». Modifier un palier change les calculs
-          <strong>à venir</strong>.
+          Il s'écrit en <strong>tranches</strong> : une durée et un pourcentage du montant
+          facturé. « 12 mois à 70 %, puis 30 % » est la rémunération d'un commercial
+          indépendant, telle qu'elle se négocie. Laisser la dernière durée vide veut dire
+          « pour le reste du contrat » ; la renseigner arrête le plan.
+          Modifier une tranche change les calculs <strong>à venir</strong>.
         </p>
       </div>
     </div>
@@ -152,9 +154,9 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
         <table>
           <thead>
             <tr>
-              <th>Plan</th>
-              <th>Échelle</th>
-              <th style="inline-size:18rem">Paliers</th>
+              <th style="inline-size:14rem">Plan</th>
+              <th>Ce qu'il paie</th>
+              <th style="inline-size:24rem">Ses tranches</th>
               <th style="inline-size:12rem"><span class="invisible">Actions</span></th>
             </tr>
           </thead>
@@ -165,20 +167,39 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
                   <strong>{p.nom}</strong>
                   <code class="slug">{p.cle}</code>
                 </td>
-                <td><span class="champ__aide">{resumerPlan(p.paliers)}</span></td>
+                <td>
+                  <span class="champ__aide">{resumerPlan(p.paliers)}</span>
+                  {p.comptes > 0 && (
+                    <span class="champ__aide">{p.comptes} commercial(aux) sur ce plan</span>
+                  )}
+                </td>
                 <td>
                   <form method="post" id={`pl-${p.cle}`}>
                     <input type="hidden" name="action" value="plan-paliers" />
                     <input type="hidden" name="cle" value={p.cle} />
                   </form>
-                  <input
-                    form={`pl-${p.cle}`}
-                    type="text"
-                    name="paliers"
-                    value={p.paliers.map((x) => `${x.depuis_mois}:${x.taux_bp / 100}`).join(', ')}
-                    spellcheck="false"
-                    aria-label={`Paliers du plan ${p.cle}`}
-                  />
+                  {/* Une ligne de plus que de tranches : c'est elle qui sert à
+                      en ajouter une, sans JavaScript. Une ligne entièrement
+                      vide est ignorée à l'enregistrement. */}
+                  {[...p.tranches, { duree_mois: '', taux_bp: '' }].map((t, i) => (
+                    <div class="tranche">
+                      <input
+                        form={`pl-${p.cle}`} type="number" name="duree_mois" min="1"
+                        value={t.duree_mois ?? ''} placeholder="reste"
+                        aria-label={`Durée de la tranche ${i + 1}`}
+                      />
+                      <span class="tranche__mot">mois à</span>
+                      <input
+                        form={`pl-${p.cle}`} type="number" name="taux" min="0" max="100" step="0.01"
+                        value={t.taux_bp === null || t.taux_bp === '' ? '' : t.taux_bp / 100}
+                        aria-label={`Taux de la tranche ${i + 1}`}
+                      />
+                      <span class="tranche__mot">%</span>
+                    </div>
+                  ))}
+                  {p.finit && (
+                    <span class="champ__aide">puis plus rien — le plan s'arrête</span>
+                  )}
                 </td>
                 <td>
                   <div class="actions">
@@ -204,12 +225,24 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
       <div class="duo">
         <div class="champ">
           <label for="pl-nom">Nom du plan<span class="champ__requis" aria-hidden="true"> *</span></label>
-          <input id="pl-nom" type="text" name="nom" required placeholder="90 puis 20" />
+          <input id="pl-nom" type="text" name="nom" required placeholder="Indépendant 70 puis 30" />
         </div>
         <div class="champ">
-          <label for="pl-pal">Échelle<span class="champ__requis" aria-hidden="true"> *</span></label>
-          <input id="pl-pal" type="text" name="paliers" required placeholder="0:90, 12:20" spellcheck="false" />
-          <span class="champ__aide">mois:pourcentage, séparés par des virgules.</span>
+          <span class="legende">Ses tranches<span class="champ__requis" aria-hidden="true"> *</span></span>
+          {[0, 1, 2].map((i) => (
+            <div class="tranche">
+              <input type="number" name="duree_mois" min="1"
+                placeholder={i === 0 ? '12' : 'reste'} aria-label={`Durée de la tranche ${i + 1}`} />
+              <span class="tranche__mot">mois à</span>
+              <input type="number" name="taux" min="0" max="100" step="0.01"
+                placeholder={i === 0 ? '70' : i === 1 ? '30' : ''} aria-label={`Taux de la tranche ${i + 1}`} />
+              <span class="tranche__mot">%</span>
+            </div>
+          ))}
+          <span class="champ__aide">
+            Une durée et un pourcentage du montant facturé. Dernière durée vide = pour le reste
+            du contrat ; renseignée = le plan s'arrête après elle.
+          </span>
         </div>
       </div>
       <div class="actions">
@@ -228,9 +261,18 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
             {g.nom}
             {!g.actif && <span class="champ__aide"> — compte inactif</span>}
           </h2>
+          {/* La chaîne, dans l'ordre : le plan qui le paie, les clients qu'il
+              suit, les contrats qui en sortent. */}
           <p>
-            {g.signes} contrat(s) signé(s) sur {g.contrats}
-            {g.plan ? ` · plan ${g.plan.nom} — ${resumerPlan(g.plan.paliers)}` : ' · aucun plan'}
+            {g.plan
+              ? <><strong>{g.plan.nom}</strong> — {resumerPlan(g.plan.paliers)}</>
+              : <span class="raison">aucun plan — rien ne se calcule pour lui</span>}
+          </p>
+          <p class="champ__aide">
+            {g.portefeuille > 0
+              ? `${g.portefeuille} client(s) dans son portefeuille`
+              : 'aucun client assigné'}
+            {' · '}{g.signes} contrat(s) signé(s) sur {g.contrats}
           </p>
         </div>
         <div class="bloc__actions">
@@ -250,14 +292,18 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
       </div>
 
       {g.clients.length === 0 ? (
-        <p class="champ__aide" style="padding:0 20px 16px">Aucun client à son nom.</p>
+        <p class="champ__aide" style="padding:0 20px 16px">
+          Aucun client à son nom, ni assigné sur une fiche, ni auteur d'une offre.
+        </p>
       ) : (
         <div class="clients">
           {g.clients.map((cl) => (
             <div class="client">
               <div class="client__tete">
                 <strong class="client__nom">{cl.nom}</strong>
-                <span class="client__nb">{cl.contrats.length} contrat(s)</span>
+                <span class="client__nb">
+                  {cl.sans_contrat ? 'assigné, aucun contrat' : `${cl.contrats.length} contrat(s)`}
+                </span>
                 <span class="client__total">
                   {cl.total_cents === null ? '—' : formater(cl.total_cents)}
                 </span>
@@ -302,6 +348,14 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
      les reprenaient, et Astro empaquette les styles par page — celles qui ne
      recopiaient pas les règles s'affichaient sans style, sans rien pour le
      signaler. */
+
+  /* Une tranche : « [12] mois à [70] % ». Les deux champs sont étroits parce
+     qu'ils portent deux chiffres, et les mots entre eux font la phrase — un
+     libellé au-dessus de chaque champ aurait pris trois fois la hauteur pour
+     dire la même chose. */
+  .tranche { display: flex; align-items: center; gap: 6px; margin-block-end: 4px; }
+  .tranche input { inline-size: 5.5rem; }
+  .tranche__mot { font: var(--text-xs) / 1 var(--font-sans); color: var(--slate-500); white-space: nowrap; }
 
   /* Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
      sans sa raison se lit comme un bug ; avec, c'est une information. */
