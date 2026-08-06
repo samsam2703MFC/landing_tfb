@@ -238,7 +238,7 @@ const RUBRIQUES = TOUTES
       }
       .alerte--ok { background: var(--surface-success-subtle); color: var(--text-success); border-color: var(--green-500); }
       .alerte--ko { background: var(--surface-danger-subtle); color: var(--text-danger); border-color: var(--border-danger); }
-      .alerte--attention { background: var(--amber-100); color: var(--amber-700); border-color: var(--status-warning); }
+      .alerte--attention { background: var(--amber-100); color: var(--text-warning); border-color: var(--status-warning); }
 
       /* ── Tuiles de chiffres ────────────────────────────────────────────── */
       .tuiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
@@ -323,7 +323,7 @@ const RUBRIQUES = TOUTES
       .etat::before { content: ''; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--status-neutral); }
       .etat--on { background: var(--green-100); color: var(--green-700); }
       .etat--on::before { background: var(--status-success); }
-      .etat--manque { background: var(--amber-100); color: var(--amber-700); }
+      .etat--manque { background: var(--amber-100); color: var(--text-warning); }
       .etat--manque::before { background: var(--status-warning); }
 
       /* ── Boutons ───────────────────────────────────────────────────────── */
@@ -346,8 +346,8 @@ const RUBRIQUES = TOUTES
         transition: var(--transition-control);
       }
       .bouton--sm { min-block-size: 30px; padding-inline: 12px; font-size: var(--text-xs); }
-      .bouton--marque { background: var(--plum-500); border-color: var(--plum-500); color: #fff; }
-      .bouton--marque:hover { background: var(--plum-600); border-color: var(--plum-600); color: #fff; text-decoration: none; }
+      .bouton--marque { background: var(--brand); border-color: var(--brand); color: #fff; }
+      .bouton--marque:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; text-decoration: none; }
       .bouton--sobre { background: #fff; border-color: var(--slate-200); color: var(--slate-600); }
       .bouton--sobre:hover { background: var(--slate-50); border-color: var(--slate-300); color: var(--navy-900); text-decoration: none; }
       /* Un bouton refusé doit en avoir l'air.
@@ -361,13 +361,13 @@ const RUBRIQUES = TOUTES
         opacity: 0.45; cursor: not-allowed; filter: grayscale(0.7);
       }
       .bouton[disabled]:hover, .bouton:disabled:hover {
-        background: var(--plum-500); border-color: var(--plum-500);
+        background: var(--brand); border-color: var(--brand);
       }
       .bouton--sobre[disabled]:hover { background: #fff; border-color: var(--slate-200); }
 
       /* Le vert de la validation : c'est le geste qui met en ligne. */
-      .bouton--valider { background: var(--teal-500); border-color: var(--teal-700); color: #fff; }
-      .bouton--valider:hover { background: var(--teal-700); border-color: var(--teal-700); color: #fff; text-decoration: none; }
+      .bouton--valider { background: var(--teal-500); border-color: var(--text-success); color: #fff; }
+      .bouton--valider:hover { background: var(--text-success); border-color: var(--text-success); color: #fff; text-decoration: none; }
       .bouton--danger { background: #fff; border-color: var(--red-500); color: var(--red-700); }
       .bouton--danger:hover { background: var(--red-100); color: var(--red-700); text-decoration: none; }
       .actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -467,7 +467,7 @@ const RUBRIQUES = TOUTES
       label > .champ__aide { display: block; margin-block-start: 2px; }
       /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
          mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
-      .champ__requis { color: var(--plum-600); }
+      .champ__requis { color: var(--brand-hover); }
 
       /* ── Vignettes ─────────────────────────────────────────────────────
          Une case à cocher ou un bouton radio dans un encadré cliquable : un
@@ -483,7 +483,7 @@ const RUBRIQUES = TOUTES
         cursor: pointer; transition: var(--transition-control);
       }
       .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
-      .case:has(:checked), .formule:has(:checked) { border-color: var(--plum-500); background: var(--plum-50); }
+      .case:has(:checked), .formule:has(:checked) { border-color: var(--brand); background: var(--brand-subtle); }
       .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
       /* Quand la case porte sa coche à côté du texte, le texte descend d'un
          cran — il vit dans un `span` imbriqué, que la règle du dessus ne
@@ -502,7 +502,7 @@ const RUBRIQUES = TOUTES
       .case__tete .case__prix { margin-inline-start: auto; white-space: nowrap; }
       /* Ce que le module rapporte, dit en une ligne : c'est l'argument de
          vente, il mérite d'être lisible sans survoler quoi que ce soit. */
-      .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--teal-700); }
+      .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--text-success); }
       .case--module { align-items: start; }
       .case--seule { inline-size: 100%; }
 
@@ -556,7 +556,7 @@ const RUBRIQUES = TOUTES
       .promesse--oui { border-color: var(--green-500); background: var(--green-100); }
       .promesse--oui h3 { color: var(--green-700); }
       .promesse--tiede { border-color: var(--amber-500); background: var(--amber-100); }
-      .promesse--tiede h3 { color: var(--amber-700); }
+      .promesse--tiede h3 { color: var(--text-warning); }
       .promesse--non { border-color: var(--red-500); background: var(--red-100); }
       .promesse--non h3 { color: var(--red-700); }
 
@@ -581,7 +581,7 @@ const RUBRIQUES = TOUTES
         font: 600 10.5px var(--font-sans); border-radius: 20px; padding: 2px 8px;
         background: var(--slate-100); color: var(--slate-600);
       }
-      .puce--cap { background: var(--plum-100); color: var(--plum-700); }
+      .puce--cap { background: var(--brand-subtle-hover); color: var(--brand-press); }
 
       /* Du texte de machine : traces d'appel, réponse brute d'une caisse. */
       .trace {
@@ -688,7 +688,7 @@ const RUBRIQUES = TOUTES
         background: #fff; box-shadow: 0 1px 2px rgba(12, 19, 41, 0.2);
         transition: inset-inline-start var(--duration-fast) var(--ease-standard);
       }
-      .interrupteur--on { background: var(--teal-500); border-color: var(--teal-700); }
+      .interrupteur--on { background: var(--teal-500); border-color: var(--text-success); }
       .interrupteur--on > span { inset-inline-start: 16px; }
       .interrupteur--bloque { cursor: not-allowed; opacity: 0.55; }
       .interrupteur--bloque::after { content: ''; }

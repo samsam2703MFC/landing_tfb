@@ -1,0 +1,62 @@
+---
+/**
+ * Les onglets d'un client : sa fiche, et sa charte graphique.
+ *
+ * Les deux écrans existaient déjà, à deux endroits du rail sans rapport l'un
+ * avec l'autre — la fiche sous « Commercial », la charte sous une rubrique à
+ * elle. Deux pages qui parlent du même client, et rien pour passer de l'une à
+ * l'autre : il fallait revenir au rail, rouvrir la liste, retrouver le nom.
+ *
+ * Un bandeau plutôt qu'une fusion. Les deux pages font ensemble huit cents
+ * lignes et ne se ressemblent pas : la fiche lit, la charte édite et publie.
+ * Les coudre en une seule aurait produit un écran que personne ne relit.
+ *
+ * La charte reste accessible depuis « Chartes clients » dans le rail, qui donne
+ * la vue d'ensemble — quel client a surchargé quoi. Ce bandeau sert l'autre
+ * chemin : je regarde un client, je veux ses couleurs.
+ */
+const { prospect, actif } = Astro.props;
+import { lien } from '../lib/lien.mjs';
+
+const ONGLETS = [
+  { cle: 'fiche', libelle: 'Fiche', href: `/admin/prospects/${prospect}` },
+  { cle: 'charte', libelle: 'Charte graphique', href: `/admin/charte/${prospect}` },
+];
+---
+
+<nav class="onglets-client" aria-label="Sections du client">
+  {ONGLETS.map((o) => (
+    <a
+      class="onglets-client__lien"
+      href={lien(o.href)}
+      aria-current={actif === o.cle ? 'page' : undefined}
+    >
+      {o.libelle}
+    </a>
+  ))}
+</nav>
+
+<style is:global>
+  .onglets-client {
+    display: flex;
+    gap: 2px;
+    margin-block-end: 20px;
+    border-block-end: 1px solid var(--slate-200);
+  }
+  .onglets-client__lien {
+    padding: 10px 16px;
+    font: 500 var(--text-sm) / 1.3 var(--font-sans);
+    color: var(--slate-600);
+    text-decoration: none;
+    /* Le trait actif est posé à l'intérieur, sur la bordure du conteneur :
+       un `border-bottom` sur le lien décalerait le texte d'un pixel au
+       survol, et le bandeau entier tremblerait. */
+    box-shadow: inset 0 -2px 0 transparent;
+    transition: color var(--duree-courte, 120ms) ease, box-shadow var(--duree-courte, 120ms) ease;
+  }
+  .onglets-client__lien:hover { color: var(--slate-900); }
+  .onglets-client__lien[aria-current='page'] {
+    color: var(--brand);
+    box-shadow: inset 0 -2px 0 var(--brand);
+  }
+</style>

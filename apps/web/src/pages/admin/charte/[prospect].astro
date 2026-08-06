@@ -10,6 +10,7 @@
  * « Hérité » est ce qui permet de voir en un coup d'œil ce qui diffère vraiment
  * pour ce client — sans quoi on lit 21 lignes sans savoir lesquelles comptent.
  */
+import OngletsClient from '../../../components/OngletsClient.astro';
 import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import { lien } from '../../../lib/lien.mjs';
@@ -145,6 +146,9 @@ const feuilleProduite = [
 ---
 
 <Console titre={nom} actif="charte" compteurs={chiffres}>
+  {/* La charte maison n'appartient à personne : elle n'a pas de fiche client,
+      et un onglet « Fiche » y mènerait à un prospect qui n'existe pas. */}
+  {!estMaison && <OngletsClient prospect={id} actif="charte" />}
   {erreur && <p class="bandeau bandeau--erreur">{erreur}</p>}
   {message && <p class="bandeau bandeau--ok">{message}</p>}
 

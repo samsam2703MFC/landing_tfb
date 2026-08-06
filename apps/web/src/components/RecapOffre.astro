@@ -161,7 +161,7 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
   .recap__totaux > div { display: flex; align-items: baseline; gap: 10px; }
   .recap__totaux dt { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-600); }
   .recap__totaux dd { margin: 0; margin-inline-start: auto; font-size: var(--text-xs); white-space: nowrap; }
-  .recap__remise dt, .recap__remise dd { color: var(--teal-700); }
+  .recap__remise dt, .recap__remise dd { color: var(--text-success); }
   .recap__ttc { padding-block-start: 6px; border-block-start: 1px solid var(--slate-100); }
   .recap__ttc dt { font-weight: 600; color: var(--navy-900); }
   .recap__ttc dd { font: 600 var(--text-md) / 1.2 var(--font-display); color: var(--navy-900); }
@@ -171,13 +171,13 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
     margin: 0; padding: 10px 12px; border-radius: var(--radius-control);
     font: 400 var(--text-sm) / 1.5 var(--font-sans);
   }
-  .recap__alerte { background: var(--amber-50); color: var(--amber-700); border: 1px solid var(--amber-300); }
+  .recap__alerte { background: var(--amber-50); color: var(--text-warning); border: 1px solid var(--amber-300); }
   /* Le geste commercial se lit en vert, pas en alerte : ce n'est pas un
      problème, c'est ce qu'on offre — mais il doit se voir. */
   .recap__offert {
     margin: 0; padding: 10px 12px; border-radius: var(--radius-control);
     font: 400 var(--text-sm) / 1.5 var(--font-sans);
-    background: var(--teal-50, #eefaf8); color: var(--teal-700);
+    background: var(--teal-50, #eefaf8); color: var(--text-success);
     border: 1px solid var(--teal-300, #9fded7);
   }
   .recap__mention { background: var(--slate-50); color: var(--slate-600); border: 1px solid var(--slate-200); }

@@ -10,6 +10,7 @@
  * Les montants, eux, ne bougent jamais après l'envoi — ce sont deux choses
  * différentes, et la page le dit.
  */
+import OngletsClient from '../../../components/OngletsClient.astro';
 import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import {
@@ -115,6 +116,7 @@ const message = Astro.url.searchParams.get('ok');
 >
   {prospect && (
     <>
+      <OngletsClient prospect={prospect.id} actif="fiche" />
       <section class="bloc" style="margin-block-end:20px">
         <div class="bloc__tete">
           <div>

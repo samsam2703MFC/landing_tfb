@@ -138,8 +138,8 @@ const NAV = [
       /* Braise : la couleur de conversion. Encre marine dessus, jamais blanc. */
       .bouton--chaud { background: var(--ember-500); border-color: var(--ember-500); color: var(--navy-900); }
       .bouton--chaud:hover { background: var(--ember-600); border-color: var(--ember-600); color: var(--navy-900); }
-      .bouton--marque { background: var(--plum-500); border-color: var(--plum-500); color: #fff; }
-      .bouton--marque:hover { background: var(--plum-600); border-color: var(--plum-600); color: #fff; }
+      .bouton--marque { background: var(--brand); border-color: var(--brand); color: #fff; }
+      .bouton--marque:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
       .bouton--inverse { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: #fff; }
       .bouton--inverse:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
       .bouton--sobre { background: #fff; border-color: var(--slate-200); color: var(--slate-600); }
@@ -170,7 +170,7 @@ const NAV = [
       }
       .entete__nav a:hover { color: var(--text-brand); text-decoration: none; }
       .entete__nav a[aria-current] {
-        color: var(--plum-600); font-weight: var(--weight-semibold);
+        color: var(--brand-hover); font-weight: var(--weight-semibold);
         text-decoration: underline; text-underline-offset: 6px; text-decoration-thickness: 2px;
       }
       .entete__droite { margin-inline-start: auto; display: flex; align-items: center; gap: 12px; }
@@ -214,7 +214,7 @@ const NAV = [
         font: 600 11px/1 var(--font-mono); color: var(--slate-600); text-decoration: none;
       }
       .langues a:hover { color: var(--text-brand); text-decoration: none; background: var(--slate-50); }
-      .langues a.est-active { color: var(--plum-600); background: var(--plum-50); }
+      .langues a.est-active { color: var(--brand-hover); background: var(--brand-subtle); }
 
       /* ── Pied ──────────────────────────────────────────────────────────── */
       .pied { background: var(--gradient-ink); color: #fff; padding: 56px 40px 32px; }
@@ -273,7 +273,7 @@ const NAV = [
   .carte__icone {
     display: inline-flex; align-items: center; justify-content: center;
     inline-size: 30px; block-size: 30px; border-radius: var(--radius-control);
-    background: var(--teal-100); color: var(--teal-700);
+    background: var(--teal-100); color: var(--text-success);
   }
 
   /* ── Titres de section ─────────────────────────────────────────────── */
@@ -298,7 +298,7 @@ const NAV = [
   .module__icone {
     display: inline-flex; align-items: center; justify-content: center;
     inline-size: 38px; block-size: 38px; border-radius: var(--radius-control);
-    background: var(--plum-50); color: var(--plum-600); flex: none;
+    background: var(--brand-subtle); color: var(--brand-hover); flex: none;
   }
   .module__noms { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
   .module__nom { font: 600 var(--text-md) / 1.2 var(--font-display); letter-spacing: var(--tracking-tight); }
@@ -312,7 +312,7 @@ const NAV = [
     border-block-start: 1px solid var(--slate-100); padding-block-start: 12px;
   }
   .module__compte { margin-inline-start: auto; font: 400 var(--text-xs) / 1 var(--font-mono); color: var(--slate-400); }
-  .module .module__fleche { color: var(--plum-600); }
+  .module .module__fleche { color: var(--brand-hover); }
 
   /* ── Captures ──────────────────────────────────────────────────────── */
   .captures {

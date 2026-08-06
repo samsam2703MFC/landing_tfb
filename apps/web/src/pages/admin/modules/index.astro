@@ -450,7 +450,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   </span>
 
                   <span class="num ligne-module__compte">{m.nb_fonctions}</span>
-                  <span class="num ligne-module__compte" style={m.nb_captures === 0 ? 'color:var(--amber-700)' : undefined}>
+                  <span class="num ligne-module__compte" style={m.nb_captures === 0 ? 'color:var(--text-warning)' : undefined}>
                     {m.nb_captures}
                   </span>
 
@@ -508,7 +508,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                                 value="bascule-fonction"
                                 title={c.en_ligne ? 'Mettre hors ligne' : 'Mettre en ligne'}
                               ><span></span></button>
-                              <span class="composant-ligne__mot" style={c.en_ligne ? 'color:var(--teal-700)' : undefined}>
+                              <span class="composant-ligne__mot" style={c.en_ligne ? 'color:var(--text-success)' : undefined}>
                                 {c.en_ligne ? 'en ligne' : 'hors ligne'}
                               </span>
                             </Fragment>
@@ -542,7 +542,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
      parle. */
   .pack__bloque {
     display: flex; align-items: flex-start; gap: 6px; margin-block-start: 6px;
-    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--amber-700);
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
   }
   .pack__bloque svg { flex: none; margin-block-start: 1px; }
   /* Les deux identifiants Stripe, l'un sous l'autre. En monospace parce qu'on
@@ -585,7 +585,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
   .ligne-module__icone .apercu {
     display: inline-flex; align-items: center; justify-content: center;
     inline-size: 26px; block-size: 26px; border-radius: 6px;
-    background: var(--plum-50); color: var(--plum-600); flex: none;
+    background: var(--brand-subtle); color: var(--brand-hover); flex: none;
   }
   .ligne-module__icone select { font-family: var(--font-mono); font-size: var(--text-xs); }
   .ligne-module__ordre { text-align: end; }
