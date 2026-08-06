@@ -35,10 +35,10 @@ Les étapes détaillées ci-dessous sont l'équivalent manuel, si vous préfére
 
 ## Servir sous un sous-chemin
 
-Pour `https://185.180.206.46/tfb` plutôt que la racine :
+Pour `https://185.180.206.46/landing_tfb` plutôt que la racine :
 
 ```bash
-sudo BASE_PATH_CFG=/tfb bash bootstrap.sh
+sudo BASE_PATH_CFG=/landing_tfb bash bootstrap.sh
 ```
 
 `NEXT_PUBLIC_BASE_PATH` est **inlinée au build**, pas lue au démarrage. Trois
@@ -171,7 +171,7 @@ en place, sinon le cookie de session circule en clair.
 ## 7. Le frontal (Apache)
 
 Apache répond déjà sur le 443. Il lui manque seulement la règle qui envoie
-`/tfb` vers l'app :
+`/landing_tfb` vers l'app :
 
 ```bash
 sudo bash deploy/apache-attach.sh
@@ -207,18 +207,18 @@ Toujours **depuis le serveur d'abord** — ça sépare un problème d'app d'un p
 de proxy :
 
 ```bash
-curl -sS http://127.0.0.1:3000/tfb/api/health
+curl -sS http://127.0.0.1:3000/landing_tfb/api/health
 ```
 
 | Réponse | Diagnostic |
 | --- | --- |
 | `{"ok":true,"db":"up","seeded":true}` | L'app va bien. Un 404 depuis l'extérieur = Apache ne proxifie pas (étape 7). |
 | Connexion refusée | L'app ne tourne pas. `systemctl status tfb-landing`, `journalctl -u tfb-landing -n 50`. |
-| 404 sur le port 3000 | Buildée sans le sous-chemin. `sudo BASE_PATH_CFG=/tfb bash bootstrap.sh`. |
+| 404 sur le port 3000 | Buildée sans le sous-chemin. `sudo BASE_PATH_CFG=/landing_tfb bash bootstrap.sh`. |
 | `db: "down"` | `DATABASE_URL`, le compte MySQL, ou les droits. |
 | `seeded: false` | La base répond mais le seed n'a pas tourné (étape 5). |
 
-Puis depuis l'extérieur : `curl -sk https://185.180.206.46/tfb/api/health`.
+Puis depuis l'extérieur : `curl -sk https://185.180.206.46/landing_tfb/api/health`.
 
 Puis à la main :
 
@@ -266,7 +266,7 @@ Et dans l'onglet **Variables** de la même page :
 
 | Variable | Contenu |
 | --- | --- |
-| `PUBLIC_URL` | l'URL publique, **sous-chemin compris** — `https://panel.tfbuddy.com/tfb` |
+| `PUBLIC_URL` | l'URL publique, **sous-chemin compris** — `https://185.180.206.46/landing_tfb` |
 | `HEALTH_PATH` | seulement si ce n'est pas `/api/health` |
 | `APP_DIR`, `APP_USER` | seulement si ce n'est pas `/srv/tfb-landing` et `tfb` |
 
