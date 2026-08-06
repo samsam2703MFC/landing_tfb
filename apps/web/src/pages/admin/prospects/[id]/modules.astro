@@ -1,0 +1,282 @@
+---
+/**
+ * Ce que ce client a acheté.
+ *
+ * La question se posait à chaque fois qu'on branchait quelque chose chez lui,
+ * et la seule façon d'y répondre était d'ouvrir son offre et de lire les cases
+ * cochées d'un formulaire d'édition — un écran fait pour vendre, pas pour
+ * relire.
+ *
+ * Une offre et une seule, jamais l'union de toutes. Deux offres successives se
+ * contredisent par construction : la seconde existe parce que la première ne
+ * convenait pas. Les additionner afficherait un périmètre que personne n'a
+ * jamais vendu.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import OngletsClient from '../../../../components/OngletsClient.astro';
+import { lien } from '../../../../lib/lien.mjs';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { modulesDuClient } from '../../../../lib/admin/fiche-client.mjs';
+import { formater } from '../../../../lib/offres/calcul.mjs';
+
+const { id } = Astro.params;
+let erreur = null;
+let prospect = null;
+let dossier = { source: null, modules: [], packs: [], vues: [] };
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) dossier = await modulesDuClient(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
+const SOCLE = {
+  pos: 'Notre caisse',
+  integration: 'Intégration de sa caisse',
+};
+const OPTION = {
+  aucune: 'aucune',
+  par_vue: 'application facturée à la vue',
+  achat: 'application achetée',
+};
+
+// Les modules compris dans un pack ne se facturent pas à l'unité. Sans cette
+// séparation, la somme des lignes ne retombe pas sur le montant du contrat, et
+// c'est l'écran qu'on accuse.
+const aLUnite = dossier.modules.filter((m) => !m.compris_dans_pack);
+const empaquetes = dossier.modules.filter((m) => m.compris_dans_pack);
+const signale = dossier.modules.filter((m) => m.hors_catalogue || m.retire);
+const totalMensuel = aLUnite.reduce((s, m) => s + (m.prix_cents || 0), 0)
+  + dossier.packs.reduce((s, p) => s + (p.unite === 'mois' ? p.prix_cents || 0 : 0), 0);
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Client · ${prospect?.raison_sociale || ''} · Modules`}
+  actif="offres"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <OngletsClient prospect={prospect.id} actif="modules" />
+
+      {!dossier.source ? (
+        <section class="bloc">
+          <div class="bloc__pied">
+            Aucune offre pour ce client — il n'a donc rien choisi. Le périmètre se décide sur une
+            offre, et c'est elle qui le porte.
+          </div>
+        </section>
+      ) : (
+        <>
+          {/* De quoi on parle : un contrat signé, ou une proposition. Les deux
+              se lisent pareil et n'engagent pas du tout la même chose. */}
+          <p class={dossier.source.contrat ? 'avertit' : 'avertit avertit--attention'}>
+            <Icone nom={dossier.source.contrat ? 'circle-check' : 'file-text'} taille={17} />
+            <span>
+              {dossier.source.contrat ? (
+                <>
+                  <strong>Ce qui est dû</strong> — contrat {dossier.source.contrat.reference},
+                  signé le {jour(dossier.source.contrat.signe_le) || '—'}, sur l'offre{' '}
+                  <a href={lien(`/admin/offres/${dossier.source.reference}`)}>{dossier.source.reference}</a>.
+                </>
+              ) : (
+                <>
+                  <strong>Ce qui est proposé, rien de signé</strong> — offre{' '}
+                  <a href={lien(`/admin/offres/${dossier.source.reference}`)}>{dossier.source.reference}</a>
+                  {' '}(version {dossier.source.version}, {dossier.source.statut}). Le périmètre
+                  peut encore changer.
+                </>
+              )}
+            </span>
+          </p>
+
+          <div class="cartouches">
+            <div class="cartouche">
+              <span class="cartouche__k">Modules</span>
+              <strong class="cartouche__v">{dossier.modules.length}</strong>
+              <span class="cartouche__d">{empaquetes.length} compris dans un pack</span>
+            </div>
+            <div class="cartouche">
+              <span class="cartouche__k">Packs</span>
+              <strong class="cartouche__v">{dossier.packs.length}</strong>
+              <span class="cartouche__d">{dossier.packs.filter((p) => p.base).length} de base</span>
+            </div>
+            <div class="cartouche">
+              <span class="cartouche__k">Au mois</span>
+              <strong class="cartouche__v">{formater(totalMensuel)}</strong>
+              <span class="cartouche__d">hors taxes, hors remise</span>
+            </div>
+            <div class="cartouche">
+              <span class="cartouche__k">Socle</span>
+              <strong class="cartouche__v" style="font-size:var(--text-lg)">
+                {SOCLE[dossier.socle_pos] || dossier.socle_pos}
+              </strong>
+              <span class="cartouche__d">décide de tout l'onboarding technique</span>
+            </div>
+          </div>
+
+          {signale.length > 0 && (
+            <p class="avertit avertit--attention">
+              <Icone nom="triangle-alert" taille={17} />
+              <span>
+                <strong>{signale.map((m) => m.nom).join(', ')}</strong> —
+                {signale.some((m) => m.hors_catalogue) && ' absent du catalogue'}
+                {signale.some((m) => m.hors_catalogue) && signale.some((m) => m.retire) && ' ou'}
+                {signale.some((m) => m.retire) && ' retiré de la vente'}.
+                Le contrat les engage quand même : ce qui a été vendu reste dû, qu'on le vende
+                encore ou non.
+              </span>
+            </p>
+          )}
+
+          {dossier.packs.length > 0 && (
+            <section class="bloc" style="margin-block-end:20px">
+              <div class="bloc__tete">
+                <div>
+                  <h2>Ses packs</h2>
+                  <p>Prix et composition recopiés le jour de l'offre — une grille qui bouge ne
+                    change pas un montant déjà chiffré.</p>
+                </div>
+              </div>
+              <div class="roule">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Pack</th>
+                      <th style="inline-size:9rem">Prix</th>
+                      <th style="inline-size:7rem">Unité</th>
+                      <th>Modules compris</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dossier.packs.map((p) => (
+                      <tr>
+                        <td>
+                          <strong>{p.nom}</strong>
+                          {p.base && <span class="champ__aide">modèle de base</span>}
+                          {p.avec_caisse && <span class="champ__aide">avec la caisse</span>}
+                        </td>
+                        <td class="num">{formater(p.prix_cents)}</td>
+                        <td>{p.unite || <span class="champ__aide">—</span>}</td>
+                        <td>
+                          {p.modules.length === 0
+                            ? <span class="champ__aide">—</span>
+                            : p.modules.map((m) => <span class="taux">{m.nom || m.slug}</span>)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          )}
+
+          <section class="bloc" style="margin-block-end:20px">
+            <div class="bloc__tete">
+              <div>
+                <h2>Ses modules</h2>
+                <p>
+                  {aLUnite.length} facturé(s) à l'unité, {empaquetes.length} couvert(s) par un pack.
+                </p>
+              </div>
+            </div>
+            {dossier.modules.length === 0 ? (
+              <div class="bloc__pied">Aucun module — seul le socle a été retenu.</div>
+            ) : (
+              <div class="roule">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Module</th>
+                      <th style="inline-size:11rem">Groupe</th>
+                      <th style="inline-size:10rem">Facturation</th>
+                      <th style="inline-size:9rem">Prix / mois</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {dossier.modules.map((m) => (
+                      <tr>
+                        <td>
+                          <strong>{m.nom}</strong>
+                          {m.hors_catalogue && <span class="champ__aide">absent du catalogue</span>}
+                          {m.retire && <span class="champ__aide">retiré de la vente</span>}
+                        </td>
+                        <td>{m.groupe || <span class="champ__aide">—</span>}</td>
+                        <td>
+                          {m.compris_dans_pack
+                            ? <span class="etat">compris dans un pack</span>
+                            : <span class="etat etat--on">à l'unité</span>}
+                        </td>
+                        <td class="num">
+                          {m.compris_dans_pack
+                            ? <span class="champ__aide">—</span>
+                            : formater(m.prix_cents)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          <section class="bloc">
+            <div class="bloc__tete">
+              <div>
+                <h2>Le reste du périmètre</h2>
+                <p>Ce qui n'est ni un module ni un pack, et qui décide pourtant du travail.</p>
+              </div>
+            </div>
+            <div class="roule">
+              <table>
+                <tbody>
+                  <tr>
+                    <td style="inline-size:16rem"><strong>Socle</strong></td>
+                    <td>
+                      {SOCLE[dossier.socle_pos] || dossier.socle_pos}
+                      <span class="champ__aide">
+                        {dossier.socle_pos === 'pos'
+                          ? 'rien à connecter : les ventes viennent de chez nous'
+                          : 'une connexion par caisse du réseau, et un mapping par caisse'}
+                      </span>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Application</strong></td>
+                    <td>{OPTION[dossier.option_app] || dossier.option_app}</td>
+                  </tr>
+                  <tr>
+                    <td><strong>Vues</strong></td>
+                    <td>
+                      {dossier.vues.length === 0
+                        ? <span class="champ__aide">aucune</span>
+                        : dossier.vues.map((v) => <span class="taux">{v.nom || v.cle || v}</span>)}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><strong>Postes</strong></td>
+                    <td>
+                      {dossier.postes.equipes} équipé(s) · {dossier.postes.franchiseur} au
+                      franchiseur · {dossier.postes.onboardes} onboardé(s)
+                      <span class="champ__aide">
+                        l'onboarding se facture une fois, les postes tous les mois
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
+    </>
+  )}
+</Console>

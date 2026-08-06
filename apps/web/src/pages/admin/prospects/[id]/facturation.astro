@@ -1,0 +1,229 @@
+---
+/**
+ * Ce qui est facturé à ce client — et ce que l'application ne sait pas.
+ *
+ * À dire d'emblée, parce que c'est la moitié de l'écran : **aucune facture
+ * émise, aucun encaissement n'est enregistré ici**. Il n'existe pas de table
+ * pour ça, et aucune synchronisation de facturation. Ce que cette page porte
+ * est l'engagement contractuel, pas un compte client.
+ *
+ * Afficher cette limite plutôt qu'un solde à zéro est un choix. Un zéro se lit
+ * « il ne doit rien » ; la vérité est « on ne sait pas », et les deux
+ * n'appellent pas le même geste — l'un fait classer le dossier, l'autre fait
+ * aller regarder ailleurs. C'est la règle déjà tenue sur les commissions, où le
+ * mot est « projeté » et jamais « dû ».
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import OngletsClient from '../../../../components/OngletsClient.astro';
+import { lien } from '../../../../lib/lien.mjs';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { facturationDuClient } from '../../../../lib/admin/fiche-client.mjs';
+import { formater } from '../../../../lib/offres/calcul.mjs';
+
+const { id } = Astro.params;
+let erreur = null;
+let prospect = null;
+let facturation = null;
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) facturation = await facturationDuClient(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
+const c = facturation?.conditions || {};
+const engage = facturation?.engage || {};
+const contrats = facturation?.contrats || [];
+const signes = contrats.filter((l) => l.statut === 'signe');
+
+// Ce qui empêcherait d'encaisser, en une liste plutôt qu'en trois endroits.
+const manque = [
+  !c.facturation_email && 'aucun courriel de facturation',
+  !c.facturation_adresse && 'aucune adresse de facturation',
+  c.mandat_sepa && !c.iban_pose && 'mandat SEPA annoncé mais pas d’IBAN',
+].filter(Boolean);
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Client · ${prospect?.raison_sociale || ''} · Facturation`}
+  actif="offres"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && facturation && (
+    <>
+      <OngletsClient prospect={prospect.id} actif="facturation" />
+
+      {/* La limite en tête, pas en note de bas de page : c'est ce qui décide
+          de la façon dont tout le reste doit se lire. */}
+      <p class="avertit">
+        <Icone nom="info" taille={17} />
+        <span>
+          <strong>Aucune facture ni encaissement n'est enregistré.</strong>
+          L'application ne se branche à aucun outil de facturation : elle ne peut donc dire ni ce
+          qui a été facturé, ni ce qui a été payé, ni ce qui est en retard. Ce qui suit est
+          l'engagement contractuel — ce que le client s'est engagé à payer.
+        </span>
+      </p>
+
+      <div class="cartouches">
+        <div class="cartouche">
+          <span class="cartouche__k">Au mois</span>
+          <strong class="cartouche__v">
+            {engage.mensuel_cents === null ? '—' : formater(engage.mensuel_cents)}
+          </strong>
+          <span class="cartouche__d">hors taxes, contrats signés</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Une seule fois</span>
+          <strong class="cartouche__v">
+            {engage.unique_cents === null ? '—' : formater(engage.unique_cents)}
+          </strong>
+          <span class="cartouche__d">onboarding, formation, achat</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Contrats signés</span>
+          <strong class="cartouche__v">{engage.contrats_signes || 0}</strong>
+          <span class="cartouche__d">sur {contrats.length} au total</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Délai de paiement</span>
+          <strong class="cartouche__v">{c.delai_paiement_jours || 30}<span style="font-size:var(--text-lg)"> j</span></strong>
+          <span class="cartouche__d">{c.mandat_sepa ? 'mandat SEPA en place' : 'pas de mandat SEPA'}</span>
+        </div>
+      </div>
+
+      {manque.length > 0 && (
+        <p class="avertit avertit--attention">
+          <Icone nom="triangle-alert" taille={17} />
+          <span>
+            <strong>Ce client ne peut pas être facturé en l'état :</strong> {manque.join(', ')}.
+            Le dossier se complète depuis <a href={lien(`/admin/prospects/${prospect.id}`)}>sa fiche</a>.
+          </span>
+        </p>
+      )}
+
+      <section class="bloc" style="margin-block-end:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Ses contrats</h2>
+            <p>
+              Ce que chacun engage, et à partir de quand. Les mois offerts ne sont pas une remise :
+              le prix ne bouge pas, ils décalent la première échéance.
+            </p>
+          </div>
+        </div>
+        {contrats.length === 0 ? (
+          <div class="bloc__pied">Aucun contrat. Rien n'est engagé, donc rien n'est facturable.</div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr>
+                  <th>Contrat</th>
+                  <th style="inline-size:8rem">Statut</th>
+                  <th style="inline-size:10rem">Effet</th>
+                  <th style="inline-size:10rem">1re échéance</th>
+                  <th style="inline-size:9rem">Au mois</th>
+                  <th style="inline-size:9rem">Une fois</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contrats.map((l) => (
+                  <tr>
+                    <td>
+                      <a href={lien(`/admin/contrats/${l.reference}`)}><strong>{l.reference}</strong></a>
+                      {l.duree_mois > 0 && <span class="champ__aide">{l.duree_mois} mois · préavis {l.preavis_jours} j</span>}
+                    </td>
+                    <td>
+                      {l.statut === 'signe'
+                        ? <span class="etat etat--on">signé</span>
+                        : <span class="etat">{l.statut}</span>}
+                    </td>
+                    <td>{jour(l.date_effet) || <span class="champ__aide">—</span>}</td>
+                    <td>
+                      {jour(l.premiere_echeance) || <span class="champ__aide">—</span>}
+                      {l.mois_offerts > 0 && <span class="champ__aide">{l.mois_offerts} mois offert(s)</span>}
+                    </td>
+                    {/* Un montant illisible se dit, il ne s'arrondit pas à zéro :
+                        un zéro dans cette colonne se lirait « gratuit ». */}
+                    <td class="num">
+                      {l.montants
+                        ? formater(l.montants.mensuel_cents)
+                        : <span class="raison">offre illisible</span>}
+                    </td>
+                    <td class="num">
+                      {l.montants
+                        ? formater(l.montants.unique_cents)
+                        : <span class="champ__aide">—</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {signes.length > 0 && (
+          <div class="bloc__pied">
+            Les totaux ne comptent que les contrats <strong>signés</strong> : un brouillon chiffré
+            gonflerait un montant qui a l'air d'être dû. L'annuel est ramené au mois.
+          </div>
+        )}
+      </section>
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Comment on le facture</h2>
+            <p>Les coordonnées de facturation, qui ne sont pas toujours celles du siège.</p>
+          </div>
+        </div>
+        <div class="roule">
+          <table>
+            <tbody>
+              <tr>
+                <td style="inline-size:16rem"><strong>Courriel de facturation</strong></td>
+                <td>{c.facturation_email || <span class="champ__aide">non renseigné</span>}</td>
+              </tr>
+              <tr>
+                <td><strong>Adresse de facturation</strong></td>
+                <td>{c.facturation_adresse || <span class="champ__aide">non renseignée — celle du siège s'applique</span>}</td>
+              </tr>
+              <tr>
+                <td><strong>Prélèvement</strong></td>
+                <td>
+                  {c.mandat_sepa
+                    ? <span class="etat etat--on">mandat SEPA</span>
+                    : <span class="etat">virement</span>}
+                  {/* Jamais l'IBAN en entier : sa présence répond à « peut-on
+                      prélever », et l'afficher le mettrait dans chaque capture
+                      d'écran envoyée au support. */}
+                  {c.iban_pose && <span class="champ__aide">IBAN enregistré ••••{c.iban_fin}{c.bic_pose ? ' · BIC renseigné' : ' · BIC manquant'}</span>}
+                  {!c.iban_pose && <span class="champ__aide">aucun IBAN enregistré</span>}
+                </td>
+              </tr>
+              <tr>
+                <td><strong>Délai</strong></td>
+                <td>{c.delai_paiement_jours || 30} jours · devise {c.devise}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  .raison {
+    display: block;
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
+  }
+</style>

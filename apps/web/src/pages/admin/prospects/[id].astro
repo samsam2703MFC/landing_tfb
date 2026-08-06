@@ -154,11 +154,11 @@ const message = Astro.url.searchParams.get('ok');
       {/* Son commercial, en tête de fiche et modifiable ici.
           C'est la première question posée sur un client, et il fallait
           jusqu'ici ouvrir une de ses offres pour y répondre. */}
-      <section class="bloc bloc--portefeuille" style="margin-block-end:20px">
+      <section class="bloc" style="margin-block-end:20px">
         <form method="post" class="portefeuille">
           <input type="hidden" name="action" value="commercial" />
           <div class="portefeuille__dit">
-            <label class="champ__nom" for="commercial_id">Son commercial</label>
+            <label class="legende" for="commercial_id">Son commercial</label>
             <p class="champ__aide">
               {commercial.origine === 'assigne' && commercial.inactif && (
                 <strong>Son compte est désactivé — personne ne suit ce client. </strong>
@@ -479,6 +479,9 @@ const message = Astro.url.searchParams.get('ok');
     padding: 16px 20px;
   }
   .portefeuille__dit { flex: 1 1 22rem; min-inline-size: 0; }
+  /* `.legende` est un `<label>` en ligne : sans ça il se colle à la phrase
+     qui le suit et le bloc n'a plus de titre lisible. */
+  .portefeuille__dit .legende { display: block; }
   .portefeuille__dit .champ__aide { margin-block-start: 4px; }
   /* `flex: none` : le menu ne doit pas rétrécir sous le nom le plus long
      qu'il contient, sinon le choix courant s'affiche tronqué. */

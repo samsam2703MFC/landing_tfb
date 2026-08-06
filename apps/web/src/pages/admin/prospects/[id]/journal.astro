@@ -1,0 +1,153 @@
+---
+/**
+ * Ce qui s'est passé chez ce client, dans l'ordre.
+ *
+ * Quatre journaux existaient déjà — l'onboarding, la synchronisation, la
+ * charte, les accès — chacun sur son écran, chacun avec son horodatage. Pour
+ * répondre à « la synchro a cassé après quoi ? », il fallait ouvrir les quatre
+ * et comparer des heures à la main. C'est la question qui justifie à elle seule
+ * de les coudre en un fil.
+ *
+ * Le rebut n'est pas déplié : une reprise qui rejette trois mille lignes
+ * produirait trois mille entrées et noierait tout le reste. Le passage porte
+ * son compte, l'écran du rebut porte le détail.
+ */
+import Console from '../../../../components/Console.astro';
+import Icone from '../../../../components/Icone.astro';
+import OngletsClient from '../../../../components/OngletsClient.astro';
+import { chargerProspect, compteurs } from '../../../../lib/admin/donnees.mjs';
+import { journalTechnique } from '../../../../lib/admin/fiche-client.mjs';
+
+const { id } = Astro.params;
+let erreur = null;
+let prospect = null;
+let journal = { entrees: [], total: 0, tronque: false, sources: {} };
+let chiffres = {};
+try {
+  prospect = await chargerProspect(id);
+  if (prospect) journal = await journalTechnique(prospect.id);
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+if (!prospect && !erreur) return new Response('Client introuvable', { status: 404 });
+
+const source = (Astro.url.searchParams.get('source') || '').trim();
+const visibles = source ? journal.entrees.filter((e) => e.source === source) : journal.entrees;
+
+const SOURCES = ['Onboarding', 'Synchronisation', 'Charte', 'Accès'];
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const ennuis = journal.entrees.filter((e) => e.gravite === 'erreur').length;
+const href = (s) => (s ? `?source=${encodeURIComponent(s)}` : '?');
+---
+
+<Console
+  titre={prospect?.raison_sociale || 'Client'}
+  fil={`TFB Admin · Client · ${prospect?.raison_sociale || ''} · Journal technique`}
+  actif="offres"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {prospect && (
+    <>
+      <OngletsClient prospect={prospect.id} actif="journal" />
+
+      <div class="cartouches">
+        <div class="cartouche">
+          <span class="cartouche__k">Entrées</span>
+          <strong class="cartouche__v">{journal.total}</strong>
+          <span class="cartouche__d">quatre journaux cousus</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Échecs</span>
+          <strong class="cartouche__v">{ennuis}</strong>
+          <span class="cartouche__d">synchros et étapes en erreur</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Synchronisations</span>
+          <strong class="cartouche__v">{journal.sources.synchronisation || 0}</strong>
+          <span class="cartouche__d">passages, tous statuts</span>
+        </div>
+        <div class="cartouche">
+          <span class="cartouche__k">Dernière activité</span>
+          <strong class="cartouche__v" style="font-size:var(--text-lg)">
+            {journal.entrees[0] ? jourHeure(journal.entrees[0].quand) : '—'}
+          </strong>
+          <span class="cartouche__d">toutes sources confondues</span>
+        </div>
+      </div>
+
+      {journal.tronque && (
+        <p class="avertit">
+          <Icone nom="info" taille={17} />
+          <span>
+            Les {journal.entrees.length} entrées les plus récentes sur {journal.total}. Le détail
+            complet d'une synchronisation se lit sur l'écran de sa connexion.
+          </span>
+        </p>
+      )}
+
+      <section class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Le journal</h2>
+            <p>
+              Onboarding, synchronisation, charte et accès, sur un seul fil et dans l'ordre
+              inverse du temps.
+            </p>
+          </div>
+          <div class="bloc__actions">
+            <a class={`bouton bouton--sobre bouton--sm${source ? '' : ' bouton--actif'}`} href={href('')}>Tout</a>
+            {SOURCES.map((s) => (
+              <a class={`bouton bouton--sobre bouton--sm${source === s ? ' bouton--actif' : ''}`} href={href(s)}>{s}</a>
+            ))}
+          </div>
+        </div>
+
+        {visibles.length === 0 ? (
+          <div class="bloc__pied">
+            {journal.total === 0
+              ? 'Rien à ce jour. Ce client n’a ni parcours d’onboarding, ni connexion, ni charte publiée, ni jeton — le journal est vide parce que rien n’est branché, pas parce que rien n’a été fait.'
+              : 'Aucune entrée pour cette source.'}
+          </div>
+        ) : (
+          <div class="roule">
+            <table>
+              <thead>
+                <tr>
+                  <th style="inline-size:11rem">Quand</th>
+                  <th style="inline-size:9rem">Source</th>
+                  <th>Ce qui s'est passé</th>
+                  <th style="inline-size:11rem">Par</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibles.map((e) => (
+                  <tr class={e.gravite === 'erreur' ? 'ligne--erreur' : e.gravite === 'attention' ? 'ligne--attention' : undefined}>
+                    <td class="num">{jourHeure(e.quand)}</td>
+                    <td><span class="etat">{e.source}</span></td>
+                    <td>
+                      <strong>{e.titre}</strong>
+                      {e.detail && <span class="champ__aide">{e.detail}</span>}
+                    </td>
+                    <td>{e.qui || <span class="champ__aide">—</span>}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  )}
+</Console>
+
+<style is:global>
+  /* Une ligne en erreur se repère au filet, pas au fond : un tableau où une
+     ligne sur trois est colorée ne se lit plus, et c'est exactement le cas
+     d'un client dont la synchro casse tous les jours. */
+  .ligne--erreur td:first-child { box-shadow: inset 3px 0 0 var(--status-danger, #c0392b); }
+  .ligne--attention td:first-child { box-shadow: inset 3px 0 0 var(--status-warning); }
+  .bouton--actif { background: var(--brand-subtle); color: var(--brand-press); }
+</style>

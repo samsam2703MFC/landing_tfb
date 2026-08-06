@@ -1,19 +1,28 @@
 ---
 /**
- * Les onglets d'un client : sa fiche, et sa charte graphique.
+ * Les onglets d'un client : tout ce qu'on a à dire de lui, au même endroit.
  *
- * Les deux écrans existaient déjà, à deux endroits du rail sans rapport l'un
- * avec l'autre — la fiche sous « Commercial », la charte sous une rubrique à
- * elle. Deux pages qui parlent du même client, et rien pour passer de l'une à
- * l'autre : il fallait revenir au rail, rouvrir la liste, retrouver le nom.
+ * Le rail range les écrans par métier — le commercial ici, l'onboarding là, les
+ * accès ailleurs. C'est le bon classement quand on fait une tournée de tous les
+ * clients, et le mauvais quand on en regarde **un** : chaque question obligeait
+ * à changer de rubrique et à refiltrer sur son nom.
  *
- * Un bandeau plutôt qu'une fusion. Les deux pages font ensemble huit cents
- * lignes et ne se ressemblent pas : la fiche lit, la charte édite et publie.
- * Les coudre en une seule aurait produit un écran que personne ne relit.
+ * Six onglets, six questions, dans l'ordre où elles se posent :
  *
- * La charte reste accessible depuis « Chartes clients » dans le rail, qui donne
- * la vue d'ensemble — quel client a surchargé quoi. Ce bandeau sert l'autre
- * chemin : je regarde un client, je veux ses couleurs.
+ *   fiche          qui est-il, qui le suit
+ *   charte         de quelles couleurs s'habillent ses applications
+ *   modules        qu'a-t-il acheté
+ *   applications   qu'est-ce qui tourne, et sur quelles API
+ *   journal        que s'est-il passé chez lui
+ *   facturation    qu'est-ce qui lui est facturé
+ *
+ * Un bandeau plutôt qu'une fusion. Ces pages ne se ressemblent pas — la fiche
+ * lit, la charte édite et publie, le journal déroule — et les coudre en une
+ * seule produirait un écran que personne ne relit.
+ *
+ * Les écrans d'ensemble restent dans le rail : « Chartes clients » dit qui a
+ * surchargé quoi, « Jetons » dit qui accède à quoi. Ce bandeau sert l'autre
+ * chemin, qui n'existait pas : je regarde un client, je veux tout de lui.
  */
 const { prospect, actif } = Astro.props;
 import { lien } from '../lib/lien.mjs';
@@ -21,6 +30,10 @@ import { lien } from '../lib/lien.mjs';
 const ONGLETS = [
   { cle: 'fiche', libelle: 'Fiche', href: `/admin/prospects/${prospect}` },
   { cle: 'charte', libelle: 'Charte graphique', href: `/admin/charte/${prospect}` },
+  { cle: 'modules', libelle: 'Modules', href: `/admin/prospects/${prospect}/modules` },
+  { cle: 'applications', libelle: 'Applications', href: `/admin/prospects/${prospect}/applications` },
+  { cle: 'journal', libelle: 'Journal technique', href: `/admin/prospects/${prospect}/journal` },
+  { cle: 'facturation', libelle: 'Facturation', href: `/admin/prospects/${prospect}/facturation` },
 ];
 ---
 
@@ -42,9 +55,15 @@ const ONGLETS = [
     gap: 2px;
     margin-block-end: 20px;
     border-block-end: 1px solid var(--slate-200);
+    /* Six onglets tiennent sur un écran de bureau et pas sur un portable. Ils
+       défilent plutôt que de passer à la ligne : un bandeau sur deux rangées
+       fait perdre le repère du trait actif. */
+    overflow-x: auto;
+    scrollbar-width: thin;
   }
   .onglets-client__lien {
     padding: 10px 16px;
+    white-space: nowrap;
     font: 500 var(--text-sm) / 1.3 var(--font-sans);
     color: var(--slate-600);
     text-decoration: none;
