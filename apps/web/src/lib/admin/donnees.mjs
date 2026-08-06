@@ -17,6 +17,7 @@ import { CHAMPS_DOSSIER, contexteContrat, dossierComplet, remplirGabarit } from 
 import { serviceSignature } from '../contrats/signature.mjs';
 import { randomInt } from 'node:crypto';
 import { ROLES, codeTropSimple, empreinteValide, estCode, hacherCode } from './session.mjs';
+import { gabaritPour } from './gabarits.mjs';
 import { lireImage } from './images.mjs';
 
 /** Vrai littéral du dialecte : MySQL n'a pas de type booléen. */
@@ -2906,7 +2907,7 @@ export async function contratDeLOffre(offreId) {
  * Régénérer un contrat déjà parti en signature est refusé : le signataire a
  * le premier texte sous les yeux.
  */
-export async function genererContrat(offreId, utilisateurId = null) {
+export async function genererContrat(offreId, utilisateurId = null, { gabaritCle = '' } = {}) {
   const db = await connexion();
   const [offreBrute] = await db.requete(`SELECT * FROM ${table('offres')} WHERE id = ? LIMIT 1`, [Number(offreId)]);
   if (!offreBrute) throw new Error("Cette offre n'existe pas.");
@@ -2929,15 +2930,30 @@ export async function genererContrat(offreId, utilisateurId = null) {
     );
   }
 
+  // Le gabarit choisi, sinon celui par défaut, sinon l'ancien gabarit unique
+  // des tarifs. Le repli existe pour une seule raison : une base où la reprise
+  // n'a pas encore tourné doit continuer d'éditer des contrats.
+  //
+  // Les conditions viennent AVEC le gabarit — durée, préavis, reconduction
+  // sont des clauses de ce contrat-là, et le texte les écrit noir sur blanc
+  // en lisant les mêmes jetons. Les prendre ailleurs, c'était garantir qu'un
+  // pilote de trois mois parte avec la durée du contrat-cadre.
+  const choisi = await gabaritPour(gabaritCle);
   const tarifs = new Map((await listerTarifs()).map((l) => [l.cle, l]));
-  const gabarit = lireTarif(tarifs.get('contrat_gabarit')) || '';
-  if (!gabarit.trim()) throw new Error("Le gabarit de contrat est vide — il se règle sur l'écran Tarifs.");
+  const gabarit = choisi ? String(choisi.corps || '') : (lireTarif(tarifs.get('contrat_gabarit')) || '');
+  if (!gabarit.trim()) {
+    throw new Error(
+      choisi
+        ? `Le gabarit « ${choisi.nom} » n’a pas de texte : complétez-le avant d’éditer un contrat.`
+        : "Aucun gabarit de contrat n'est défini — la bibliothèque se remplit sur l'écran Contrats.",
+    );
+  }
 
   const conditions = {
     date_effet: new Date(),
-    duree_mois: lireTarif(tarifs.get('contrat_duree_mois')) || 0,
-    preavis_jours: lireTarif(tarifs.get('contrat_preavis_jours')) || 0,
-    reconduction: lireTarif(tarifs.get('contrat_reconduction')) || '',
+    duree_mois: choisi ? choisi.duree_mois : (lireTarif(tarifs.get('contrat_duree_mois')) || 0),
+    preavis_jours: choisi ? choisi.preavis_jours : (lireTarif(tarifs.get('contrat_preavis_jours')) || 0),
+    reconduction: choisi ? String(choisi.reconduction || '') : (lireTarif(tarifs.get('contrat_reconduction')) || ''),
   };
 
   // Le récapitulatif est celui du courriel : une seule source, sinon le
@@ -2964,25 +2980,29 @@ export async function genererContrat(offreId, utilisateurId = null) {
   if (existant) {
     await db.executer(
       `UPDATE ${table('contrats')}
-       SET corps = ?, genere_le = ?, date_effet = ?, duree_mois = ?, preavis_jours = ?, reconduction = ?
+       SET corps = ?, genere_le = ?, date_effet = ?, duree_mois = ?, preavis_jours = ?,
+           reconduction = ?, gabarit_cle = ?
        WHERE id = ?`,
       [texte, new Date(), conditions.date_effet, conditions.duree_mois,
-        conditions.preavis_jours, conditions.reconduction, existant.id],
+        conditions.preavis_jours, conditions.reconduction, choisi?.cle || null, existant.id],
     );
   } else {
     await db.executer(
       `INSERT INTO ${table('contrats')}
        (reference, offre_id, prospect_id, statut, corps, genere_le,
-        date_effet, duree_mois, preavis_jours, reconduction, cree_par)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        date_effet, duree_mois, preavis_jours, reconduction, gabarit_cle, cree_par)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [reference, offre.id, prospect.id, 'brouillon', texte, new Date(),
         conditions.date_effet, conditions.duree_mois, conditions.preavis_jours,
-        conditions.reconduction, Number(utilisateurId) || null],
+        conditions.reconduction, choisi?.cle || null, Number(utilisateurId) || null],
     );
   }
   await journaliser(offre.id, {
     type: 'contrat',
-    texte: existant ? `Contrat ${reference} régénéré` : `Contrat ${reference} édité`,
+    // Le gabarit est nommé dans le journal : c'est là qu'on ira chercher
+    // pourquoi deux contrats du même mois n'ont pas les mêmes clauses.
+    texte: (existant ? `Contrat ${reference} régénéré` : `Contrat ${reference} édité`)
+      + (choisi ? ` — gabarit « ${choisi.nom} »` : ''),
     utilisateurId,
   });
   viderCache();

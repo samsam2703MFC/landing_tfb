@@ -1,0 +1,371 @@
+---
+/**
+ * Les gabarits de contrat.
+ *
+ * Il n'y en avait qu'un, rangé dans une ligne de la table des tarifs et
+ * modifiable depuis l'écran « Tarifs » — un endroit où personne ne va chercher
+ * un contrat. Un seul suffit tant qu'on ne vend qu'une chose ; il en faut un
+ * par nature d'accord dès qu'un pilote, une franchise et un contrat-cadre ne
+ * s'écrivent pas pareil.
+ *
+ * Les jetons sont vérifiés à l'enregistrement, pas à la génération. Un
+ * `{signatiare_nom}` mal orthographié ne se voit pas à la relecture d'un
+ * contrat de six pages ; il se voit le jour où le client reçoit un document
+ * qui l'écrit en toutes lettres. Le refuser ici coûte une seconde ; le
+ * découvrir là-bas coûte la signature.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { lien } from '../../../lib/lien.mjs';
+import { compteurs } from '../../../lib/admin/donnees.mjs';
+import {
+  ajouterGabarit,
+  basculerGabarit,
+  designerGabaritDefaut,
+  enregistrerGabarit,
+  jetonsConnus,
+  listerGabarits,
+  supprimerGabarit,
+} from '../../../lib/admin/gabarits.mjs';
+import { serviceSignature } from '../../../lib/contrats/signature.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    const qui = (Astro.locals.session || {}).nom || (Astro.locals.session || {}).identifiant || null;
+    const valeurs = {
+      nom: f.get('nom'),
+      description: f.get('description'),
+      corps: f.get('corps'),
+      duree_mois: f.get('duree_mois'),
+      preavis_jours: f.get('preavis_jours'),
+      reconduction: f.get('reconduction'),
+      ordre: f.get('ordre'),
+    };
+    let dit = 'Gabarit enregistré.';
+    if (action === 'ajouter') {
+      await ajouterGabarit(valeurs, qui);
+      dit = 'Gabarit créé. Il ne sera pas proposé par défaut tant que vous ne l’aurez pas désigné.';
+    } else if (action === 'enregistrer') {
+      await enregistrerGabarit(f.get('cle'), valeurs, qui);
+    } else if (action === 'defaut') {
+      await designerGabaritDefaut(f.get('cle'));
+      dit = 'Gabarit par défaut changé. Les contrats à venir en sortiront ; les anciens gardent le leur.';
+    } else if (action === 'basculer') {
+      await basculerGabarit(f.get('cle'), f.get('actif') === '1');
+      dit = f.get('actif') === '1' ? 'Gabarit remis dans la liste.' : 'Gabarit retiré de la liste.';
+    } else if (action === 'supprimer') {
+      await supprimerGabarit(f.get('cle'));
+      dit = 'Gabarit supprimé.';
+    }
+    return Astro.redirect(`${BASE}/admin/contrats/gabarits?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+let gabarits = [];
+let chiffres = {};
+try {
+  gabarits = await listerGabarits();
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+const service = serviceSignature();
+const JETONS = jetonsConnus();
+const message = Astro.url.searchParams.get('ok');
+const ouvert = Astro.url.searchParams.get('editer') || '';
+const sansDefaut = gabarits.length > 0 && !gabarits.some((g) => g.defaut && g.actif);
+const fautifs = gabarits.filter((g) => g.inconnus.length > 0);
+const jourHeure = (v) => (v ? new Date(v).toLocaleString('fr-BE', { dateStyle: 'short', timeStyle: 'short' }) : null);
+---
+
+<Console
+  titre="Gabarits de contrat"
+  fil="TFB Admin · Vendre · Contrats · Gabarits"
+  actif="gabarits"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <div class="cartouches">
+    <div class="cartouche">
+      <span class="cartouche__k">Gabarits</span>
+      <strong class="cartouche__v">{gabarits.length}</strong>
+      <span class="cartouche__d">{gabarits.filter((g) => g.actif).length} proposé(s)</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Par défaut</span>
+      <strong class="cartouche__v" style="font-size:var(--text-lg)">
+        {gabarits.find((g) => g.defaut)?.nom || '—'}
+      </strong>
+      <span class="cartouche__d">pris quand personne ne choisit</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Contrats édités</span>
+      <strong class="cartouche__v">{gabarits.reduce((s, g) => s + g.contrats, 0)}</strong>
+      <span class="cartouche__d">tous gabarits confondus</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Signature</span>
+      <strong class="cartouche__v" style="font-size:var(--text-lg)">
+        {service.signe ? service.nom : 'Aucune'}
+      </strong>
+      <span class="cartouche__d">{service.signe ? 'branchée' : 'les contrats s’impriment'}</span>
+    </div>
+  </div>
+
+  {sansDefaut && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>Aucun gabarit par défaut.</strong> Éditer un contrat sans en nommer un échouera —
+        désignez celui qui doit servir quand personne ne choisit.
+      </span>
+    </p>
+  )}
+
+  {fautifs.length > 0 && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>{fautifs.map((g) => g.nom).join(', ')}</strong> emploie(nt) des jetons qui n'existent
+        pas : {[...new Set(fautifs.flatMap((g) => g.inconnus))].map((j) => `{${j}}`).join(', ')}.
+        Un contrat édité avec ce gabarit les écrirait tels quels au client.
+      </span>
+    </p>
+  )}
+
+  {/* La signature se branche sur le serveur, jamais ici : c'est un secret. */}
+  {!service.signe && (
+    <p class="avertit">
+      <Icone nom="info" taille={17} />
+      <span>
+        Aucune signature électronique n'est branchée : les contrats s'éditent et s'impriment, rien
+        ne part chez un prestataire. Les trois variables <span class="jeton">DOCUSIGN_BASE_URI</span>,
+        <span class="jeton">DOCUSIGN_ACCOUNT_ID</span> et <span class="jeton">DOCUSIGN_JETON</span> se
+        posent sur le serveur — aucune ne se saisit dans la console, aucune n'est écrite dans le dépôt.
+      </span>
+    </p>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>La bibliothèque</h2>
+        <p>
+          <span class="jeton">landing_contrat_gabarits</span> — la durée, le préavis et la
+          reconduction vivent avec le texte : ce sont des clauses de ce contrat-là, et le corps les
+          écrit en lisant les mêmes jetons.
+        </p>
+      </div>
+    </div>
+
+    {gabarits.length === 0 ? (
+      <div class="bloc__pied">
+        Aucun gabarit. Le formulaire ci-dessous en crée un ; l'ancien gabarit unique des réglages
+        tarifaires est repris automatiquement au démarrage s'il en existait un.
+      </div>
+    ) : (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Gabarit</th>
+              <th style="inline-size:8rem">Durée</th>
+              <th style="inline-size:8rem">Préavis</th>
+              <th style="inline-size:8rem">Contrats</th>
+              <th style="inline-size:9rem">État</th>
+              <th style="inline-size:16rem"><span class="invisible">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {gabarits.map((g) => (
+              <tr>
+                <td>
+                  <strong>{g.nom}</strong>
+                  <code class="slug">{g.cle}</code>
+                  {g.description && <span class="champ__aide">{g.description}</span>}
+                  {g.inconnus.length > 0 && (
+                    <span class="raison">jetons inconnus : {g.inconnus.map((j) => `{${j}}`).join(', ')}</span>
+                  )}
+                  {g.sans_jeton && <span class="champ__aide">aucun jeton — texte fixe</span>}
+                  {g.maj_le && <span class="champ__aide">modifié le {jourHeure(g.maj_le)}{g.maj_par ? ` par ${g.maj_par}` : ''}</span>}
+                </td>
+                <td class="num">{g.duree_mois > 0 ? `${g.duree_mois} mois` : <span class="champ__aide">—</span>}</td>
+                <td class="num">{g.preavis_jours > 0 ? `${g.preavis_jours} j` : <span class="champ__aide">—</span>}</td>
+                <td class="num">{g.contrats || <span class="champ__aide">—</span>}</td>
+                <td>
+                  {g.defaut && <span class="etat etat--on">par défaut</span>}
+                  {!g.defaut && g.actif && <span class="etat">proposé</span>}
+                  {!g.actif && <span class="etat etat--manque">retiré</span>}
+                </td>
+                <td>
+                  <div class="actions">
+                    <a class="bouton bouton--sobre bouton--sm" href={`?editer=${g.cle}`}>Modifier</a>
+                    {!g.defaut && g.actif && (
+                      <form method="post">
+                        <input type="hidden" name="action" value="defaut" />
+                        <input type="hidden" name="cle" value={g.cle} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Par défaut</button>
+                      </form>
+                    )}
+                    <form method="post">
+                      <input type="hidden" name="action" value="basculer" />
+                      <input type="hidden" name="cle" value={g.cle} />
+                      <input type="hidden" name="actif" value={g.actif ? '0' : '1'} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">
+                        {g.actif ? 'Retirer' : 'Remettre'}
+                      </button>
+                    </form>
+                    {/* Supprimer n'est proposé que si rien n'en est sorti :
+                        un bouton qui refuse toujours n'apprend rien. */}
+                    {g.contrats === 0 && !g.defaut && (
+                      <form method="post">
+                        <input type="hidden" name="action" value="supprimer" />
+                        <input type="hidden" name="cle" value={g.cle} />
+                        <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+                      </form>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+
+  {gabarits.filter((g) => !ouvert || g.cle === ouvert).filter((g) => ouvert).map((g) => (
+    <section class="bloc" style="margin-block-end:20px">
+      <form method="post">
+        <input type="hidden" name="action" value="enregistrer" />
+        <input type="hidden" name="cle" value={g.cle} />
+        <div class="bloc__tete">
+          <div>
+            <h2>Modifier « {g.nom} »</h2>
+            <p>
+              {g.contrats > 0
+                ? `${g.contrats} contrat(s) en sont déjà sortis — leur texte ne change pas, il est recopié sur le contrat.`
+                : 'Aucun contrat n’en est encore sorti.'}
+            </p>
+          </div>
+          <button class="bouton bouton--marque bouton--sm" type="submit">Enregistrer</button>
+        </div>
+        <div class="bloc__corps">
+          <div class="filtres">
+            <div class="champ">
+              <label for={`n-${g.cle}`}>Nom</label>
+              <input id={`n-${g.cle}`} name="nom" value={g.nom} required />
+            </div>
+            <div class="champ">
+              <label for={`d-${g.cle}`}>Durée (mois)</label>
+              <input id={`d-${g.cle}`} name="duree_mois" type="number" min="0" value={g.duree_mois} />
+            </div>
+            <div class="champ">
+              <label for={`p-${g.cle}`}>Préavis (jours)</label>
+              <input id={`p-${g.cle}`} name="preavis_jours" type="number" min="0" value={g.preavis_jours} />
+            </div>
+            <div class="champ">
+              <label for={`o-${g.cle}`}>Ordre</label>
+              <input id={`o-${g.cle}`} name="ordre" type="number" min="0" value={g.ordre} />
+            </div>
+          </div>
+          <div class="champ" style="margin-block-start:16px">
+            <label for={`r-${g.cle}`}>Reconduction</label>
+            <input id={`r-${g.cle}`} name="reconduction" value={g.reconduction || ''} placeholder="tacite, par période de 12 mois" />
+          </div>
+          <div class="champ" style="margin-block-start:16px">
+            <label for={`desc-${g.cle}`}>À quoi il sert</label>
+            <input id={`desc-${g.cle}`} name="description" value={g.description || ''} placeholder="Pilote de trois mois, sans engagement" />
+          </div>
+          <div class="champ" style="margin-block-start:16px">
+            <label for={`c-${g.cle}`}>Le texte</label>
+            <textarea id={`c-${g.cle}`} name="corps" rows="22" spellcheck="false">{g.corps}</textarea>
+          </div>
+          <details class="jetons">
+            <summary>Les {JETONS.length} jetons disponibles</summary>
+            <p class="champ__aide">
+              Ils s'écrivent entre accolades et sont remplacés à l'édition du contrat. Un jeton
+              inconnu fait refuser l'enregistrement ; un jeton vide au moment d'éditer fait refuser
+              la génération, en nommant ce qui manque au dossier.
+            </p>
+            <div class="tris">
+              {JETONS.map((j) => <span class="taux">{`{${j}}`}</span>)}
+            </div>
+          </details>
+        </div>
+      </form>
+    </section>
+  ))}
+
+  <section class="bloc">
+    <form method="post">
+      <input type="hidden" name="action" value="ajouter" />
+      <div class="bloc__tete">
+        <div>
+          <h2>Nouveau gabarit</h2>
+          <p>Il ne sera pas proposé par défaut tant que vous ne l'aurez pas désigné.</p>
+        </div>
+        <button class="bouton bouton--marque bouton--sm" type="submit">Créer</button>
+      </div>
+      <div class="bloc__corps">
+        <div class="filtres">
+          <div class="champ">
+            <label for="n-neuf">Nom</label>
+            <input id="n-neuf" name="nom" required placeholder="Pilote trois mois" />
+          </div>
+          <div class="champ">
+            <label for="d-neuf">Durée (mois)</label>
+            <input id="d-neuf" name="duree_mois" type="number" min="0" value="0" />
+          </div>
+          <div class="champ">
+            <label for="p-neuf">Préavis (jours)</label>
+            <input id="p-neuf" name="preavis_jours" type="number" min="0" value="0" />
+          </div>
+          <div class="champ">
+            <label for="r-neuf">Reconduction</label>
+            <input id="r-neuf" name="reconduction" placeholder="aucune" />
+          </div>
+        </div>
+        <div class="champ" style="margin-block-start:16px">
+          <label for="desc-neuf">À quoi il sert</label>
+          <input id="desc-neuf" name="description" placeholder="Pilote de trois mois, sans engagement" />
+        </div>
+        <div class="champ" style="margin-block-start:16px">
+          <label for="c-neuf">Le texte</label>
+          <textarea id="c-neuf" name="corps" rows="12" spellcheck="false"
+            placeholder="Entre {client}, représenté par {signataire_nom}…"></textarea>
+        </div>
+      </div>
+    </form>
+  </section>
+</Console>
+
+<style is:global>
+  /* Un contrat se relit en pleine largeur, en chasse fixe : c'est du texte
+     dont l'alignement compte, et les jetons doivent se repérer d'un coup. */
+  textarea[name='corps'] {
+    font: 13px / 1.7 var(--font-mono);
+    inline-size: 100%;
+    resize: vertical;
+  }
+  .jetons { margin-block-start: 16px; }
+  .jetons summary {
+    cursor: pointer;
+    font: 500 var(--text-sm) / 1.3 var(--font-sans);
+    color: var(--slate-600);
+  }
+  .jetons .tris { margin-block-start: 8px; }
+  .raison {
+    display: block; margin-block-start: 4px;
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
+  }
+</style>
