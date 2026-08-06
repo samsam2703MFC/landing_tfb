@@ -1,0 +1,66 @@
+---
+/**
+ * Les onglets d'un écran regroupé.
+ *
+ * Posé une fois dans `Console.astro`, pas dans chaque page : c'est la carte de
+ * navigation qui décide de qui est groupé avec qui, et regrouper deux écrans de
+ * plus demain ne demandera de toucher à aucune page. Un écran qui vit seul ne
+ * rend rien du tout.
+ *
+ * Le même dessin que les onglets d'un client — deux bandeaux d'onglets qui ne
+ * se ressemblent pas dans la même console feraient croire à deux mécaniques
+ * différentes.
+ */
+import { lien } from '../lib/lien.mjs';
+import { ongletsSection } from '../lib/admin/navigation.mjs';
+
+const { actif, role } = Astro.props;
+const section = ongletsSection(actif, role);
+---
+
+{section && (
+  <nav class="onglets-section" aria-label={section.libelle}>
+    {section.onglets.map((o) => (
+      <a
+        class="onglets-section__lien"
+        href={lien(o.href)}
+        aria-current={o.cle === actif ? 'page' : undefined}
+      >
+        {o.libelle}
+      </a>
+    ))}
+  </nav>
+)}
+
+<style is:global>
+  .onglets-section {
+    display: flex;
+    gap: 2px;
+    border-block-end: 1px solid var(--slate-200);
+    /* Les rubriques les plus fournies en ont quatre : ça tient au bureau et
+       pas sur un portable. Elles défilent plutôt que de passer à la ligne —
+       un bandeau sur deux rangées fait perdre le repère du trait actif. */
+    overflow-x: auto;
+    scrollbar-width: thin;
+  }
+  /* `.page` espace ses enfants de 24 px : le bandeau se collerait au titre
+     et flotterait au-dessus du contenu qu'il annonce. */
+  .onglets-section + * { margin-block-start: -8px; }
+  .onglets-section__lien {
+    padding: 10px 16px;
+    white-space: nowrap;
+    font: 500 var(--text-sm) / 1.3 var(--font-sans);
+    color: var(--slate-600);
+    text-decoration: none;
+    /* Le trait actif est posé à l'intérieur, sur la bordure du conteneur : un
+       `border-bottom` sur le lien décalerait le texte d'un pixel au survol, et
+       le bandeau entier tremblerait. */
+    box-shadow: inset 0 -2px 0 transparent;
+    transition: color var(--duree-courte, 120ms) ease, box-shadow var(--duree-courte, 120ms) ease;
+  }
+  .onglets-section__lien:hover { color: var(--slate-900); text-decoration: none; }
+  .onglets-section__lien[aria-current='page'] {
+    color: var(--brand);
+    box-shadow: inset 0 -2px 0 var(--brand);
+  }
+</style>
