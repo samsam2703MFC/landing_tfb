@@ -1,0 +1,167 @@
+---
+/**
+ * Les clients. La liste qui manquait.
+ *
+ * On ne pouvait atteindre un client que depuis une de ses offres : pour ouvrir
+ * une fiche, il fallait déjà savoir qu'elle existait. Le rail portait bien une
+ * entrée « Réseaux clients », mais elle désigne autre chose — les logos affichés
+ * sur la landing.
+ *
+ * Ce que la liste répond, et pourquoi ces colonnes-là :
+ *
+ *   · **son commercial**, la question la plus posée sur un client et la seule
+ *     qui n'était écrite nulle part. Elle vient de la dernière offre à son nom,
+ *     pas d'une colonne « commercial » sur le prospect : celle-ci créerait une
+ *     seconde vérité, et le jour où elle contredirait l'offre, personne ne
+ *     saurait laquelle croire ;
+ *   · **ses offres et ses contrats signés**, comptés ;
+ *   · **ses packs**, tirés des offres ;
+ *   · **sa charte**, ou l'absence de surcharge — qui est le cas sain, pas une
+ *     fiche à moitié remplie.
+ *
+ * Chaque ligne mène à la fiche, d'où l'onglet mène à la charte.
+ */
+import Console from '../../../components/Console.astro';
+import Icone from '../../../components/Icone.astro';
+import { lien } from '../../../lib/lien.mjs';
+import { compteurs, listerFichesClients } from '../../../lib/admin/donnees.mjs';
+
+let erreur = null;
+let chiffres = {};
+let clients = [];
+try {
+  chiffres = await compteurs();
+  clients = await listerFichesClients();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+const q = (Astro.url.searchParams.get('q') || '').trim().toLowerCase();
+const visibles = q
+  ? clients.filter((c) => `${c.nom} ${c.ville || ''} ${c.commercial || ''}`.toLowerCase().includes(q))
+  : clients;
+
+const sansCommercial = clients.filter((c) => c.offres > 0 && !c.commercial);
+const actifs = clients.filter((c) => c.contrats_signes > 0);
+---
+
+<Console
+  titre="Clients"
+  fil="TFB Admin · Réseau · Clients"
+  actif="fiches-clients"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <div class="cartouches">
+    <div class="cartouche">
+      <span class="cartouche__k">Clients</span>
+      <strong class="cartouche__v">{clients.length}</strong>
+      <span class="cartouche__d">fiches ouvertes</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Sous contrat</span>
+      <strong class="cartouche__v">{actifs.length}</strong>
+      <span class="cartouche__d">au moins un contrat signé</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Chartes propres</span>
+      <strong class="cartouche__v">{clients.filter((c) => c.charte_surcharges > 0).length}</strong>
+      <span class="cartouche__d">les autres servent la charte maison</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Sans commercial</span>
+      <strong class="cartouche__v">{sansCommercial.length}</strong>
+      <span class="cartouche__d">des offres, personne à leur nom</span>
+    </div>
+  </div>
+
+  {sansCommercial.length > 0 && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>{sansCommercial.map((c) => c.nom).join(', ')} — des offres, aucun commercial.</strong>
+        Le commercial se lit sur l'offre : une offre créée par un compte supprimé n'en a plus.
+        Rien ne se commissionne pour ces clients tant que c'est le cas.
+      </span>
+    </p>
+  )}
+
+  <section class="bloc">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les clients</h2>
+        <p>
+          <span class="jeton">landing_prospects</span> — chaque fiche mène à ses offres, ses
+          contrats, et sa charte graphique. Le commercial vient de la dernière offre à son nom.
+        </p>
+      </div>
+      <form method="get" class="bloc__actions">
+        <input type="search" name="q" value={q} placeholder="Nom, ville, commercial" aria-label="Rechercher un client" />
+        <button class="bouton bouton--sobre bouton--sm" type="submit">Chercher</button>
+      </form>
+    </div>
+
+    {visibles.length === 0 ? (
+      <p class="champ__aide" style="padding:0 20px 16px">
+        {clients.length === 0 ? 'Aucun client. Ils apparaissent ici dès la première offre.' : 'Aucun client ne correspond.'}
+      </p>
+    ) : (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Client</th>
+              <th style="inline-size:12rem">Commercial</th>
+              <th style="inline-size:7rem">Offres</th>
+              <th style="inline-size:7rem">Signés</th>
+              <th>Packs</th>
+              <th style="inline-size:11rem">Charte</th>
+              <th style="inline-size:9rem"><span class="invisible">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visibles.map((c) => (
+              <tr>
+                <td>
+                  <a href={lien(`/admin/prospects/${c.id}`)}><strong>{c.nom}</strong></a>
+                  {c.ville && <span class="champ__aide">{c.ville}</span>}
+                </td>
+                <td>
+                  {c.commercial
+                    ? c.commercial
+                    : <span class="champ__aide">{c.offres > 0 ? 'aucun' : '—'}</span>}
+                </td>
+                <td class="num">{c.offres || <span class="champ__aide">—</span>}</td>
+                <td class="num">{c.contrats_signes || <span class="champ__aide">—</span>}</td>
+                <td>
+                  {c.packs.length === 0
+                    ? <span class="champ__aide">—</span>
+                    : c.packs.map((nom) => <span class="taux">{nom}</span>)}
+                </td>
+                <td>
+                  {c.charte_surcharges > 0
+                    ? <span class="champ__aide">{c.charte_surcharges} surcharge(s) · v{c.charte_version}</span>
+                    : <span class="champ__aide">charte maison</span>}
+                </td>
+                <td>
+                  <div class="actions">
+                    <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/prospects/${c.id}`)}>Fiche</a>
+                    <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/charte/${c.id}`)}>Charte</a>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </section>
+
+  <p class="champ__aide" style="margin-block-start:14px">
+    « Réseaux clients », dans le rail, désigne autre chose : les logos affichés sur la landing.
+  </p>
+</Console>
+
+<style is:global>
+  .bloc__actions input[type='search'] { inline-size: 16rem; }
+</style>

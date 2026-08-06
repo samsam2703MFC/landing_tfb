@@ -96,6 +96,19 @@ try {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
 
+/**
+ * Son commercial.
+ *
+ * Il se lit sur les offres, jamais sur une colonne du prospect : une seconde
+ * écriture du même fait finirait par contredire la première, et le jour venu
+ * personne ne saurait laquelle paie. La plus récente offre à porter un auteur
+ * donne celui qui suit le client aujourd'hui — c'est aussi la règle de la
+ * liste, et les deux écrans doivent dire la même chose.
+ */
+const dateOffre = (o) => new Date(o.cree_le || 0).getTime() || 0;
+const recentes = [...offres].sort((a, b) => dateOffre(b) - dateOffre(a));
+const commercial = (recentes.find((o) => o.auteur_nom) || {}).auteur_nom || null;
+
 const etat = prospect ? dossierComplet(prospect, { pieces }) : { complet: false, manque: [] };
 const libellePiece = (cle) => (TYPES_PIECE.find((t) => t.cle === cle) || {}).libelle || cle;
 const poids = (o) => (o > 1024 * 1024 ? `${(o / 1024 / 1024).toFixed(1)} Mo` : `${Math.round(o / 1024)} ko`);
@@ -126,6 +139,13 @@ const message = Astro.url.searchParams.get('ok');
               Les montants d'une offre envoyée, eux, ne changent pas.
             </p>
           </div>
+          {/* Le commercial en tête de fiche : c'est la première question posée
+              sur un client, et il fallait jusqu'ici ouvrir une offre pour y
+              répondre. « Aucun » n'est écrit que s'il y a des offres — sur un
+              client sans offre, l'absence n'est pas une anomalie. */}
+          {commercial
+            ? <span class="etat">Commercial · {commercial}</span>
+            : offres.length > 0 && <span class="etat etat--manque">Aucun commercial</span>}
           <span class={prospect.tva_verifiee_le ? 'etat etat--on' : 'etat'}>
             {prospect.tva_verifiee_le ? `TVA vérifiée le ${jour(prospect.tva_verifiee_le)}` : 'TVA non vérifiée'}
           </span>
@@ -337,7 +357,7 @@ const message = Astro.url.searchParams.get('ok');
         <div class="bloc__tete">
           <div>
             <h2>Ses offres</h2>
-            <p>Dernière version de chaque référence.</p>
+            <p>Dernière version de chaque référence, et qui l'a faite.</p>
           </div>
           <a class="bouton bouton--sobre bouton--sm" href={`${BASE}/admin/offres/nouvelle`}>Nouvelle offre</a>
         </div>
@@ -347,12 +367,25 @@ const message = Astro.url.searchParams.get('ok');
         ) : (
           <div class="roule">
             <table>
+              <thead>
+                <tr>
+                  <th>Référence</th>
+                  <th style="inline-size:7rem">Version</th>
+                  <th style="inline-size:9rem">Statut</th>
+                  <th style="inline-size:12rem">Commercial</th>
+                </tr>
+              </thead>
               <tbody>
                 {offres.map((o) => (
                   <tr>
                     <td><a href={`${BASE}/admin/offres/${o.reference}`}><strong>{o.reference}</strong></a></td>
                     <td>version {o.version}</td>
                     <td><span class="etat">{o.statut}</span></td>
+                    {/* Par offre, et pas seulement en tête de fiche : un client
+                        repris change de commercial, et les anciennes offres
+                        restent au nom de celui qui les a signées — c'est lui
+                        qu'elles commissionnent. */}
+                    <td>{o.auteur_nom || <span class="champ__aide">—</span>}</td>
                   </tr>
                 ))}
               </tbody>

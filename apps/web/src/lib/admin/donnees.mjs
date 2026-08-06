@@ -100,6 +100,7 @@ export async function compteurs() {
   const [leads] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('leads')} WHERE traite = ?`, [vrai(false)]);
   const [clients] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('clients')}`);
   const [questions] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('questions')}`);
+  const [prospects] = await db.requete(`SELECT COUNT(*) AS total FROM ${table('prospects')}`);
   const [prestations] = await db.requete(
     `SELECT COUNT(*) AS total FROM ${table('prestations')} WHERE actif = ?`,
     [vrai(true)],
@@ -142,6 +143,7 @@ export async function compteurs() {
     fonctions: nombre(fonctions),
     captures: nombre(captures),
     etapes: nombre(etapes),
+    prospects: nombre(prospects),
     commissionsSansPlan: nombre(sansPlan),
     textes: nombre(textes),
     langues: nombre(langues),
@@ -1671,6 +1673,64 @@ export function normaliserOffre(ligne) {
 export async function listerProspects() {
   const db = await connexion();
   return db.requete(`SELECT * FROM ${table('prospects')} ORDER BY raison_sociale`);
+}
+
+/**
+ * Les clients, avec de quoi les retrouver sans ouvrir douze fiches.
+ *
+ * Ce que la liste porte, et pourquoi chaque colonne y est :
+ *
+ *   · **son commercial** — la question la plus posée sur un client, et la seule
+ *     qui n'était écrite nulle part. Il vient de la dernière offre à son nom :
+ *     le prospect ne porte pas de propriétaire, l'offre porte `cree_par`, et
+ *     inventer une colonne « commercial » sur le prospect créerait une seconde
+ *     vérité qui divergerait de la première ;
+ *   · **ses offres et contrats**, comptés — un client sans offre n'est pas un
+ *     client, c'est une fiche ;
+ *   · **ses packs**, tirés des offres réellement signées ;
+ *   · **sa charte**, ou l'absence de surcharge, qui est le cas sain.
+ *
+ * Une seule requête par famille plutôt qu'une par client : à cinquante clients,
+ * la boucle ferait deux cents allers-retours pour afficher un tableau.
+ */
+export async function listerFichesClients() {
+  const db = await connexion();
+  const [prospects, offres, contrats, chartes] = await Promise.all([
+    db.requete(`SELECT * FROM ${table('prospects')} ORDER BY raison_sociale`),
+    db.requete(
+      `SELECT o.prospect_id, o.reference, o.statut, o.packs, o.cree_le,
+              u.nom AS auteur_nom, u.identifiant AS auteur_identifiant
+         FROM ${table('offres')} o
+         LEFT JOIN ${table('utilisateurs')} u ON u.id = o.cree_par
+        ORDER BY o.cree_le DESC, o.id DESC`,
+    ),
+    db.requete(`SELECT prospect_id, statut FROM ${table('contrats')}`),
+    db.requete(`SELECT prospect_id, donnees, version FROM ${table('charte')} WHERE etat = 'publie'`),
+  ]);
+
+  const charteDe = new Map(chartes.map((c) => [Number(c.prospect_id), c]));
+
+  return prospects.map((p) => {
+    const siennes = offres.filter((o) => Number(o.prospect_id) === Number(p.id));
+    const signes = contrats.filter((c) => Number(c.prospect_id) === Number(p.id) && c.statut === 'signe');
+    // Les offres sont déjà triées du plus récent au plus ancien : la première
+    // qui porte un auteur donne le commercial en cours.
+    const derniere = siennes.find((o) => o.auteur_nom || o.auteur_identifiant);
+    const charte = charteDe.get(Number(p.id));
+    const surcharges = charte ? Object.keys(lireJson(charte.donnees, {}) || {}).length : 0;
+
+    return {
+      id: p.id,
+      nom: p.raison_sociale || `Client ${p.id}`,
+      ville: p.ville || null,
+      commercial: derniere ? (derniere.auteur_nom || derniere.auteur_identifiant) : null,
+      offres: siennes.length,
+      contrats_signes: signes.length,
+      packs: [...new Set(siennes.flatMap((o) => (lireJson(o.packs, []) || []).map((x) => x.nom || x.cle)))],
+      charte_version: charte ? Number(charte.version || 0) : 0,
+      charte_surcharges: surcharges,
+    };
+  });
 }
 
 export async function chargerProspect(id) {

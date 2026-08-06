@@ -105,6 +105,11 @@ const TOUTES = [
     titre: 'Réseau',
     entrees: [
       { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'users', compte: compteurs.leads },
+      // Les clients, les vrais. « Réseaux clients », juste dessous, désigne les
+      // logos de la landing — deux choses que le mot « clients » confondait, et
+      // dont l'une n'avait aucune liste : on n'atteignait une fiche que depuis
+      // une de ses offres, donc en sachant déjà qu'elle existait.
+      { cle: 'fiches-clients', href: '/admin/prospects', libelle: 'Clients', icone: 'building-2', compte: compteurs.prospects },
       { cle: 'clients', href: '/admin/clients', libelle: 'Réseaux clients', icone: 'building', compte: compteurs.clients },
     ],
   },
