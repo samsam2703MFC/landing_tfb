@@ -11,8 +11,10 @@
  */
 import '../design-system/styles.css';
 import Icone from './Icone.astro';
+import OngletsSection from './OngletsSection.astro';
 import { lien } from '../lib/lien.mjs';
-import { ROLES_DITS, cheminAutorise } from '../lib/admin/session.mjs';
+import { ROLES_DITS } from '../lib/admin/session.mjs';
+import { railPour } from '../lib/admin/navigation.mjs';
 
 const {
   titre,
@@ -28,104 +30,18 @@ const {
 // plus étroit plutôt que le plus large.
 const session = Astro.locals.session || { role: 'commercial', secours: false };
 
-const TOUTES = [
-  {
-    // Le tableau de bord n'appartient à aucune rubrique : il est le point
-    // d'entrée des deux rôles, et le ranger sous « Contenu landing » laissait
-    // un commercial avec une rubrique de ce nom contenant ce seul lien.
-    entrees: [
-      { cle: 'accueil', href: '/admin', libelle: 'Tableau de bord', icone: 'layout-dashboard' },
-      // En tête, et pas dans « Réseau » où elle était : le rail fait une
-      // hauteur d'écran pour vingt-cinq liens, donc la dernière rubrique n'est
-      // visible qu'après défilement. Une entrée qu'il faut chercher est une
-      // entrée qui n'existe pas.
-      { cle: 'charte', href: '/admin/charte', libelle: 'Chartes clients', icone: 'sparkles' },
-      { cle: 'endpoints', href: '/admin/endpoints', libelle: 'Endpoints', icone: 'scan-line' },
-      { cle: 'applications', href: '/admin/applications', libelle: 'Applications', icone: 'smartphone' },
-      { cle: 'jetons', href: '/admin/jetons', libelle: 'Jetons d’accès', icone: 'lock' },
-      { cle: 'bases', href: '/admin/bases', libelle: 'Bases clientes', icone: 'store' },
-    ],
-  },
-  {
-    titre: 'Contenu landing',
-    entrees: [
-      { cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules,
-        alerte: compteurs.aValider > 0 ? compteurs.aValider : null },
-      { cle: 'composants', href: '/admin/composants', libelle: 'Composants', icone: 'panels-top-left', compte: compteurs.fonctions },
-      { cle: 'leviers', href: '/admin/leviers', libelle: 'Leviers', icone: 'tag', compte: 6 },
-      { cle: 'captures', href: '/admin/captures', libelle: 'Captures', icone: 'image', compte: compteurs.captures },
-      { cle: 'textes', href: '/admin/textes', libelle: 'Textes', icone: 'file-text', compte: compteurs.textes },
-      { cle: 'site', href: '/admin/site', libelle: "Page d'accueil", icone: 'panels-top-left' },
-      { cle: 'questions', href: '/admin/questions', libelle: 'Questionnaire', icone: 'clipboard-check', compte: compteurs.questions },
-      { cle: 'langues', href: '/admin/langues', libelle: 'Langues', icone: 'languages', compte: compteurs.langues },
-      { cle: 'traductions', href: '/admin/traductions', libelle: 'Traductions', icone: 'globe' },
-    ],
-  },
-  {
-    // L'onboarding commercial : ce qu'on vend, à quel prix, et à qui.
-    titre: 'Commercial',
-    entrees: [
-      { cle: 'offres', href: '/admin/offres', libelle: 'Offres', icone: 'receipt', compte: compteurs.offres },
-      { cle: 'etapes', href: '/admin/etapes', libelle: 'Étapes', icone: 'list-checks', compte: compteurs.etapes },
-      { cle: 'contrats', href: '/admin/contrats', libelle: 'Contrats', icone: 'handshake', compte: compteurs.contrats },
-      { cle: 'tarifs', href: '/admin/tarifs', libelle: 'Tarifs', icone: 'percent' },
-      // L'alerte plutôt qu'un compte : le nombre de plans n'apprend rien, alors
-      // qu'un commercial qui a signé sans plan ne se calcule pas — et ne se
-      // verrait nulle part ailleurs.
-      { cle: 'commissions', href: '/admin/commissions', libelle: 'Commissions', icone: 'handshake',
-        alerte: compteurs.commissionsSansPlan > 0 ? compteurs.commissionsSansPlan : null },
-      { cle: 'prestations', href: '/admin/prestations', libelle: 'Prestations', icone: 'wallet', compte: compteurs.prestations },
-      { cle: 'societe', href: '/admin/societe', libelle: 'Société qui facture', icone: 'building' },
-    ],
-  },
-  {
-    // L'onboarding technique : brancher les caisses des clients et les tenir
-    // branchées. C'est la seule rubrique qu'un profil technique voit en
-    // entier, et la seule que le commercial ne voit pas du tout.
-    titre: 'Onboarding',
-    entrees: [
-      { cle: 'onboarding', href: '/admin/onboarding', libelle: 'Mises en route', icone: 'play', compte: compteurs.parcours },
-      { cle: 'connexions', href: '/admin/connexions', libelle: 'Connexions', icone: 'arrow-up-down', compte: compteurs.connexions },
-      { cle: 'connecteurs', href: '/admin/connecteurs', libelle: 'Connecteurs', icone: 'package', compte: compteurs.connecteurs },
-    ],
-  },
-  {
-    titre: 'Système',
-    entrees: [
-      { cle: 'sync', href: '/admin/sync', libelle: 'Sync GitHub', icone: 'arrow-up-down', compte: compteurs.modules },
-      // Pas de compteur : le nombre de produits Stripe n'apprend rien. Ce qui
-      // compte — un pack qui revendique un produit inexistant — demande
-      // d'interroger Stripe, et on ne le fait pas à chaque page de la console.
-      { cle: 'stripe', href: '/admin/stripe', libelle: 'Stripe', icone: 'credit-card' },
-      { cle: 'utilisateurs', href: '/admin/utilisateurs', libelle: 'Comptes', icone: 'users' },
-      { cle: 'reglages', href: '/admin/reglages', libelle: 'Réglages', icone: 'settings' },
-    ],
-  },
-  {
-    titre: 'Réseau',
-    entrees: [
-      { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'users', compte: compteurs.leads },
-      // Les clients, les vrais. « Réseaux clients », juste dessous, désigne les
-      // logos de la landing — deux choses que le mot « clients » confondait, et
-      // dont l'une n'avait aucune liste : on n'atteignait une fiche que depuis
-      // une de ses offres, donc en sachant déjà qu'elle existait.
-      { cle: 'fiches-clients', href: '/admin/prospects', libelle: 'Clients', icone: 'building-2', compte: compteurs.prospects },
-      { cle: 'clients', href: '/admin/clients', libelle: 'Réseaux clients', icone: 'building', compte: compteurs.clients },
-    ],
-  },
-];
-
 /**
- * Le rail ne montre que ce que le rôle peut ouvrir. Une entrée qui mènerait à
- * un 403 est pire qu'une entrée absente : elle laisse croire à un droit qu'on
- * n'a pas, et fait perdre du temps à comprendre pourquoi.
+ * Le rail vient de `lib/admin/navigation.mjs`, qui déclare aussi les onglets
+ * des écrans regroupés. Une seule carte pour les deux : tenues séparément,
+ * elles divergent au premier écran ajouté, et l'une des deux ment sans que
+ * rien ne le signale.
  *
- * C'est un confort d'affichage, pas une sécurité — le contrôle qui compte est
- * dans le middleware, en amont de chaque page.
+ * Le filtrage par rôle s'y fait aussi. Une entrée qui mènerait à un 403 est
+ * pire qu'une entrée absente : elle laisse croire à un droit qu'on n'a pas.
+ * C'est un confort d'affichage et non une sécurité — le contrôle qui compte
+ * est dans le middleware, en amont de chaque page.
  */
-const RUBRIQUES = TOUTES
-  .map((r) => ({ ...r, entrees: r.entrees.filter((e) => cheminAutorise(e.href, session.role)) }))
-  .filter((r) => r.entrees.length > 0);
+const RUBRIQUES = railPour(session.role, actif, compteurs);
 ---
 
 <html lang="fr" dir="ltr">
@@ -828,7 +744,7 @@ const RUBRIQUES = TOUTES
           <div class="rail__groupe">
             {rubrique.titre && <div class="rail__titre">{rubrique.titre}</div>}
             {rubrique.entrees.map((e) => (
-              <a class="rail__lien" href={lien(e.href)} aria-current={actif === e.cle ? 'page' : undefined}>
+              <a class="rail__lien" href={lien(e.href)} aria-current={e.courant ? 'page' : undefined}>
                 <Icone nom={e.icone} taille={18} />
                 {e.libelle}
                 {e.alerte ? (
@@ -878,6 +794,11 @@ const RUBRIQUES = TOUTES
         <div class="page">
           {message && <div class="alerte alerte--ok">{message}</div>}
           {erreur && <div class="alerte alerte--ko">{erreur}</div>}
+          {/* Les onglets d'un écran regroupé, posés ici et non dans chaque
+              page : la carte de navigation décide seule de qui est groupé avec
+              qui, et aucune page n'a eu à changer. Ne rend rien pour un écran
+              qui vit seul. */}
+          <OngletsSection actif={actif} role={session.role} />
           <slot />
         </div>
       </div>
