@@ -127,7 +127,13 @@ jobs:
           sudo systemctl restart tfb-landing
           REMOTE
 
-      - name: Contrôler la santé
+      # Deux contrôles, et ils ne prouvent pas la même chose. Celui-ci interroge
+      # 127.0.0.1 : il prouve que l'application est bâtie, démarrée et qu'elle lit
+      # la base. Il ne dit rien de l'URL par laquelle quelqu'un y accède. Le
+      # contrôle suivant s'occupe de ça — et il existe parce que ce dernier
+      # manquait : le service tournait, le déploiement était vert, et l'URL
+      # publique servait une tout autre application.
+      - name: Contrôler la santé (interne)
         env:
           # Le sous-chemin vient du serveur : une app servie sous
           # NEXT_PUBLIC_BASE_PATH ne répond pas à la racine, et le contrôle
@@ -148,6 +154,44 @@ jobs:
             sleep 3
           done
           echo "::error::L'app ne répond pas ou ne joint pas la base. journalctl -u tfb-landing -n 50"
+          exit 1
+
+      # Interrogé depuis le runner, par l'internet public, comme un utilisateur.
+      #
+      # Le contrôle précédent est passé : l'application est vivante et lit la base.
+      # Tout échec ici est donc un problème de routage, pas de build — le message
+      # le dit, pour que personne ne cherche la panne dans le mauvais endroit.
+      #
+      # Le corps est comparé à `"db":"up"`, pas au code HTTP. Un 200 prouve que
+      # *quelque chose* a répondu ; seule cette chaîne prouve que c'est nous. La
+      # panne qui a motivé cette étape renvoyait un 404 propre depuis une autre
+      # application hébergée sur la même machine.
+      - name: Contrôler l'URL publique
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+          HEALTH_PATH: ${{ vars.HEALTH_PATH || '/api/health' }}
+        run: |
+          if [ -z "${PUBLIC_URL:-}" ]; then
+            echo "::warning::Aucune vérification publique n'a eu lieu : la variable de dépôt PUBLIC_URL n'est pas définie. Le déploiement est vert sur la foi d'un contrôle interne uniquement — il ne prouve pas qu'un utilisateur atteint l'application. Définissez-la dans Settings → Secrets and variables → Actions → Variables, sous-chemin compris (ex. http://mon-hote/landing_tfb)."
+            exit 0
+          fi
+
+          URL="${PUBLIC_URL%/}$HEALTH_PATH"
+          echo "Contrôle public : $URL"
+
+          for i in $(seq 1 10); do
+            code=$(curl -sS -o /tmp/public.out -w '%{http_code}' --max-time 10 "$URL" 2>/dev/null || echo 000)
+            if grep -q '"db":"up"' /tmp/public.out 2>/dev/null; then
+              echo "::notice::URL publique vérifiée — c'est bien cette application qui répond sur $URL."
+              exit 0
+            fi
+            sleep 3
+          done
+
+          echo "::error::$URL ne renvoie pas cette application (HTTP $code). Le contrôle interne est passé : l'application tourne sur 127.0.0.1:3000 et lit la base. C'est donc Apache qui n'envoie pas ce chemin vers le port 3000, ou qui l'envoie ailleurs. Lancer sudo bash /srv/tfb-landing/deploy/diagnose.sh — il dit en quinze lignes où la requête se perd. La configuration attendue est dans deploy/apache-landing_tfb.conf (a2enconf landing_tfb), et deploy/apache-vhost-snippet.conf si un vhost la court-circuite."
+          echo "Début de la réponse reçue :"
+          head -c 300 /tmp/public.out 2>/dev/null || true
+          echo
           exit 1
 
       - name: Nettoyer
