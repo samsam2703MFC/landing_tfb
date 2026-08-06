@@ -1,0 +1,346 @@
+---
+/**
+ * Ce que chaque commercial a projeté, contrat par contrat.
+ *
+ * Un mot est tenu partout sur cet écran : **projeté**. Cette application ne
+ * connaît pas les encaissements. Un contrat signé dit ce que le client s'est
+ * engagé à payer, pas ce qu'il a payé. Écrire « dû » ou « à verser » ici
+ * reviendrait à transformer un engagement en dette, et quelqu'un finirait par
+ * payer sur ces chiffres.
+ *
+ * Deux choses n'existent pas, et c'est délibéré :
+ *
+ *   · **pas de table d'agents** — un commercial est un compte, et une seconde
+ *     liste de personnes divergerait de la première ;
+ *   · **pas d'attribution** — l'offre porte `cree_par`, le contrat porte
+ *     l'offre. Le lien est là depuis le premier jour.
+ *
+ * Et une chose saute aux yeux plutôt que de se fondre dans un total : un
+ * commercial avec des contrats signés et aucun plan. Rien ne se calcule pour
+ * lui — ni zéro, ni erreur — donc il faut le nommer.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { compteurs } from '../../lib/admin/donnees.mjs';
+import {
+  ajouterPlan,
+  commissionsParCommercial,
+  enregistrerPaliers,
+  listerPlans,
+  rattacherAuPlan,
+  supprimerPlan,
+} from '../../lib/admin/commissions.mjs';
+import { RAISONS, afficherTaux, resumerPlan } from '../../lib/commissions/calcul.mjs';
+import { formater } from '../../lib/offres/calcul.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+let erreur = null;
+
+if (Astro.request.method === 'POST') {
+  try {
+    const f = await Astro.request.formData();
+    const action = String(f.get('action') || '');
+    let dit = 'Enregistré.';
+
+    if (action === 'plan-ajout') {
+      const cle = await ajouterPlan({ nom: f.get('nom'), paliers: f.get('paliers') });
+      dit = `Plan « ${cle} » créé.`;
+    } else if (action === 'plan-paliers') {
+      await enregistrerPaliers(f.get('cle'), f.get('paliers'));
+      dit = 'Paliers enregistrés. Les commissions déjà versées gardent leur taux.';
+    } else if (action === 'plan-suppression') {
+      await supprimerPlan(f.get('cle'));
+      dit = 'Plan supprimé.';
+    } else if (action === 'rattacher') {
+      await rattacherAuPlan(f.get('id'), f.get('plan'));
+      dit = 'Compte rattaché.';
+    }
+    return Astro.redirect(`${BASE}/admin/commissions?ok=${encodeURIComponent(dit)}`, 303);
+  } catch (err) {
+    erreur = err.message;
+  }
+}
+
+const message = Astro.url.searchParams.get('ok');
+
+let chiffres = {};
+let plans = [];
+let gens = [];
+try {
+  chiffres = await compteurs();
+  plans = await listerPlans();
+  gens = await commissionsParCommercial();
+} catch (err) {
+  erreur = erreur || `Base injoignable : ${err.message}`;
+}
+
+// Les techniciens sans contrat ni plan n'ont rien à faire sur cet écran : ils y
+// tiendraient la moitié des lignes sans jamais rien y dire.
+const concernes = gens.filter((g) => g.contrats > 0 || g.plan || g.role === 'commercial');
+const orphelins = concernes.filter((g) => g.sans_plan);
+const totalProjete = concernes.reduce((n, g) => n + (g.total_cents || 0), 0);
+const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
+---
+
+<Console
+  titre="Commissions"
+  fil="TFB Admin · Commercial · Commissions"
+  actif="commissions"
+  message={message}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <div class="cartouches">
+    <div class="cartouche">
+      <span class="cartouche__k">Contrats signés</span>
+      <strong class="cartouche__v">{contratsSignes}</strong>
+      <span class="cartouche__d">seuls les signés commissionnent</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Commission projetée</span>
+      <strong class="cartouche__v">{formater(totalProjete)}</strong>
+      <span class="cartouche__d">sur toute la durée des contrats</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Plans</span>
+      <strong class="cartouche__v">{plans.length}</strong>
+      <span class="cartouche__d">accords nommés et réutilisables</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Sans plan</span>
+      <strong class="cartouche__v">{orphelins.length}</strong>
+      <span class="cartouche__d">commerciaux dont rien ne se calcule</span>
+    </div>
+  </div>
+
+  <p class="avertit">
+    <Icone nom="info" taille={17} />
+    <span>
+      <strong>Projeté, pas encaissé.</strong> Cette application ne connaît pas les paiements :
+      un contrat signé dit ce que le client s'est engagé à payer, pas ce qu'il a payé. Ces
+      montants servent à piloter, pas à verser. Le jour où les encaissements entrent ici,
+      la règle « seul l'encaissé commissionne » s'ajoutera d'elle-même.
+    </span>
+  </p>
+
+  {orphelins.length > 0 && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>{orphelins.map((g) => g.nom).join(', ')} — des contrats signés, aucun plan.</strong>
+        Rien ne se calcule pour {orphelins.length > 1 ? 'eux' : 'lui'} : ni zéro, ni erreur.
+        Rattachez un plan ci-dessous, ou assumez qu'il n'y en a pas.
+      </span>
+    </p>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Les plans</h2>
+        <p>
+          <span class="jeton">landing_plans_commission</span> — un accord nommé, réutilisable.
+          L'échelle s'écrit <code>mois:pourcentage</code> : <code>0:90, 12:20</code> se lit
+          « 90 % la première année, puis 20 % ». Modifier un palier change les calculs
+          <strong>à venir</strong>.
+        </p>
+      </div>
+    </div>
+
+    {plans.length > 0 && (
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Plan</th>
+              <th>Échelle</th>
+              <th style="inline-size:18rem">Paliers</th>
+              <th style="inline-size:12rem"><span class="invisible">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {plans.map((p) => (
+              <tr>
+                <td>
+                  <strong>{p.nom}</strong>
+                  <code class="slug">{p.cle}</code>
+                </td>
+                <td><span class="champ__aide">{resumerPlan(p.paliers)}</span></td>
+                <td>
+                  <form method="post" id={`pl-${p.cle}`}>
+                    <input type="hidden" name="action" value="plan-paliers" />
+                    <input type="hidden" name="cle" value={p.cle} />
+                  </form>
+                  <input
+                    form={`pl-${p.cle}`}
+                    type="text"
+                    name="paliers"
+                    value={p.paliers.map((x) => `${x.depuis_mois}:${x.taux_bp / 100}`).join(', ')}
+                    spellcheck="false"
+                    aria-label={`Paliers du plan ${p.cle}`}
+                  />
+                </td>
+                <td>
+                  <div class="actions">
+                    <button class="bouton bouton--marque bouton--sm" type="submit" form={`pl-${p.cle}`}>
+                      Enregistrer
+                    </button>
+                    <form method="post" onsubmit="return confirm('Supprimer ce plan ?')">
+                      <input type="hidden" name="action" value="plan-suppression" />
+                      <input type="hidden" name="cle" value={p.cle} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Supprimer</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    <form method="post">
+      <input type="hidden" name="action" value="plan-ajout" />
+      <div class="duo">
+        <div class="champ">
+          <label for="pl-nom">Nom du plan<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <input id="pl-nom" type="text" name="nom" required placeholder="90 puis 20" />
+        </div>
+        <div class="champ">
+          <label for="pl-pal">Échelle<span class="champ__requis" aria-hidden="true"> *</span></label>
+          <input id="pl-pal" type="text" name="paliers" required placeholder="0:90, 12:20" spellcheck="false" />
+          <span class="champ__aide">mois:pourcentage, séparés par des virgules.</span>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="bouton bouton--marque" type="submit">
+          <Icone nom="plus" taille={16} /> Créer le plan
+        </button>
+      </div>
+    </form>
+  </section>
+
+  {concernes.map((g) => (
+    <section class="bloc" style="margin-block-end:16px">
+      <div class="bloc__tete">
+        <div>
+          <h2>
+            {g.nom}
+            {!g.actif && <span class="champ__aide"> — compte inactif</span>}
+          </h2>
+          <p>
+            {g.signes} contrat(s) signé(s) sur {g.contrats}
+            {g.plan ? ` · plan ${g.plan.nom} — ${resumerPlan(g.plan.paliers)}` : ' · aucun plan'}
+          </p>
+        </div>
+        <div class="bloc__actions">
+          <form method="post" class="rattache">
+            <input type="hidden" name="action" value="rattacher" />
+            <input type="hidden" name="id" value={g.id} />
+            <select name="plan" aria-label={`Plan de ${g.nom}`}>
+              <option value="" selected={!g.plan}>Aucun plan</option>
+              {plans.map((p) => (
+                <option value={p.cle} selected={g.plan?.cle === p.cle}>{p.nom}</option>
+              ))}
+            </select>
+            <button class="bouton bouton--sobre bouton--sm" type="submit">Rattacher</button>
+          </form>
+          <strong class="total">{g.total_cents === null ? '—' : formater(g.total_cents)}</strong>
+        </div>
+      </div>
+
+      {g.lignes.length === 0 ? (
+        <p class="champ__aide" style="padding:0 20px 16px">Aucun contrat à son nom.</p>
+      ) : (
+        <div class="roule">
+          <table>
+            <thead>
+              <tr>
+                <th>Contrat</th>
+                <th style="inline-size:11rem">Récurrent</th>
+                <th style="inline-size:9rem">Durée</th>
+                <th style="inline-size:11rem">Taux</th>
+                <th style="inline-size:11rem">Projeté</th>
+              </tr>
+            </thead>
+            <tbody>
+              {g.lignes.map(({ contrat, montants, resultat }) => {
+                const taux = [...new Set(resultat.lignes.map((l) => l.taux_bp).filter((t) => t !== null))];
+                return (
+                  <tr>
+                    <td>
+                      <strong>{contrat.raison_sociale || '—'}</strong>
+                      <code class="slug">{contrat.reference}</code>
+                      {resultat.raison !== 'ok' && (
+                        <span class="raison">{RAISONS[resultat.raison]}</span>
+                      )}
+                    </td>
+                    <td class="num">{montants ? formater(montants.mensuel_cents) : '—'}</td>
+                    <td class="num">{contrat.duree_mois ? `${contrat.duree_mois} mois` : '—'}</td>
+                    <td>
+                      {taux.length === 0
+                        ? <span class="champ__aide">—</span>
+                        : taux.map((t) => <span class="taux">{afficherTaux(t)}</span>)}
+                    </td>
+                    <td class="num">
+                      {resultat.total_cents === null
+                        ? <span class="champ__aide">—</span>
+                        : <strong>{formater(resultat.total_cents)}</strong>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  ))}
+</Console>
+
+<style is:global>
+  /* Les cartouches du haut : quatre chiffres, pas un tableau de bord. */
+  .cartouches { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-block-end: 20px; }
+  .cartouche {
+    background: var(--blanc); border: 1px solid var(--slate-200); border-radius: var(--rayon-carte, 14px);
+    padding: 16px 18px; display: flex; flex-direction: column; gap: 2px;
+  }
+  .cartouche__k {
+    font: 600 var(--text-xs) / 1 var(--font-sans); text-transform: uppercase;
+    letter-spacing: 0.06em; color: var(--slate-500);
+  }
+  .cartouche__v { font: 600 var(--text-3xl) / 1.1 var(--font-titre, var(--font-sans)); margin-block-start: 6px; }
+  .cartouche__d { font: var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500); }
+
+  .avertit {
+    display: flex; gap: 10px; align-items: flex-start; padding: 13px 16px;
+    border-radius: 12px; margin-block-end: 20px;
+    font: var(--text-sm) / 1.5 var(--font-sans);
+    background: var(--slate-50); color: var(--slate-700); border: 1px solid var(--slate-200);
+  }
+  .avertit svg { flex: none; margin-block-start: 2px; color: var(--slate-500); }
+  .avertit--attention {
+    background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c);
+    border-color: var(--amber-200, #f0d9a8);
+  }
+  .avertit--attention svg { color: var(--amber-700); }
+
+  /* Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
+     sans sa raison se lit comme un bug ; avec, c'est une information. */
+  .raison {
+    display: block; margin-block-start: 4px;
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--amber-700);
+  }
+  .taux {
+    display: inline-block; margin-inline-end: 4px;
+    font: 600 var(--text-xs) / 1 var(--font-mono);
+    padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
+    background: var(--plum-50); color: var(--plum-700);
+  }
+  .rattache { display: flex; gap: 8px; align-items: center; }
+  .bloc__actions { display: flex; gap: 14px; align-items: center; margin-inline-start: auto; }
+  .total { font: 600 var(--text-lg) / 1 var(--font-mono); }
+  @media (max-width: 900px) {
+    .cartouches { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
