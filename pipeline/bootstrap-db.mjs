@@ -218,6 +218,20 @@ function modele(pg) {
         ['tva_verifiee_le', t.horodatage],
         ['tva_verifiee_ref', t.chaine(60)],
         ['tva_verifiee_nom', t.chaine(255)],
+        // ── De quoi parler de cette marque, et pas seulement l'afficher ──
+        //
+        // La table ne portait qu'un logo et un nom : de quoi remplir un
+        // bandeau, pas de quoi écrire une ligne à son sujet. Ces champs
+        // servent la landing — une marque qu'on cite sans savoir ce qu'elle
+        // fait ni où elle opère est un logo, pas une référence.
+        //
+        // Rien ici n'est obligatoire : une marque se crée avec un nom, et se
+        // raconte quand on a le temps.
+        ['type', t.chaine(80)],
+        ['localisation', t.chaine(160)],
+        ['fondee_en', 'INT'],
+        ['nb_points_vente', 'INT'],
+        ['histoire', t.texte],
       ],
     },
     {
@@ -406,6 +420,14 @@ function modele(pg) {
         // qu'assigner un client changerait rétroactivement qui a été payé sur
         // ses anciens contrats.
         ['commercial_id', 'INT'],
+        // La marque de ce client, dans `landing_clients`.
+        //
+        // Une marque et une société ne sont pas la même chose : « L'Atelier
+        // By » est une enseigne, ce qui signe et ce qui paie est une personne
+        // morale avec un numéro. Un groupe de franchise en a souvent
+        // plusieurs — d'où le lien plutôt qu'un champ texte recopié sur
+        // chaque fiche, qui se serait écrit de trois façons différentes.
+        ['marque_id', 'INT'],
         ['cree_par', 'INT'],
         ['cree_le', t.horodatage],
       ],
@@ -1497,6 +1519,7 @@ const INDEX = [
   { suffixe: 'offres_auteur', table: 'offres', colonnes: 'cree_par' },
   // « Les clients d'Untel » se demande à chaque ouverture de la liste.
   { suffixe: 'prospects_commercial', table: 'prospects', colonnes: 'commercial_id' },
+  { suffixe: 'prospects_marque', table: 'prospects', colonnes: 'marque_id' },
   // Deux paliers au même mois rendraient l'échelle de commission dépendante de
   // l'ordre des lignes en base. Le code le refuse déjà ; la base aussi, parce
   // qu'un import ou une correction en SQL ne passe pas par le code.

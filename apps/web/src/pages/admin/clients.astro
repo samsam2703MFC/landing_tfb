@@ -115,8 +115,8 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
 ---
 
 <Console
-  titre="Réseaux clients"
-  fil="TFB Admin · Réseau · Réseaux clients"
+  titre="Marques"
+  fil="TFB Admin · Clients · Marques"
   actif="clients"
   message={message}
   erreur={erreur}
@@ -127,10 +127,13 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
   <section class="bloc">
     <div class="bloc__tete">
       <div>
-        <h2>Réseaux affichés</h2>
+        <h2>Les marques</h2>
         <p>
-          <span class="jeton">landing_clients</span> — le bandeau de la page d'accueil.
-          Vide, il ne s'affiche pas du tout.
+          <span class="jeton">landing_clients</span> — l'enseigne sous laquelle un client opère.
+          Une marque et une société ne sont pas la même chose : « L'Atelier By » est une marque,
+          ce qui signe et ce qui paie est une personne morale avec un numéro, et un groupe de
+          franchise en a souvent plusieurs. Cochée « Affichée », la marque paraît dans le bandeau
+          de la page d'accueil ; décochée, elle reste un rattachement.
         </p>
       </div>
     </div>
@@ -178,7 +181,7 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
                         type="submit"
                         name="action"
                         value="suppression"
-                        onclick="return confirm('Retirer ce réseau du bandeau ?')"
+                        onclick="return confirm('Supprimer cette marque ? Refusé si des clients la portent.')"
                       >Retirer</button>
                     </div>
                     </div>
@@ -221,6 +224,49 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
                         <button class="bouton bouton--sobre bouton--sm" type="submit" name="action" value="vies">
                           <Icone nom="search" taille={14} /> Vérifier auprès de VIES
                         </button>
+                      </div>
+                    </details>
+
+                    {/* Ce qu'on raconte de la marque, à part de ce qui
+                        l'engage. Un texte d'histoire mal tourné n'a pas les
+                        mêmes conséquences qu'un numéro de TVA faux, et les
+                        mêler ferait refuser un récit pour une virgule. */}
+                    <details class="identite" open={Boolean(c.histoire || c.type || c.localisation)}>
+                      <summary>
+                        Ce qu'on en raconte
+                        <span class="champ__aide">sert la landing</span>
+                        {c.clients > 0 && <span class="etat">{c.clients} client(s) sous cette marque</span>}
+                      </summary>
+                      <div class="duo">
+                        <div class="champ">
+                          <label for={`c${c.id}-type`}>Type</label>
+                          <input id={`c${c.id}-type`} type="text" name="type" value={c.type || ''}
+                            maxlength="80" placeholder="Boulangerie · franchise" />
+                        </div>
+                        <div class="champ">
+                          <label for={`c${c.id}-loc`}>Localisation</label>
+                          <input id={`c${c.id}-loc`} type="text" name="localisation" value={c.localisation || ''}
+                            maxlength="160" placeholder="Belgique et Luxembourg" />
+                        </div>
+                        <div class="champ">
+                          <label for={`c${c.id}-fondee`}>Fondée en</label>
+                          <input id={`c${c.id}-fondee`} type="number" name="fondee_en" min="1800"
+                            value={c.fondee_en || ''} placeholder="2014" />
+                        </div>
+                        <div class="champ">
+                          <label for={`c${c.id}-pdv`}>Points de vente</label>
+                          <input id={`c${c.id}-pdv`} type="number" name="nb_points_vente" min="0"
+                            value={c.nb_points_vente ?? ''} placeholder="42" />
+                        </div>
+                        <div class="champ" style="grid-column:1/-1">
+                          <label for={`c${c.id}-histoire`}>Son histoire</label>
+                          <textarea id={`c${c.id}-histoire`} name="histoire" rows="4"
+                            placeholder="Née d'un fournil de quartier, l'enseigne compte aujourd'hui…">{c.histoire || ''}</textarea>
+                          <span class="champ__aide">
+                            Quelques phrases, à la troisième personne : c'est ce qui s'imprime à
+                            côté du logo quand la landing cite cette référence.
+                          </span>
+                        </div>
                       </div>
                     </details>
                   </form>

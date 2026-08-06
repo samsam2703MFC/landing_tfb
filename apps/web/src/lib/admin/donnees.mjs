@@ -497,11 +497,22 @@ export async function supprimerLead(id) {
 export async function listerClients() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT id, nom, note, actif, ordre, logo_type, tva, pays, adresse, site_web,
-            tva_verifiee_le, tva_verifiee_ref, tva_verifiee_nom
-     FROM ${table('clients')} ORDER BY ordre, nom`,
+    `SELECT c.id, c.nom, c.note, c.actif, c.ordre, c.logo_type, c.tva, c.pays, c.adresse, c.site_web,
+            c.tva_verifiee_le, c.tva_verifiee_ref, c.tva_verifiee_nom,
+            c.type, c.localisation, c.fondee_en, c.nb_points_vente, c.histoire,
+            (SELECT COUNT(*) FROM ${table('prospects')} p WHERE p.marque_id = c.id) AS clients
+     FROM ${table('clients')} c ORDER BY c.ordre, c.nom`,
   );
-  return lignes.map((c) => ({ ...c, actif: Boolean(c.actif) }));
+  return lignes.map((c) => ({
+    ...c,
+    actif: Boolean(c.actif),
+    fondee_en: Number(c.fondee_en) || null,
+    nb_points_vente: Number(c.nb_points_vente) || null,
+    // Combien de clients portent cette marque. Une marque sans client est un
+    // logo sur la landing et rien d'autre — ce n'est pas une faute, mais
+    // c'est bon à savoir avant de la supprimer.
+    clients: Number(c.clients) || 0,
+  }));
 }
 
 /** Le logo d'un réseau, décodé — pour le seul point qui le sert. */
@@ -593,17 +604,51 @@ function identiteClient(valeurs) {
   };
 }
 
+/**
+ * Ce qu'on raconte d'une marque, et qui ne sert qu'à en parler.
+ *
+ * Séparé de `identiteClient()` à dessein : l'un porte ce qui engage — le
+ * numéro de TVA, l'adresse du siège —, l'autre ce qui se publie. Un texte
+ * d'histoire mal saisi n'a pas les mêmes conséquences qu'un numéro faux, et
+ * les mélanger ferait refuser un récit pour une virgule dans un pays.
+ */
+function recitMarque(valeurs) {
+  const annee = Number(valeurs.fondee_en);
+  const cetteAnnee = new Date().getFullYear();
+  // Une année de fondation dans le futur est une faute de frappe, pas une
+  // prophétie. On refuse plutôt que d'afficher « fondée en 2205 ».
+  if (valeurs.fondee_en && (!Number.isInteger(annee) || annee < 1800 || annee > cetteAnnee)) {
+    throw new Error(`« ${valeurs.fondee_en} » n’est pas une année de fondation plausible.`);
+  }
+  const points = Number(valeurs.nb_points_vente);
+  if (valeurs.nb_points_vente && (!Number.isInteger(points) || points < 0)) {
+    throw new Error('Le nombre de points de vente est un entier positif.');
+  }
+  return {
+    type: String(valeurs.type || '').trim().slice(0, 80) || null,
+    localisation: String(valeurs.localisation || '').trim().slice(0, 160) || null,
+    fondee_en: valeurs.fondee_en ? annee : null,
+    nb_points_vente: valeurs.nb_points_vente ? points : null,
+    histoire: String(valeurs.histoire || '').trim() || null,
+  };
+}
+
 /** Enregistre un réseau existant. */
 export async function enregistrerClient(id, valeurs) {
   const db = await connexion();
   const identite = identiteClient(valeurs);
-  const sets = ['nom = ?', 'note = ?', 'actif = ?', 'ordre = ?', 'tva = ?', 'pays = ?', 'adresse = ?', 'site_web = ?'];
+  const recit = recitMarque(valeurs);
+  const sets = [
+    'nom = ?', 'note = ?', 'actif = ?', 'ordre = ?', 'tva = ?', 'pays = ?', 'adresse = ?', 'site_web = ?',
+    'type = ?', 'localisation = ?', 'fondee_en = ?', 'nb_points_vente = ?', 'histoire = ?',
+  ];
   const params = [
     String(valeurs.nom || '').trim().slice(0, 160),
     String(valeurs.note || '').trim().slice(0, 255) || null,
     vrai(valeurs.actif),
     Number(valeurs.ordre) || 100,
     identite.tva, identite.pays, identite.adresse, identite.site_web,
+    recit.type, recit.localisation, recit.fondee_en, recit.nb_points_vente, recit.histoire,
   ];
   const avant = (await db.requete(`SELECT tva FROM ${table('clients')} WHERE id = ? LIMIT 1`, [Number(id)]))[0];
   if (avant && (avant.tva || null) !== identite.tva) {
@@ -644,10 +689,44 @@ export async function appliquerViesClient(id, resultat) {
   viderCache();
 }
 
-/** Retire un réseau du bandeau. */
+/**
+ * Supprime une marque, sauf si des clients la portent.
+ *
+ * La colonne `marque_id` n'a pas de contrainte : la suppression n'échouerait
+ * pas, elle laisserait ces fiches pointer vers une marque disparue — et leur
+ * colonne « Marque » deviendrait vide sans que personne ne l'ait décidé.
+ * Décrocher est un geste, pas un effet de bord.
+ */
 export async function supprimerClient(id) {
   const db = await connexion();
+  const portes = await db.requete(
+    `SELECT raison_sociale FROM ${table('prospects')} WHERE marque_id = ?`, [Number(id)],
+  );
+  if (portes.length > 0) {
+    const qui = portes.map((p) => p.raison_sociale).slice(0, 5).join(', ');
+    throw new Error(
+      `${portes.length} client(s) portent cette marque (${qui}${portes.length > 5 ? '…' : ''}). `
+      + `Détachez-les avant de la supprimer.`,
+    );
+  }
   await db.executer(`DELETE FROM ${table('clients')} WHERE id = ?`, [Number(id)]);
+  viderCache();
+}
+
+/** Rattache un client à une marque, ou l'en détache avec une valeur vide. */
+export async function rattacherAMarque(prospectId, marqueId) {
+  const db = await connexion();
+  const marque = Number(marqueId) || null;
+  if (marque) {
+    const [existe] = await db.requete(
+      `SELECT id FROM ${table('clients')} WHERE id = ? LIMIT 1`, [marque],
+    );
+    if (!existe) throw new Error('Cette marque n’existe pas.');
+  }
+  await db.executer(
+    `UPDATE ${table('prospects')} SET marque_id = ? WHERE id = ?`,
+    [marque, Number(prospectId)],
+  );
   viderCache();
 }
 
@@ -1696,9 +1775,11 @@ export async function listerFichesClients() {
   const db = await connexion();
   const [prospects, offres, contrats, chartes] = await Promise.all([
     db.requete(
-      `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif
+      `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif,
+              m.nom AS marque_nom
          FROM ${table('prospects')} p
          LEFT JOIN ${table('utilisateurs')} c ON c.id = p.commercial_id
+         LEFT JOIN ${table('clients')} m ON m.id = p.marque_id
         ORDER BY p.raison_sociale`,
     ),
     db.requete(
@@ -1732,6 +1813,7 @@ export async function listerFichesClients() {
       // tout seul à la prochaine offre.
       commercial_origine: qui.origine,
       commercial_inactif: qui.inactif,
+      marque: p.marque_nom || null,
       offres: siennes.length,
       contrats_signes: signes.length,
       packs: [...new Set(siennes.flatMap((o) => (lireJson(o.packs, []) || []).map((x) => x.nom || x.cle)))],
@@ -1826,13 +1908,124 @@ export async function assignerCommercial(prospectId, utilisateurId) {
 export async function chargerProspect(id) {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif
+    `SELECT p.*, c.nom AS commercial_nom, c.identifiant AS commercial_identifiant, c.actif AS commercial_actif,
+            m.nom AS marque_nom
        FROM ${table('prospects')} p
        LEFT JOIN ${table('utilisateurs')} c ON c.id = p.commercial_id
+       LEFT JOIN ${table('clients')} m ON m.id = p.marque_id
       WHERE p.id = ? LIMIT 1`,
     [Number(id)],
   );
   return lignes[0] || null;
+}
+
+/**
+ * Ce qui disparaîtrait avec ce client, compté avant de le supprimer.
+ *
+ * Rendu à l'écran plutôt que deviné : une suppression qui emporte huit offres
+ * et une charte publiée doit le dire **avant**, pas s'excuser après.
+ */
+export async function cequiPartAvecLeClient(id) {
+  const db = await connexion();
+  const p = Number(id);
+  const [offres, contrats, signes, pieces, chartes, jetons, connexions, boutiques, parcours, bases] =
+    await Promise.all([
+      compter(db, 'offres', 'prospect_id', p),
+      compter(db, 'contrats', 'prospect_id', p),
+      db.requete(
+        `SELECT reference FROM ${table('contrats')} WHERE prospect_id = ? AND statut = 'signe'`, [p],
+      ),
+      compter(db, 'pieces', 'prospect_id', p),
+      compter(db, 'charte', 'prospect_id', p),
+      compter(db, 'jetons', 'prospect_id', p),
+      compter(db, 'connexions', 'prospect_id', p),
+      compter(db, 'boutiques', 'prospect_id', p),
+      compter(db, 'parcours', 'prospect_id', p),
+      compter(db, 'bases', 'prospect_id', p),
+    ]);
+
+  return {
+    offres, contrats, pieces, chartes, jetons, connexions, boutiques, parcours, bases,
+    // Un contrat signé est un engagement, pas une donnée de travail. Il bloque.
+    signes: signes.map((c) => c.reference),
+    total: offres + contrats + pieces + chartes + jetons + connexions + boutiques + parcours + bases,
+  };
+}
+
+async function compter(db, nom, colonne, valeur) {
+  const [l] = await db.requete(
+    `SELECT COUNT(*) AS total FROM ${table(nom)} WHERE ${colonne} = ?`, [valeur],
+  );
+  return Number(l?.total) || 0;
+}
+
+/**
+ * Supprime un client et tout ce qui ne vit que par lui.
+ *
+ * **Refusé dès qu'un contrat est signé.** C'est un engagement pris, pas une
+ * fiche de travail : il doit rester produisible des années après, et rien dans
+ * cette console ne justifie de le faire disparaître d'un bouton. Le client se
+ * ferme autrement — on cesse d'y toucher.
+ *
+ * Le reste part avec lui, dans l'ordre des dépendances. C'est voulu et non
+ * subi : laisser derrière soi les offres d'un client supprimé les rendrait
+ * orphelines, visibles dans les listes, rattachées à un nom qui n'existe plus.
+ *
+ * La base cliente n'est pas détruite ici, seulement sa déclaration : effacer un
+ * serveur MySQL depuis un écran d'administration commerciale est un pouvoir
+ * que personne ne devrait avoir par accident.
+ */
+export async function supprimerProspect(id) {
+  const db = await connexion();
+  const p = Number(id);
+  const bilan = await cequiPartAvecLeClient(p);
+  if (bilan.signes.length > 0) {
+    throw new Error(
+      `${bilan.signes.length} contrat(s) signé(s) (${bilan.signes.join(', ')}). `
+      + `Un engagement signé ne s'efface pas depuis cette console : il doit rester produisible.`,
+    );
+  }
+
+  const [fiche] = await db.requete(
+    `SELECT raison_sociale FROM ${table('prospects')} WHERE id = ? LIMIT 1`, [p],
+  );
+  if (!fiche) throw new Error('Ce client n’existe pas.');
+
+  // Les enfants d'abord, le parent ensuite. Les tables qui pendent d'une
+  // connexion ou d'un parcours partent par leur parent, pas une par une :
+  // une liste écrite à la main ici oublierait la prochaine table ajoutée.
+  const connexions = await db.requete(
+    `SELECT id FROM ${table('connexions')} WHERE prospect_id = ?`, [p],
+  );
+  for (const c of connexions) {
+    for (const t of ['connexion_secrets', 'connexion_points', 'connexion_correspondances',
+      'boutique_correspondances', 'sync_taches', 'sync_passages', 'sync_rebut',
+      'ventes_brutes', 'ventes']) {
+      await db.executer(`DELETE FROM ${table(t)} WHERE connexion_id = ?`, [c.id]);
+    }
+  }
+  const parcours = await db.requete(
+    `SELECT id FROM ${table('parcours')} WHERE prospect_id = ?`, [p],
+  );
+  for (const pa of parcours) {
+    for (const t of ['parcours_etapes', 'parcours_journal']) {
+      await db.executer(`DELETE FROM ${table(t)} WHERE parcours_id = ?`, [pa.id]);
+    }
+  }
+  const offres = await db.requete(`SELECT id FROM ${table('offres')} WHERE prospect_id = ?`, [p]);
+  for (const o of offres) {
+    for (const t of ['offre_lignes', 'suivi', 'vues_maquettes', 'vues_visas']) {
+      await db.executer(`DELETE FROM ${table(t)} WHERE offre_id = ?`, [o.id]);
+    }
+  }
+
+  for (const t of ['contrats', 'offres', 'pieces', 'charte', 'charte_journal', 'charte_polices',
+    'jetons', 'ventes', 'connexions', 'boutiques', 'parcours', 'bases']) {
+    await db.executer(`DELETE FROM ${table(t)} WHERE prospect_id = ?`, [p]);
+  }
+  await db.executer(`DELETE FROM ${table('prospects')} WHERE id = ?`, [p]);
+  viderCache();
+  return { nom: fiche.raison_sociale, bilan };
 }
 
 /** Les champs du prospect, dans l'ordre du formulaire. */

@@ -70,7 +70,7 @@ export const SECTIONS = [
     // séparée. Le nom seul entretenait la confusion ; l'onglet la lève.
     onglets: [
       { cle: 'fiches-clients', libelle: 'Les clients', href: '/admin/prospects' },
-      { cle: 'clients', libelle: 'Vitrine landing', href: '/admin/clients' },
+      { cle: 'clients', libelle: 'Marques', href: '/admin/clients' },
       // La charte **maison** — les défauts dont tout le monde hérite. Celle
       // d'un client vit sur sa fiche, en onglet ; l'ancienne entrée « Chartes »
       // du rail n'était plus qu'une seconde liste de clients par-dessus la
