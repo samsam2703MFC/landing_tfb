@@ -145,7 +145,10 @@ const feuilleProduite = [
 ].filter(Boolean).join('\n');
 ---
 
-<Console titre={nom} actif="charte" compteurs={chiffres}>
+{/* La charte d'un client appartient au groupe Clients du rail, et porte déjà
+    son bandeau à sept onglets : `fiche-client` le surligne sans en empiler un
+    second. La charte maison, elle, EST un onglet du groupe. */}
+<Console titre={nom} actif={estMaison ? 'charte-maison' : 'fiche-client'} compteurs={chiffres}>
   {/* La charte maison n'appartient à personne : elle n'a pas de fiche client,
       et un onglet « Fiche » y mènerait à un prospect qui n'existe pas. */}
   {!estMaison && <OngletsClient prospect={id} actif="charte" />}

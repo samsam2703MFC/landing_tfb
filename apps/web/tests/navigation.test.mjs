@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { SECTIONS, ongletsSection, railPour, rubriquesConsole, sectionDe } from '../src/lib/admin/navigation.mjs';
+import { cheminAutorise } from '../src/lib/admin/session.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const PAGES = join(ICI, '..', 'src', 'pages');
@@ -33,15 +34,52 @@ function tousLesChemins() {
   return chemins;
 }
 
-/** Un chemin d'URL correspond-il à un fichier de page ? */
+/**
+ * Un chemin d'URL correspond-il à une page ?
+ *
+ * Les segments dynamiques comptent : `/admin/charte/0` est servi par
+ * `charte/[prospect].astro`. Sans ça, le test appellerait « mort » un lien
+ * parfaitement vivant, et la seule façon de le faire taire serait de retirer
+ * du rail une entrée qui marche.
+ */
 function pageExiste(chemin) {
-  const relatif = chemin.replace(/^\//, '');
-  for (const candidat of [`${relatif}.astro`, join(relatif, 'index.astro')]) {
-    try {
-      if (statSync(join(PAGES, candidat)).isFile()) return true;
-    } catch { /* le candidat suivant */ }
+  const segments = chemin.replace(/^\//, '').split('/').filter(Boolean);
+  return descendre(PAGES, segments);
+}
+
+function descendre(dossier, segments) {
+  let entrees;
+  try {
+    entrees = readdirSync(dossier, { withFileTypes: true });
+  } catch {
+    return false;
   }
-  return false;
+  const [tete, ...reste] = segments;
+  const dynamique = (n) => /^\[.+\]$/.test(n);
+
+  if (reste.length === 0) {
+    return entrees.some((e) => {
+      if (e.isFile() && e.name.endsWith('.astro')) {
+        const nu = e.name.replace(/\.astro$/, '');
+        return nu === tete || dynamique(nu);
+      }
+      // Un dossier au nom du segment, avec son index.
+      if (e.isDirectory() && (e.name === tete || dynamique(e.name))) {
+        try {
+          return statSync(join(dossier, e.name, 'index.astro')).isFile();
+        } catch { return false; }
+      }
+      return false;
+    });
+  }
+
+  // Le nom exact d'abord : `prospects/index.astro` doit gagner sur `[id].astro`
+  // quand les deux pourraient répondre.
+  const exact = entrees.find((e) => e.isDirectory() && e.name === tete);
+  if (exact && descendre(join(dossier, tete), reste)) return true;
+  return entrees.some(
+    (e) => e.isDirectory() && dynamique(e.name) && descendre(join(dossier, e.name), reste),
+  );
 }
 
 /** Toutes les valeurs `actif="…"` passées à Console par les pages. */
@@ -116,18 +154,18 @@ describe('ce que chaque rôle voit', () => {
   };
 
   it('un administrateur voit tout', () => {
-    assert.ok(cles('admin').includes('catalogue'));
+    assert.ok(cles('admin').includes('contenu'));
     assert.ok(cles('admin').includes('encaissement'));
   });
 
   it('un commercial ne voit ni les tarifs ni la société qui facture', () => {
-    // La ligne de partage est le prix. « Catalogue et prix » n'a aucun onglet
+    // La ligne de partage est le prix. « Modules et prix » n'a aucun onglet
     // ouvert au commercial : le groupe entier doit disparaître, et non
     // s'afficher pour mener à un 403.
     const siennes = cles('commercial');
-    assert.equal(siennes.includes('catalogue'), false);
+    assert.equal(siennes.includes('contenu'), false);
     assert.equal(siennes.includes('encaissement'), false);
-    assert.ok(siennes.includes('offres'));
+    assert.ok(siennes.includes('vente'));
     assert.ok(siennes.includes('reseau'));
   });
 
@@ -135,9 +173,9 @@ describe('ce que chaque rôle voit', () => {
     const siennes = cles('technique');
     assert.ok(siennes.includes('branchements'));
     assert.ok(siennes.includes('reseau'));
-    assert.equal(siennes.includes('offres'), false);
+    assert.equal(siennes.includes('vente'), false);
     assert.equal(siennes.includes('commissions'), false);
-    assert.equal(siennes.includes('catalogue'), false);
+    assert.equal(siennes.includes('contenu'), false);
   });
 
   it('un rôle inconnu ne voit rien — pas même le tableau de bord', () => {
@@ -173,12 +211,12 @@ describe('l’entrée d’un groupe', () => {
     // Sans ça, le rail se dépeuple dès qu'on ouvre un écran regroupé, et l'on
     // ne sait plus où l'on est.
     const railSurPrestations = railPour('admin', 'prestations', {});
-    const groupe = railSurPrestations.flatMap((r) => r.entrees).find((e) => e.cle === 'catalogue');
+    const groupe = railSurPrestations.flatMap((r) => r.entrees).find((e) => e.cle === 'contenu');
     assert.equal(groupe.courant, true);
   });
 
   it('ne l’est pas quand on est ailleurs', () => {
-    const groupe = railPour('admin', 'modules', {}).flatMap((r) => r.entrees).find((e) => e.cle === 'catalogue');
+    const groupe = railPour('admin', 'offres', {}).flatMap((r) => r.entrees).find((e) => e.cle === 'contenu');
     assert.equal(groupe.courant, false);
   });
 });
@@ -205,7 +243,7 @@ describe('les écrans couverts par un groupe', () => {
 
 describe('les bandeaux d’onglets', () => {
   it('rendent tous les onglets pour un administrateur', () => {
-    assert.equal(ongletsSection('tarifs', 'admin').onglets.length, 3);
+    assert.equal(ongletsSection('tarifs', 'admin').onglets.length, 4);
   });
 
   it('ne rendent rien quand le rôle n’a droit qu’à un seul onglet', () => {
@@ -213,6 +251,26 @@ describe('les bandeaux d’onglets', () => {
     // pour le dire.
     const s = ongletsSection('tarifs', 'commercial');
     assert.equal(s, null);
+  });
+});
+
+describe('les gabarits de contrat restent hors de portée du commercial', () => {
+  it('ne vivent pas sous /admin/contrats', () => {
+    // La liste blanche ouvre `/admin/contrats` EN SOUS-ARBRE au commercial,
+    // pour qu'il consulte les contrats de ses clients. Y ranger les gabarits
+    // lui donnerait le droit de réécrire les clauses — sans qu'aucune règle
+    // ne soit violée, donc sans que rien ne le signale.
+    const gabarits = SECTIONS
+      .flatMap((s) => s.onglets)
+      .find((o) => o.cle === 'gabarits');
+    assert.ok(gabarits);
+    assert.equal(gabarits.href.startsWith('/admin/contrats'), false);
+  });
+
+  it('sont fermés au commercial et au technique', () => {
+    assert.equal(cheminAutorise('/admin/gabarits', 'commercial'), false);
+    assert.equal(cheminAutorise('/admin/gabarits', 'technique'), false);
+    assert.equal(cheminAutorise('/admin/gabarits', 'admin'), true);
   });
 });
 

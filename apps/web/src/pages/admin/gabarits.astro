@@ -13,11 +13,18 @@
  * contrat de six pages ; il se voit le jour où le client reçoit un document
  * qui l'écrit en toutes lettres. Le refuser ici coûte une seconde ; le
  * découvrir là-bas coûte la signature.
+ *
+ * `/admin/gabarits` et non `/admin/contrats/gabarits` : la liste blanche ouvre
+ * `/admin/contrats` **en sous-arbre** au commercial, pour qu'il consulte les
+ * contrats de ses clients. Ranger les gabarits dessous lui aurait donné le
+ * droit de réécrire les clauses — silencieusement, puisque aucune règle
+ * n'aurait été violée. Un écran se protège par son chemin autant que par sa
+ * garde.
  */
-import Console from '../../../components/Console.astro';
-import Icone from '../../../components/Icone.astro';
-import { lien } from '../../../lib/lien.mjs';
-import { compteurs } from '../../../lib/admin/donnees.mjs';
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { lien } from '../../lib/lien.mjs';
+import { compteurs } from '../../lib/admin/donnees.mjs';
 import {
   ajouterGabarit,
   basculerGabarit,
@@ -26,8 +33,8 @@ import {
   jetonsConnus,
   listerGabarits,
   supprimerGabarit,
-} from '../../../lib/admin/gabarits.mjs';
-import { serviceSignature } from '../../../lib/contrats/signature.mjs';
+} from '../../lib/admin/gabarits.mjs';
+import { serviceSignature } from '../../lib/contrats/signature.mjs';
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
 let erreur = null;
@@ -62,7 +69,7 @@ if (Astro.request.method === 'POST') {
       await supprimerGabarit(f.get('cle'));
       dit = 'Gabarit supprimé.';
     }
-    return Astro.redirect(`${BASE}/admin/contrats/gabarits?ok=${encodeURIComponent(dit)}`, 303);
+    return Astro.redirect(`${BASE}/admin/gabarits?ok=${encodeURIComponent(dit)}`, 303);
   } catch (err) {
     erreur = err.message;
   }
