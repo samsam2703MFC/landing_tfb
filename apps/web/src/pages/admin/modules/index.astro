@@ -21,6 +21,7 @@ import {
   enregistrerPack,
   famillesConnues,
   listerModules,
+  packNonSouscriptible,
   packsVendables,
   supprimerPack,
   UNITES_PACK,
@@ -73,6 +74,7 @@ if (Astro.request.method === 'POST') {
       const cle = await ajouterPack({
         nom: f.get('nom'), description: f.get('description'), prix: f.get('prix'),
         unite: f.get('unite'), base: f.get('base'), ordre: f.get('ordre'),
+        stripe_product_id: f.get('stripe_product_id'), stripe_price_id: f.get('stripe_price_id'),
       });
       return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent(`Pack « ${cle} » créé.`)}`, 303);
     }
@@ -80,6 +82,7 @@ if (Astro.request.method === 'POST') {
       await enregistrerPack(f.get('cle'), {
         nom: f.get('nom'), description: f.get('description'), prix: f.get('prix'),
         unite: f.get('unite'), base: f.get('base'), ordre: f.get('ordre'),
+        stripe_product_id: f.get('stripe_product_id'), stripe_price_id: f.get('stripe_price_id'),
       });
       return Astro.redirect(`${BASE}/admin/modules?ok=${encodeURIComponent('Pack enregistré.')}`, 303);
     }
@@ -172,6 +175,7 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
           <thead>
             <tr>
               <th>Pack</th>
+              <th style="inline-size:13rem">Stripe</th>
               <th style="inline-size:9rem">Prix</th>
               <th style="inline-size:13rem">Facturé</th>
               <th style="inline-size:5rem">Ordre</th>
@@ -198,6 +202,36 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
                   <span class="champ__aide">
                     {p.modules.map((m) => m.nom).join(' · ') || 'Aucun module rattaché.'}
                   </span>
+                  {packNonSouscriptible(p) && (
+                    <span class="pack__bloque">
+                      <Icone nom="triangle-alert" taille={13} />
+                      {packNonSouscriptible(p)}
+                    </span>
+                  )}
+                </td>
+                <td>
+                  {/* Stripe dit ce qui est payé ; la colonne `pack` des modules
+                      dit ce que ça ouvre. Les deux identifiants se copient
+                      depuis le même écran de Stripe et se confondent : le
+                      préfixe est vérifié à l'enregistrement. */}
+                  <input
+                    form={`pack-${p.cle}`}
+                    type="text"
+                    name="stripe_product_id"
+                    value={p.stripe_product_id || ''}
+                    placeholder="prod_…"
+                    spellcheck="false"
+                    aria-label={`Produit Stripe du pack ${p.cle}`}
+                  />
+                  <input
+                    form={`pack-${p.cle}`}
+                    type="text"
+                    name="stripe_price_id"
+                    value={p.stripe_price_id || ''}
+                    placeholder="price_…"
+                    spellcheck="false"
+                    aria-label={`Prix Stripe du pack ${p.cle}`}
+                  />
                 </td>
                 <td>
                   <span class="tarif__saisie">
@@ -287,6 +321,20 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
               <span class="champ__aide">Coché d'avance sur toute offre neuve.</span>
             </span>
           </label>
+        </div>
+        {/* Facultatifs à la création : on crée souvent le pack avant d'avoir
+            ouvert Stripe. Le pack apparaît alors comme non souscriptible dans
+            le tableau ci-dessus, ce qui vaut mieux qu'un champ obligatoire
+            qu'on remplit avec n'importe quoi pour passer. */}
+        <div class="champ">
+          <label for="pk-prod">Produit Stripe</label>
+          <input id="pk-prod" type="text" name="stripe_product_id" placeholder="prod_…" spellcheck="false" />
+          <span class="champ__aide">Sans lui, le pack ne peut pas être souscrit.</span>
+        </div>
+        <div class="champ">
+          <label for="pk-price">Prix Stripe</label>
+          <input id="pk-price" type="text" name="stripe_price_id" placeholder="price_…" spellcheck="false" />
+          <span class="champ__aide">Le prix qui sera réellement facturé.</span>
         </div>
         <div class="champ" style="grid-column:1/-1">
           <label for="pk-desc">Description</label>
@@ -488,6 +536,22 @@ const total = modules.reduce((n, m) => n + m.nb_fonctions, 0);
 </Console>
 
 <style is:global>
+  /* Pourquoi ce pack ne peut pas être souscrit, sur la ligne du pack.
+     Pas un bandeau en tête d'écran : la phrase doit être à côté de ce qu'elle
+     désigne, sinon il faut compter les lignes pour savoir de quel pack on
+     parle. */
+  .pack__bloque {
+    display: flex; align-items: flex-start; gap: 6px; margin-block-start: 6px;
+    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--amber-700);
+  }
+  .pack__bloque svg { flex: none; margin-block-start: 1px; }
+  /* Les deux identifiants Stripe, l'un sous l'autre. En monospace parce qu'on
+     les compare à l'œil avec le tableau de bord de Stripe, et qu'un l et un 1
+     doivent se distinguer. */
+  input[name='stripe_product_id'], input[name='stripe_price_id'] {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+  }
+  input[name='stripe_price_id'] { margin-block-start: 4px; }
   /* Une ligne de module est un formulaire : la grille tient les colonnes
      alignées entre l'en-tête et les lignes, sans table imbriquée. */
   .ligne-module {
