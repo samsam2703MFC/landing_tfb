@@ -75,6 +75,8 @@ describe('les droits du commercial', () => {
       // Ouvrir cet écran à l'un d'eux, c'est lui montrer la rémunération de
       // ses collègues — et le taux que chacun a négocié.
       '/admin/commissions',
+      // Stripe montre le mode de la clé et tout le catalogue facturé.
+      '/admin/stripe',
     ]) {
       assert.equal(cheminAutorise(chemin, 'commercial'), false, chemin);
     }

@@ -88,7 +88,66 @@ export const STRIPE_JOURNAL = {
       message: 'Aucune clé Stripe sur ce serveur : le lien d’ouverture de compte ne peut pas être fabriqué.',
     };
   },
+  async produits() {
+    return {
+      ok: false,
+      code: 'STRIPE_ABSENT',
+      message: 'Aucune clé Stripe sur ce serveur : les produits ne peuvent pas être relus.',
+    };
+  },
 };
+
+/**
+ * Le mode de la clé posée sur ce serveur, lu sur son préfixe.
+ *
+ * `sk_test_` et `sk_live_` sont la seule façon honnête de répondre : demander à
+ * Stripe reviendrait à croire la réponse d'une clé dont on cherche justement à
+ * savoir laquelle elle est. Un écran qui affiche des produits sans dire dans
+ * quel monde il les a lus est un écran qui fera vendre un produit d'essai.
+ */
+export function modeStripe(env = process.env) {
+  const cle = String(env.STRIPE_CLE || '').trim();
+  if (!cle) return 'absent';
+  if (cle.startsWith('sk_test_') || cle.startsWith('rk_test_')) return 'essai';
+  if (cle.startsWith('sk_live_') || cle.startsWith('rk_live_')) return 'reel';
+  return 'inconnu';
+}
+
+/**
+ * Rapproche les packs des produits que Stripe a réellement rendus.
+ *
+ * Trois cas, et le deuxième est celui qui fait mal : un pack qui revendique un
+ * `prod_…` que Stripe ne connaît pas s'affiche comme parfaitement vendable, et
+ * ne le découvre qu'au premier paiement. Le produit a pu être archivé, ou
+ * l'identifiant a été copié depuis l'autre mode.
+ *
+ * Le pack n'est jamais désactivé sur la foi d'une seule lecture — une liste
+ * filtrée ou tronquée suffirait à débrancher un catalogue entier. Il est
+ * signalé, et c'est un humain qui tranche.
+ */
+export function rapprocherPacks(packs, produits) {
+  const parId = new Map((produits || []).map((p) => [p.id, p]));
+  const revendiques = new Set();
+  const rapproches = [];
+  const orphelins = [];
+  const sansProduit = [];
+
+  for (const pack of packs || []) {
+    if (!pack.stripe_product_id) {
+      sansProduit.push(pack);
+      continue;
+    }
+    revendiques.add(pack.stripe_product_id);
+    const produit = parId.get(pack.stripe_product_id);
+    if (produit) rapproches.push({ pack, produit });
+    else orphelins.push(pack);
+  }
+
+  // Ce que Stripe vend et qu'aucun pack n'ouvre : pas une faute, mais la
+  // question mérite d'être posée une fois.
+  const nonRattaches = (produits || []).filter((p) => !revendiques.has(p.id));
+  return { rapproches, orphelins, sansProduit, nonRattaches };
+}
 
 /**
  * Le service en vigueur.
@@ -183,6 +242,35 @@ export function serviceStripe(env = process.env) {
       const r = await appeler('/account_links', { method: 'POST', body: corps });
       if (!r.ok) return r;
       return { ok: true, url: r.corps?.url || null };
+    },
+
+    /**
+     * Les produits actifs du catalogue Stripe, avec leur prix par défaut.
+     *
+     * Lecture seule, et c'est tout ce qu'il faut : la console rapproche, elle
+     * ne crée rien chez Stripe. Un produit se crée là-bas, par quelqu'un qui
+     * sait ce qu'il facture.
+     *
+     * Cent au maximum. Au-delà, la page dirait « et d'autres » plutôt que de
+     * paginer en silence — un rapprochement fait sur une liste tronquée
+     * déclarerait orphelins des packs qui ne le sont pas.
+     */
+    async produits() {
+      const r = await appeler('/products?active=true&limit=100&expand[]=data.default_price');
+      if (!r.ok) return r;
+      const data = Array.isArray(r.corps?.data) ? r.corps.data : [];
+      return {
+        ok: true,
+        tronque: Boolean(r.corps?.has_more),
+        produits: data.map((p) => ({
+          id: p.id,
+          nom: p.name || p.id,
+          prix_id: typeof p.default_price === 'object' ? p.default_price?.id || null : p.default_price || null,
+          montant_cents: typeof p.default_price === 'object' ? p.default_price?.unit_amount ?? null : null,
+          devise: typeof p.default_price === 'object' ? (p.default_price?.currency || '').toUpperCase() || null : null,
+          recurrence: typeof p.default_price === 'object' ? p.default_price?.recurring?.interval || 'unique' : null,
+        })),
+      };
     },
   };
 }
