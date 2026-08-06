@@ -28,6 +28,11 @@
  * ouvert de la rubrique, et l'enterrer sous un onglet coûterait plus que la
  * ligne qu'il économise.
  *
+ * Une entrée peut aussi « couvrir » des écrans qui ne sont pas ses onglets : la
+ * fiche d'un client appartient au groupe Clients, mais elle porte déjà son
+ * propre bandeau de six onglets et en empiler un second donnerait deux rangées
+ * qui ne parlent pas de la même chose.
+ *
  * ── Les droits ────────────────────────────────────────────────────────────
  *
  * Une rubrique, une entrée et un onglet ne s'affichent que si le rôle peut les
@@ -46,6 +51,36 @@ import { cheminAutorise } from './session.mjs';
  * celle que sa page passe déjà en `actif`. Aucune page n'a eu à changer de clé.
  */
 export const SECTIONS = [
+  {
+    cle: 'reseau',
+    libelle: 'Clients',
+    icone: 'building-2',
+    // Deux listes de clients, et c'était une de trop : tout client est un
+    // réseau ou en fait partie. « Réseaux clients » ne désigne d'ailleurs pas
+    // d'autres clients — c'est la bande de logos affichée sur la landing, donc
+    // une **vitrine**, une propriété de ces clients-là et pas une population
+    // séparée. Le nom seul entretenait la confusion ; l'onglet la lève.
+    onglets: [
+      { cle: 'fiches-clients', libelle: 'Les clients', href: '/admin/prospects' },
+      { cle: 'clients', libelle: 'Vitrine landing', href: '/admin/clients' },
+    ],
+    // Les six écrans d'un client ont déjà leur bandeau. En empiler un second
+    // au-dessus donnerait deux rangées d'onglets qui ne parlent pas de la même
+    // chose. `couvre` surligne le rail sans rien afficher.
+    couvre: ['fiche-client'],
+  },
+  {
+    cle: 'contenu',
+    libelle: 'Modules',
+    icone: 'layers',
+    // Un composant est une entrée de menu d'un module : la liste à plat sert à
+    // repérer les trous — sans levier, sans gain, sans capture — sur les cent
+    // six d'un coup. C'est la même matière vue de deux hauteurs.
+    onglets: [
+      { cle: 'modules', libelle: 'Modules', href: '/admin/modules' },
+      { cle: 'composants', libelle: 'Composants', href: '/admin/composants' },
+    ],
+  },
   {
     cle: 'catalogue',
     libelle: 'Catalogue et prix',
@@ -138,7 +173,7 @@ export function sectionDe(cleEcran) {
 export function rubriquesConsole(compteurs = {}) {
   const section = (cle, extra = {}) => {
     const s = PAR_CLE.get(cle);
-    return { groupe: cle, libelle: s.libelle, icone: s.icone, onglets: s.onglets, ...extra };
+    return { groupe: cle, libelle: s.libelle, icone: s.icone, onglets: s.onglets, couvre: s.couvre || [], ...extra };
   };
 
   return [
@@ -156,7 +191,7 @@ export function rubriquesConsole(compteurs = {}) {
       // chercher est une entrée qui n'existe pas.
       titre: 'Clients',
       entrees: [
-        { cle: 'fiches-clients', href: '/admin/prospects', libelle: 'Clients', icone: 'building-2', compte: compteurs.prospects },
+        section('reseau', { compte: compteurs.prospects }),
         { cle: 'leads', href: '/admin/leads', libelle: 'Demandes', icone: 'mail', compte: compteurs.leads },
         { cle: 'onboarding', href: '/admin/onboarding', libelle: 'Mises en route', icone: 'play', compte: compteurs.parcours },
         { cle: 'charte', href: '/admin/charte', libelle: 'Chartes', icone: 'sparkles' },
@@ -188,17 +223,15 @@ export function rubriquesConsole(compteurs = {}) {
     {
       titre: 'Landing',
       entrees: [
-        {
-          cle: 'modules', href: '/admin/modules', libelle: 'Modules', icone: 'layers', compte: compteurs.modules,
+        section('contenu', {
+          compte: compteurs.modules,
           alerte: compteurs.aValider > 0 ? compteurs.aValider : null,
-        },
-        { cle: 'composants', href: '/admin/composants', libelle: 'Composants', icone: 'panels-top-left', compte: compteurs.fonctions },
+        }),
         section('vitrine'),
         // Pas de compteur : un groupe de trois écrans n'a pas un nombre, il en
         // a trois, et en montrer un seul ferait lire le compte des langues
         // comme celui des textes.
         section('mots'),
-        { cle: 'clients', href: '/admin/clients', libelle: 'Réseaux clients', icone: 'building', compte: compteurs.clients },
       ],
     },
     {
@@ -240,7 +273,10 @@ export function railPour(role, actif, compteurs = {}) {
             ...e,
             cle: e.groupe,
             href: permis[0].href,
-            courant: permis.some((o) => o.cle === actif),
+            // `couvre` : des écrans qui appartiennent au groupe sans être un de
+            // ses onglets — la fiche d'un client, qui porte déjà son propre
+            // bandeau. Ils surlignent le rail et n'affichent rien de plus.
+            courant: permis.some((o) => o.cle === actif) || (e.couvre || []).includes(actif),
           };
         })
         .filter(Boolean),

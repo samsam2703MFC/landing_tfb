@@ -103,8 +103,8 @@ describe('les écrans regroupés', () => {
   });
 
   it('ne rendent rien pour un écran qui vit seul', () => {
-    assert.equal(sectionDe('modules'), null);
-    assert.equal(ongletsSection('modules', 'admin'), null);
+    assert.equal(sectionDe('bases'), null);
+    assert.equal(ongletsSection('bases', 'admin'), null);
   });
 });
 
@@ -128,13 +128,13 @@ describe('ce que chaque rôle voit', () => {
     assert.equal(siennes.includes('catalogue'), false);
     assert.equal(siennes.includes('encaissement'), false);
     assert.ok(siennes.includes('offres'));
-    assert.ok(siennes.includes('fiches-clients'));
+    assert.ok(siennes.includes('reseau'));
   });
 
   it('un technique voit les connexions et rien de commercial', () => {
     const siennes = cles('technique');
     assert.ok(siennes.includes('branchements'));
-    assert.ok(siennes.includes('fiches-clients'));
+    assert.ok(siennes.includes('reseau'));
     assert.equal(siennes.includes('offres'), false);
     assert.equal(siennes.includes('commissions'), false);
     assert.equal(siennes.includes('catalogue'), false);
@@ -183,6 +183,26 @@ describe('l’entrée d’un groupe', () => {
   });
 });
 
+describe('les écrans couverts par un groupe', () => {
+  const entree = (cle, actif) =>
+    railPour('admin', actif, {}).flatMap((r) => r.entrees).find((e) => e.cle === cle);
+
+  it('surlignent leur groupe dans le rail', () => {
+    // La fiche d'un client appartient au groupe Clients sans en être un onglet.
+    assert.equal(entree('reseau', 'fiche-client').courant, true);
+  });
+
+  it('n’affichent pas de second bandeau', () => {
+    // Elle porte déjà le sien, à six onglets. Deux rangées d'onglets qui ne
+    // parlent pas de la même chose, c'est un écran que personne ne relit.
+    assert.equal(ongletsSection('fiche-client', 'admin'), null);
+  });
+
+  it('ne surlignent rien quand on est ailleurs', () => {
+    assert.equal(entree('reseau', 'offres').courant, false);
+  });
+});
+
 describe('les bandeaux d’onglets', () => {
   it('rendent tous les onglets pour un administrateur', () => {
     assert.equal(ongletsSection('tarifs', 'admin').onglets.length, 3);
@@ -207,6 +227,7 @@ describe('les écrans et le rail se répondent', () => {
       for (const e of r.entrees) {
         if (e.onglets) for (const o of e.onglets) declarees.add(o.cle);
         else declarees.add(e.cle);
+        for (const c of e.couvre || []) declarees.add(c);
       }
     }
     const ongletsDUnClient = new Set(['fiche', 'charte', 'modules', 'applications', 'journal', 'facturation']);
