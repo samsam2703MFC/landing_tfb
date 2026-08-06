@@ -17,14 +17,18 @@ import {
   CHAMPS_PROSPECT,
   ajouterPiece,
   assignerCommercial,
+  cequiPartAvecLeClient,
   chargerProspect,
   commercialDuClient,
   commerciauxAssignables,
   compteurs,
   enregistrerDossier,
   enregistrerProspect,
+  listerClients,
   listerOffres,
   listerPieces,
+  rattacherAMarque,
+  supprimerProspect,
   noterViesProspect,
   supprimerPiece,
 } from '../../../lib/admin/donnees.mjs';
@@ -56,6 +60,16 @@ if (Astro.request.method === 'POST') {
         deposePar: (Astro.locals.session || {}).id || null,
       });
       dit = 'Pièce déposée.';
+    } else if (action === 'marque') {
+      await rattacherAMarque(id, f.get('marque_id'));
+      dit = f.get('marque_id') ? 'Client rattaché à sa marque.' : 'Client détaché de sa marque.';
+    } else if (action === 'suppression') {
+      // Pas de redirection vers la fiche : elle n'existe plus.
+      const { nom } = await supprimerProspect(id);
+      return Astro.redirect(
+        `${BASE}/admin/prospects?ok=${encodeURIComponent(`${nom} et tout son dossier ont été supprimés.`)}`,
+        303,
+      );
     } else if (action === 'commercial') {
       const qui = f.get('commercial_id');
       await assignerCommercial(id, qui);
@@ -94,6 +108,8 @@ let prospect = null;
 let offres = [];
 let pieces = [];
 let commerciaux = [];
+let marques = [];
+let bilan = null;
 let chiffres = {};
 try {
   prospect = await chargerProspect(id);
@@ -101,6 +117,8 @@ try {
     offres = (await listerOffres()).filter((o) => o.prospect_id === prospect.id);
     pieces = await listerPieces(prospect.id);
     commerciaux = await commerciauxAssignables();
+    marques = await listerClients();
+    bilan = await cequiPartAvecLeClient(prospect.id);
   }
   chiffres = await compteurs();
 } catch (err) {
@@ -184,6 +202,31 @@ const message = Astro.url.searchParams.get('ok');
               ))}
             </select>
             <button class="bouton bouton--sm" type="submit">Assigner</button>
+          </div>
+        </form>
+
+        {/* Sa marque. Une enseigne et une société ne sont pas la même chose :
+            « L'Atelier By » est une marque, ce qui signe est une personne
+            morale avec un numéro — et un groupe de franchise en a souvent
+            plusieurs. */}
+        <form method="post" class="portefeuille" style="border-block-start:1px solid var(--slate-100)">
+          <input type="hidden" name="action" value="marque" />
+          <div class="portefeuille__dit">
+            <label class="legende" for="marque_id">Sa marque</label>
+            <p class="champ__aide">
+              L'enseigne sous laquelle ce client opère. Elle porte le logo, l'histoire et la
+              localisation dont se sert la landing — plusieurs sociétés d'un même groupe peuvent
+              partager la même.
+            </p>
+          </div>
+          <div class="portefeuille__geste">
+            <select id="marque_id" name="marque_id">
+              <option value="">— aucune —</option>
+              {marques.map((m) => (
+                <option value={m.id} selected={Number(prospect.marque_id) === Number(m.id)}>{m.nom}</option>
+              ))}
+            </select>
+            <button class="bouton bouton--sm" type="submit">Rattacher</button>
           </div>
         </form>
       </section>
@@ -456,6 +499,55 @@ const message = Astro.url.searchParams.get('ok');
           </div>
         )}
       </section>
+
+      {/* Supprimer, en dernier et en disant ce que ça emporte.
+          Une suppression qui n'annonce pas ses conséquences se regrette une
+          fois sur deux — et ce qui part ici ne se récupère pas. */}
+      <section class="bloc danger" style="margin-block-start:20px">
+        <div class="bloc__tete">
+          <div>
+            <h2>Supprimer ce client</h2>
+            <p>
+              {bilan?.signes.length > 0 ? (
+                <>
+                  <strong>Impossible : {bilan.signes.length} contrat(s) signé(s)</strong> —
+                  {' '}{bilan.signes.join(', ')}. Un engagement signé doit rester produisible des
+                  années après ; il ne s'efface pas depuis cette console. Un client qu'on ne suit
+                  plus se ferme en cessant d'y toucher.
+                </>
+              ) : bilan?.total > 0 ? (
+                <>
+                  Partiront avec lui, définitivement :{' '}
+                  {[
+                    bilan.offres && `${bilan.offres} offre(s)`,
+                    bilan.contrats && `${bilan.contrats} contrat(s) non signé(s)`,
+                    bilan.pieces && `${bilan.pieces} pièce(s) du dossier`,
+                    bilan.chartes && 'sa charte graphique',
+                    bilan.jetons && `${bilan.jetons} jeton(s) d'accès`,
+                    bilan.connexions && `${bilan.connexions} connexion(s) et leurs ventes`,
+                    bilan.boutiques && `${bilan.boutiques} boutique(s)`,
+                    bilan.parcours && 'son parcours de mise en route',
+                    bilan.bases && 'la déclaration de sa base',
+                  ].filter(Boolean).join(', ')}.
+                  {bilan.bases > 0 && (
+                    <> La base MySQL elle-même n'est pas touchée — seule sa déclaration part.</>
+                  )}
+                </>
+              ) : (
+                <>Rien n'est attaché à ce client : sa fiche part seule.</>
+              )}
+            </p>
+          </div>
+          {bilan?.signes.length === 0 && (
+            <form method="post" onsubmit="return confirm('Supprimer ce client et tout son dossier ? Rien ne sera récupérable.')">
+              <input type="hidden" name="action" value="suppression" />
+              <button class="bouton bouton--danger bouton--sm" type="submit">
+                <Icone nom="trash-2" taille={16} /> Supprimer définitivement
+              </button>
+            </form>
+          )}
+        </div>
+      </section>
     </>
   )}
 </Console>
@@ -487,4 +579,10 @@ const message = Astro.url.searchParams.get('ok');
      qu'il contient, sinon le choix courant s'affiche tronqué. */
   .portefeuille__geste { display: flex; gap: 8px; align-items: center; flex: none; }
   .portefeuille__geste select { inline-size: 15rem; }
+
+  /* Le bloc de suppression se voit sans crier : un filet rouge et rien
+     d'autre. Un encadré alarmant en bas de chaque fiche finit par ne plus se
+     voir du tout, et c'est le jour où il compte qu'on ne le lit pas. */
+  .bloc.danger { border-color: var(--red-200, #f3c6cd); }
+  .bloc.danger .bloc__tete h2 { color: var(--red-700); }
 </style>
