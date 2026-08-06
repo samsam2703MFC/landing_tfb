@@ -69,6 +69,11 @@ const TOUTES = [
       { cle: 'etapes', href: '/admin/etapes', libelle: 'Étapes', icone: 'list-checks', compte: compteurs.etapes },
       { cle: 'contrats', href: '/admin/contrats', libelle: 'Contrats', icone: 'handshake', compte: compteurs.contrats },
       { cle: 'tarifs', href: '/admin/tarifs', libelle: 'Tarifs', icone: 'percent' },
+      // L'alerte plutôt qu'un compte : le nombre de plans n'apprend rien, alors
+      // qu'un commercial qui a signé sans plan ne se calcule pas — et ne se
+      // verrait nulle part ailleurs.
+      { cle: 'commissions', href: '/admin/commissions', libelle: 'Commissions', icone: 'handshake',
+        alerte: compteurs.commissionsSansPlan > 0 ? compteurs.commissionsSansPlan : null },
       { cle: 'prestations', href: '/admin/prestations', libelle: 'Prestations', icone: 'wallet', compte: compteurs.prestations },
       { cle: 'societe', href: '/admin/societe', libelle: 'Société qui facture', icone: 'building' },
     ],
@@ -88,6 +93,10 @@ const TOUTES = [
     titre: 'Système',
     entrees: [
       { cle: 'sync', href: '/admin/sync', libelle: 'Sync GitHub', icone: 'arrow-up-down', compte: compteurs.modules },
+      // Pas de compteur : le nombre de produits Stripe n'apprend rien. Ce qui
+      // compte — un pack qui revendique un produit inexistant — demande
+      // d'interroger Stripe, et on ne le fait pas à chaque page de la console.
+      { cle: 'stripe', href: '/admin/stripe', libelle: 'Stripe', icone: 'credit-card' },
       { cle: 'utilisateurs', href: '/admin/utilisateurs', libelle: 'Comptes', icone: 'users' },
       { cle: 'reglages', href: '/admin/reglages', libelle: 'Réglages', icone: 'settings' },
     ],

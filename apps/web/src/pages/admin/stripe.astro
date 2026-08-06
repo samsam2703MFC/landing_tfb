@@ -1,0 +1,286 @@
+---
+/**
+ * Stripe : la clé, le mode, et le rapprochement avec les packs.
+ *
+ * Cet écran existe pour une panne qui ne se voit nulle part ailleurs. Depuis
+ * qu'un pack porte un `prod_…`, il peut revendiquer un produit que Stripe ne
+ * connaît pas — archivé, ou copié depuis l'autre mode. Rien ne le distingue
+ * alors d'un pack en bon état : il a un produit, il a des modules, il s'affiche
+ * comme vendable. On l'apprend au premier paiement, du côté du client.
+ *
+ * Deux règles tenues ici :
+ *
+ *   · **lecture seule.** La console rapproche, elle ne crée rien chez Stripe.
+ *     Un produit se crée là-bas, par quelqu'un qui sait ce qu'il facture.
+ *   · **rien n'est désactivé sur la foi d'une lecture.** Une liste filtrée,
+ *     tronquée, ou une clé du mauvais mode suffirait à débrancher le catalogue
+ *     entier. L'écran signale ; c'est un humain qui tranche.
+ *
+ * Le mode — essai ou réel — est affiché en permanence et lu sur le préfixe de
+ * la clé. Un écran qui montre des produits sans dire dans quel monde il les a
+ * lus est un écran qui fera vendre un produit d'essai.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { compteurs, packsVendables, packNonSouscriptible } from '../../lib/admin/donnees.mjs';
+import { societeEmettrice } from '../../lib/admin/facturation.mjs';
+import { modeStripe, rapprocherPacks, serviceStripe } from '../../lib/facturation/stripe.mjs';
+import { formater } from '../../lib/offres/calcul.mjs';
+
+const MODES = {
+  absent: { mot: 'aucune clé', dit: 'STRIPE_CLE n’est pas posée sur ce serveur. Rien ne peut être lu ni facturé.' },
+  essai: { mot: 'essai', dit: 'Clé de test : les produits lus ici ne sont pas ceux qui facturent vos clients.' },
+  reel: { mot: 'réel', dit: 'Clé de production : ces produits sont ceux qui facturent vos clients.' },
+  inconnu: { mot: 'illisible', dit: 'La clé ne commence ni par sk_test_ ni par sk_live_. Vérifiez ce qui a été collé.' },
+};
+
+let erreur = null;
+let chiffres = {};
+let packs = [];
+let mode = 'absent';
+let lecture = null;
+let compte = null;
+let societe = null;
+
+try {
+  chiffres = await compteurs();
+  packs = await packsVendables();
+  mode = modeStripe();
+  const stripe = serviceStripe();
+  if (stripe.branche) {
+    lecture = await stripe.produits();
+    societe = await societeEmettrice().catch(() => null);
+    if (societe?.stripe_compte) compte = await stripe.etatCompte(societe.stripe_compte);
+  }
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+// Le rapprochement n'a de sens que si la lecture a réussi. Sinon tous les packs
+// paraîtraient orphelins, et l'écran accuserait Stripe d'avoir perdu un
+// catalogue qu'il n'a simplement pas été interrogé sur.
+const lu = lecture?.ok === true;
+const bilan = lu
+  ? rapprocherPacks(packs, lecture.produits)
+  : { rapproches: [], orphelins: [], sansProduit: packs.filter((p) => !p.stripe_product_id), nonRattaches: [] };
+
+const invendables = packs.filter((p) => packNonSouscriptible(p));
+---
+
+<Console
+  titre="Stripe"
+  fil="TFB Admin · Système · Stripe"
+  actif="stripe"
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  <div class="cartouches">
+    <div class="cartouche">
+      <span class="cartouche__k">Clé</span>
+      <strong class="cartouche__v" style="font-size:var(--text-xl)">{MODES[mode].mot}</strong>
+      <span class="cartouche__d">{MODES[mode].dit}</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Produits lus</span>
+      <strong class="cartouche__v">{lu ? lecture.produits.length : '—'}</strong>
+      <span class="cartouche__d">{lu ? 'catalogue Stripe actif' : 'Stripe n’a pas été interrogé'}</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Packs rapprochés</span>
+      <strong class="cartouche__v">{lu ? bilan.rapproches.length : '—'} <small>/ {packs.length}</small></strong>
+      <span class="cartouche__d">un pack ↔ un produit</span>
+    </div>
+    <div class="cartouche">
+      <span class="cartouche__k">Produits introuvables</span>
+      <strong class="cartouche__v">{lu ? bilan.orphelins.length : '—'}</strong>
+      <span class="cartouche__d">packs qui paraissent vendables</span>
+    </div>
+  </div>
+
+  {mode === 'absent' && (
+    <p class="avertit">
+      <Icone nom="info" taille={17} />
+      <span>
+        <strong>Non configuré, ce n’est pas en panne.</strong> Aucune clé n’est posée sur ce
+        serveur, donc rien n’est lu — et rien ne prétend l’être. Posez <code>STRIPE_CLE</code>
+        dans <code>infra/.env</code> pour que cet écran puisse rapprocher les packs du catalogue.
+      </span>
+    </p>
+  )}
+
+  {mode === 'essai' && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>Clé d’essai.</strong> Les produits ci-dessous vivent dans le monde de test de
+        Stripe. Un pack rapproché ici sera <strong>orphelin en production</strong> : les
+        identifiants ne traversent pas les deux mondes.
+      </span>
+    </p>
+  )}
+
+  {lecture && !lecture.ok && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>Stripe n’a pas répondu.</strong> {lecture.message} Aucun pack n’est déclaré
+        orphelin sur cette base : ce serait accuser Stripe d’avoir perdu un catalogue qu’on
+        n’a pas réussi à lire.
+      </span>
+    </p>
+  )}
+
+  {lu && lecture.tronque && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>Plus de cent produits chez Stripe.</strong> La liste est tronquée, donc le
+        rapprochement l’est aussi : un pack peut apparaître orphelin alors que son produit
+        existe, simplement au-delà de la centième ligne.
+      </span>
+    </p>
+  )}
+
+  {lu && bilan.orphelins.length > 0 && (
+    <p class="avertit avertit--attention">
+      <Icone nom="triangle-alert" taille={17} />
+      <span>
+        <strong>
+          {bilan.orphelins.map((p) => p.nom).join(', ')} —
+          {bilan.orphelins.length > 1 ? ' ces packs revendiquent des produits' : ' ce pack revendique un produit'}
+          {' '}que Stripe ne connaît pas.
+        </strong>
+        Ils s’affichent pourtant comme vendables. Produit archivé, ou identifiant venu de
+        l’autre mode. Rien n’a été désactivé — corrigez l’identifiant, ou retirez-le.
+      </span>
+    </p>
+  )}
+
+  {compte && (
+    <section class="bloc" style="margin-block-end:20px">
+      <div class="bloc__tete">
+        <div>
+          <h2>Le compte qui encaisse</h2>
+          <p>{compte.ok ? compte.dit : compte.message}</p>
+        </div>
+        {compte.ok && (
+          <div class="bloc__actions">
+            <span class="champ__aide">{compte.pays || '—'} · {compte.devise || '—'}</span>
+          </div>
+        )}
+      </div>
+    </section>
+  )}
+
+  <section class="bloc" style="margin-block-end:20px">
+    <div class="bloc__tete">
+      <div>
+        <h2>Packs et produits</h2>
+        <p>
+          Stripe dit ce qui est payé ; la colonne <span class="jeton">pack</span> des modules dit
+          ce que ça ouvre. Les identifiants s’éditent sur <a href="modules">Modules</a>.
+        </p>
+      </div>
+    </div>
+
+    <div class="roule">
+      <table>
+        <thead>
+          <tr>
+            <th>Pack</th>
+            <th style="inline-size:16rem">Produit Stripe</th>
+            <th style="inline-size:11rem">Prix Stripe</th>
+            <th style="inline-size:9rem">Prix du pack</th>
+            <th style="inline-size:12rem">État</th>
+          </tr>
+        </thead>
+        <tbody>
+          {packs.map((p) => {
+            const paire = bilan.rapproches.find((r) => r.pack.cle === p.cle);
+            const orphelin = bilan.orphelins.some((o) => o.cle === p.cle);
+            const bloque = packNonSouscriptible(p);
+            return (
+              <tr>
+                <td>
+                  <strong>{p.nom}</strong>
+                  <code class="slug">{p.cle}</code>
+                </td>
+                <td>
+                  {p.stripe_product_id
+                    ? <code class="slug">{p.stripe_product_id}</code>
+                    : <span class="champ__aide">—</span>}
+                  {paire && <span class="champ__aide">{paire.produit.nom}</span>}
+                </td>
+                <td class="num">
+                  {paire?.produit.montant_cents != null
+                    ? `${formater(paire.produit.montant_cents, 'fr', paire.produit.devise || 'EUR')} / ${paire.produit.recurrence}`
+                    : <span class="champ__aide">—</span>}
+                </td>
+                <td class="num">{formater(p.prix_cents)}</td>
+                <td>
+                  {orphelin && <span class="etat etat--rouge">introuvable chez Stripe</span>}
+                  {!orphelin && bloque && <span class="etat etat--orange">{bloque}</span>}
+                  {!orphelin && !bloque && lu && <span class="etat etat--vert">rapproché</span>}
+                  {!orphelin && !bloque && !lu && <span class="champ__aide">non vérifié</span>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+
+    {packs.length === 0 && (
+      <p class="champ__aide" style="padding:0 20px 16px">Aucun pack actif.</p>
+    )}
+  </section>
+
+  {lu && bilan.nonRattaches.length > 0 && (
+    <section class="bloc">
+      <div class="bloc__tete">
+        <div>
+          <h2>Produits Stripe sans pack</h2>
+          <p>
+            Stripe les vend, aucun pack ne les ouvre. Ce n’est pas une faute — un produit
+            peut servir ailleurs — mais la question mérite d’être posée une fois.
+          </p>
+        </div>
+      </div>
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th>Produit</th><th style="inline-size:18rem">Identifiant</th><th style="inline-size:11rem">Prix</th></tr>
+          </thead>
+          <tbody>
+            {bilan.nonRattaches.map((p) => (
+              <tr>
+                <td><strong>{p.nom}</strong></td>
+                <td><code class="slug">{p.id}</code></td>
+                <td class="num">
+                  {p.montant_cents != null
+                    ? `${formater(p.montant_cents, 'fr', p.devise || 'EUR')} / ${p.recurrence}`
+                    : <span class="champ__aide">—</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  )}
+
+  <p class="champ__aide" style="margin-block-start:14px">
+    Lecture seule : cet écran ne crée, ne modifie et ne supprime rien chez Stripe.
+    {invendables.length > 0 && ` ${invendables.length} pack(s) ne peuvent pas être souscrits, toutes causes confondues.`}
+  </p>
+</Console>
+
+<style is:global>
+  .etat {
+    display: inline-block; font: 500 var(--text-xs) / 1.4 var(--font-sans);
+    padding: 4px 9px; border-radius: var(--rayon-pilule, 999px);
+  }
+  .etat--vert { background: var(--teal-50, #e7f6ec); color: var(--teal-700, #1d6b38); }
+  .etat--orange { background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c); }
+  .etat--rouge { background: var(--rouge-50, #fdecec); color: var(--rouge-700, #a12727); }
+</style>

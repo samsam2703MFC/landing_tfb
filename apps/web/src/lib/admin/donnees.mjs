@@ -122,6 +122,15 @@ export async function compteurs() {
   const [connecteurs] = await db.requete(
     `SELECT COUNT(*) AS total FROM ${table('connecteurs')} WHERE actif = ?`, [vrai(true)],
   );
+  // Les commerciaux qui ont signé et n'ont pas de plan : rien ne se calcule
+  // pour eux, et rien ne le dirait sans ce compteur. Zéro est le bon état.
+  const [sansPlan] = await db.requete(
+    `SELECT COUNT(DISTINCT o.cree_par) AS total
+       FROM ${table('contrats')} c
+       JOIN ${table('offres')} o ON o.id = c.offre_id
+       JOIN ${table('utilisateurs')} u ON u.id = o.cree_par
+      WHERE c.statut = 'signe' AND (u.plan_commission IS NULL OR u.plan_commission = '')`,
+  );
   const [aValider] = await db.requete(
     `SELECT (SELECT COUNT(*) FROM ${table('modules')} WHERE statut = 'nouveau')
           + (SELECT COUNT(*) FROM ${table('fonctions')} WHERE statut = 'nouveau') AS total`,
@@ -133,6 +142,7 @@ export async function compteurs() {
     fonctions: nombre(fonctions),
     captures: nombre(captures),
     etapes: nombre(etapes),
+    commissionsSansPlan: nombre(sansPlan),
     textes: nombre(textes),
     langues: nombre(langues),
     leads: nombre(leads),
@@ -1639,7 +1649,15 @@ export function offreFigee(offre) {
 }
 
 /** Décode les colonnes JSON d'une offre. */
-function normaliserOffre(ligne) {
+/**
+ * Une ligne d'offre brute, avec ses colonnes JSON relues.
+ *
+ * Exportée depuis que l'écran des commissions chiffre des offres qu'il n'a pas
+ * chargées par `chargerOffre` : un second analyseur ailleurs finirait par lire
+ * ces colonnes autrement, et deux montants différents pour la même offre est
+ * exactement ce qu'on ne peut pas se permettre ici.
+ */
+export function normaliserOffre(ligne) {
   return {
     ...ligne,
     tva_exoneree: Boolean(ligne.tva_exoneree),

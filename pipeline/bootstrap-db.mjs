@@ -317,6 +317,14 @@ function modele(pg) {
         ['code', t.chaine(255)],
         ['role', `${t.chaine(20)} DEFAULT 'commercial'`],
         ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        // §17 — le plan de commission de ce compte, ou vide.
+        //
+        // Sur le compte et non sur chaque contrat : c'est la personne qu'on
+        // rémunère, et un plan recopié contrat par contrat serait faux dès la
+        // première renégociation. Vide est un état normal — un technicien n'en
+        // a pas — mais un commercial qui a des contrats et pas de plan est
+        // signalé sur l'écran des commissions plutôt que compté pour zéro.
+        ['plan_commission', t.chaine(60)],
         ['cree_le', t.horodatage],
         ['vu_le', t.horodatage],
       ],
@@ -1138,6 +1146,37 @@ function modele(pg) {
       ],
     },
     {
+      // §17 — un accord de commission, nommé et réutilisable.
+      //
+      // « 30 % » et « 90 % la première année puis 20 % » sont tous deux des
+      // plans ; ils ne diffèrent que par le nombre de paliers. Écrire un
+      // pourcentage sur chaque commercial ferait de la moindre renégociation
+      // une recherche-remplacement, et rendrait impossible de dire, un an
+      // après, sur quel accord quelqu'un était.
+      nom: table('plans_commission'),
+      colonnes: [
+        ['id', t.id],
+        ['cle', `${t.chaine(60)} NOT NULL UNIQUE`],
+        ['nom', `${t.chaine(160)} NOT NULL`],
+        ['actif', `${t.booleen} DEFAULT ${t.vrai}`],
+        ['ordre', 'INT DEFAULT 100'],
+      ],
+    },
+    {
+      // Un palier : à partir de tant de mois d'ancienneté du contrat, tel taux.
+      //
+      // `taux_bp` est en points de base — 9000 vaut 90,00 %. Jamais un
+      // flottant : de l'argent calculé sur un flottant est de l'argent qui se
+      // contredit à la quatrième décimale.
+      nom: table('paliers_commission'),
+      colonnes: [
+        ['id', t.id],
+        ['plan_cle', `${t.chaine(60)} NOT NULL`],
+        ['depuis_mois', 'INT NOT NULL DEFAULT 0'],
+        ['taux_bp', 'INT NOT NULL DEFAULT 0'],
+      ],
+    },
+    {
       // Les modules d'onboarding vendables — Design, et les suivants.
       // Nom distinct de `modules`, qui désigne les modules ERP du catalogue
       // public : ce sont deux choses sans rapport.
@@ -1401,6 +1440,10 @@ const INDEX = [
   { suffixe: 'offres_prospect', table: 'offres', colonnes: 'prospect_id' },
   { suffixe: 'offres_statut', table: 'offres', colonnes: 'statut' },
   { suffixe: 'offres_auteur', table: 'offres', colonnes: 'cree_par' },
+  // Deux paliers au même mois rendraient l'échelle de commission dépendante de
+  // l'ordre des lignes en base. Le code le refuse déjà ; la base aussi, parce
+  // qu'un import ou une correction en SQL ne passe pas par le code.
+  { suffixe: 'paliers_depart', table: 'paliers_commission', colonnes: 'plan_cle, depuis_mois', unique: true },
   // Une référence porte plusieurs versions : c'est le couple qui est unique.
   { suffixe: 'offres_reference', table: 'offres', colonnes: 'reference, version', unique: true },
   { suffixe: 'lignes_offre', table: 'offre_lignes', colonnes: 'offre_id, ordre' },
