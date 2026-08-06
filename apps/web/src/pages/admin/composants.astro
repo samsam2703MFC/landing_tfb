@@ -149,7 +149,7 @@ const pied = [
         {quete && <a class="crible__quete__vider" href={vers({ q: '' })} title="Effacer la recherche">Effacer</a>}
       </form>
 
-      <div class="crible__rang" role="group" aria-label="Filtrer par module">
+      <div class="tris" role="group" aria-label="Filtrer par module">
         <a class={`tri ${filtre ? '' : 'tri--on'}`} href={vers({ module: '' })}>
           Tous <b>{trouves.length}</b>
         </a>
@@ -168,8 +168,8 @@ const pied = [
         })}
       </div>
 
-      <div class="crible__rang" role="group" aria-label="Filtrer par manque">
-        <span class="crible__oeil">Repérer&nbsp;:</span>
+      <div class="tris" role="group" aria-label="Filtrer par manque">
+        <span class="tris__oeil">Repérer&nbsp;:</span>
         {TROUS.map((t) => (
           <a
             class={`tri tri--trou ${manque === t.cle ? 'tri--on' : ''} ${t.nombre === 0 ? 'tri--vide' : ''}`}
@@ -276,45 +276,10 @@ const pied = [
   }
   .crible__quete__vider { font: var(--type-body-sm); color: var(--slate-600); white-space: nowrap; }
 
-  .crible__rang { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-  .crible__oeil {
-    font: 600 var(--text-xs) / 1 var(--font-sans);
-    letter-spacing: var(--tracking-wide); text-transform: uppercase; color: var(--slate-400);
-    margin-inline-end: 2px;
-  }
 
-  .tri {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 5px 10px;
-    border-radius: var(--radius-pill);
-    border: 1px solid var(--slate-200);
-    background: #fff;
-    font: 500 var(--text-xs) / 1.2 var(--font-sans);
-    color: var(--slate-600);
-    text-decoration: none;
-    transition: var(--transition-control);
-  }
-  .tri:hover { border-color: var(--slate-300); color: var(--navy-900); background: var(--slate-50); text-decoration: none; }
-  .tri b {
-    font-family: var(--font-mono); font-variant-numeric: tabular-nums;
-    font-weight: 500; font-size: 11px; color: var(--slate-400);
-  }
-  .tri--on { background: var(--brand); border-color: var(--brand); color: #fff; }
-  .tri--on:hover { background: var(--brand-hover); border-color: var(--brand-hover); color: #fff; }
-  .tri--on b { color: rgba(255, 255, 255, 0.72); }
-  /* Un module que la recherche ne touche pas reste cliquable, mais s'efface. */
-  .tri--vide { opacity: 0.45; }
-  .tri--vide.tri--on { opacity: 1; }
-
-  /* Le point signale les composants encore à valider dans ce module. */
-  .tri__point {
-    inline-size: 6px; block-size: 6px; border-radius: 50%;
-    background: var(--status-warning); flex: none;
-  }
-
-  .tri--trou { border-style: dashed; }
-  .tri--trou.tri--on { border-style: solid; background: var(--text-warning); border-color: var(--text-warning); }
-  .tri--net { border-color: transparent; color: var(--brand-hover); text-decoration: underline; }
+  /* Les puces de tri viennent de Console.astro — voir `.tri` là-bas. Elles
+     servent ici et sur la liste des offres, et une troisième page les
+     reprendra : les tenir en double, c'est signer la prochaine divergence. */
 
   .vide { text-align: center; color: var(--slate-600); padding-block: 32px; }
   .vide a { margin-inline-start: 8px; }

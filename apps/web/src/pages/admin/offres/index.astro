@@ -46,18 +46,43 @@ if (Astro.request.method === 'POST') {
   }
 }
 
+/**
+ * La vue par défaut est « actives », et non « toutes ».
+ *
+ * Ouvrir cet écran, c'est demander où en est le portefeuille — pas relire
+ * l'historique. Une offre refusée il y a huit mois n'a rien à y faire : elle
+ * allonge la liste, décale ce qu'on cherche sous la ligne de flottaison, et
+ * gonfle le compte affiché en haut. À trois cents offres, la liste complète
+ * répond à une question que personne ne pose.
+ *
+ * Est **active** une offre qu'on peut encore gagner ou perdre : un brouillon
+ * ou une offre envoyée. Gagnée, refusée, expirée — c'est fini, dans les trois
+ * cas, et les trois restent à un clic.
+ *
+ * `vue=toutes` reste dans l'URL, donc partageable et mettable en favori.
+ */
+const VUES = {
+  actives: { mot: 'Actives', garde: (o) => o.statut === 'brouillon' || o.statut === 'envoyee' },
+  gagnees: { mot: 'Gagnées', garde: (o) => o.statut === 'acceptee' },
+  closes: { mot: 'Sans suite', garde: (o) => o.statut === 'refusee' || o.statut === 'expiree' },
+  toutes: { mot: 'Toutes', garde: () => true },
+};
+const VUE_DEFAUT = 'actives';
+const vueDemandee = Astro.url.searchParams.get('vue') || VUE_DEFAUT;
+const vue = VUES[vueDemandee] ? vueDemandee : VUE_DEFAUT;
+
 const filtres = {
   prospect: Astro.url.searchParams.get('client') || '',
   etape: Astro.url.searchParams.get('etape') || '',
   auteur: Astro.url.searchParams.get('auteur') || '',
 };
 
-let offres = [];
+let toutes = [];
 let etapes = [];
 let commerciaux = [];
 let chiffres = {};
 try {
-  offres = await listerOffres(filtres);
+  toutes = await listerOffres(filtres);
   etapes = await listerEtapes({ activesSeulement: true });
   commerciaux = await listerUtilisateurs();
   chiffres = await compteurs();
@@ -65,8 +90,15 @@ try {
   erreur = erreur || `Base injoignable : ${err.message}`;
 }
 
+// Les comptes des puces se lisent APRÈS les autres filtres : « 4 actives »
+// doit dire quatre parmi ce qui est à l'écran, pas quatre dans toute la base.
+const parVue = Object.fromEntries(
+  Object.entries(VUES).map(([cle, v]) => [cle, toutes.filter(v.garde).length]),
+);
+const offres = toutes.filter(VUES[vue].garde);
+
 const message = Astro.url.searchParams.get('ok');
-const actifs = Object.values(filtres).filter(Boolean).length;
+const actifs = Object.values(filtres).filter(Boolean).length + (vue === VUE_DEFAUT ? 0 : 1);
 
 const ETAT_STATUT = {
   brouillon: 'etat',
@@ -79,10 +111,13 @@ const ETAT_STATUT = {
 /** Le lien de la liste avec un filtre changé. */
 function vers(modif) {
   const p = new URLSearchParams();
-  const suivant = { ...filtres, ...modif };
+  const suivant = { ...filtres, vue, ...modif };
   if (suivant.prospect) p.set('client', suivant.prospect);
   if (suivant.etape) p.set('etape', suivant.etape);
   if (suivant.auteur) p.set('auteur', suivant.auteur);
+  // La vue par défaut ne s'écrit pas dans l'URL : /admin/offres tout court
+  // doit rester l'adresse de l'écran normal.
+  if (suivant.vue && suivant.vue !== VUE_DEFAUT) p.set('vue', suivant.vue);
   const q = p.toString();
   return `${BASE}/admin/offres${q ? `?${q}` : ''}`;
 }
@@ -106,12 +141,32 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
     <div class="bloc__tete">
       <div>
         <h2>Filtrer</h2>
-        <p>{offres.length} offre(s){actifs > 0 && <> — {actifs} filtre(s) actif(s)</>}.</p>
+        <p>
+          {offres.length} offre(s) sur {toutes.length}
+          {actifs > 0 && <> — {actifs} filtre(s) actif(s)</>}.
+        </p>
       </div>
-      {actifs > 0 && <a class="bouton bouton--sobre bouton--sm" href={vers({ prospect: '', etape: '', auteur: '' })}>Tout afficher</a>}
+      {actifs > 0 && (
+        <a class="bouton bouton--sobre bouton--sm" href={vers({ prospect: '', etape: '', auteur: '', vue: VUE_DEFAUT })}>
+          Revenir aux actives
+        </a>
+      )}
+    </div>
+
+    {/* La vue d'abord : c'est elle qui décide de ce que les autres filtres
+        vont pouvoir trouver, et l'écran doit dire d'emblée qu'il ne montre
+        pas tout. */}
+    <div class="tris" role="group" aria-label="Vue">
+      {Object.entries(VUES).map(([cle, v]) => (
+        <a
+          class={`tri ${vue === cle ? 'tri--on' : ''} ${parVue[cle] === 0 ? 'tri--vide' : ''}`}
+          href={vers({ vue: cle })}
+        >{v.mot} <b>{parVue[cle]}</b></a>
+      ))}
     </div>
 
     <form method="get" class="filtres">
+      {vue !== VUE_DEFAUT && <input type="hidden" name="vue" value={vue} />}
       <div class="champ">
         <label for="f-client">Client</label>
         <input id="f-client" type="search" name="client" value={filtres.prospect} placeholder="Raison sociale" />
@@ -144,9 +199,18 @@ const jour = (valeur) => (valeur ? new Date(valeur).toLocaleDateString('fr-BE') 
   <section class="bloc">
     {offres.length === 0 ? (
       <div class="bloc__pied">
-        {actifs > 0
-          ? 'Aucune offre ne correspond à ces filtres.'
-          : "Aucune offre. La première se crée depuis le bouton en haut, ou depuis une demande de démonstration reçue par le site."}
+        {toutes.length === 0
+          ? (actifs > 0
+            ? 'Aucune offre ne correspond à ces filtres.'
+            : "Aucune offre. La première se crée depuis le bouton en haut, ou depuis une demande de démonstration reçue par le site.")
+          : (
+            <>
+              {/* La liste n'est pas vide, la vue l'est : le dire évite de
+                  chercher un bug là où il n'y a qu'un filtre. */}
+              Aucune offre active. Les {toutes.length} autres sont gagnées, refusées ou expirées —
+              <a href={vers({ vue: 'toutes' })}> tout afficher</a>.
+            </>
+          )}
       </div>
     ) : (
       <div class="roule">

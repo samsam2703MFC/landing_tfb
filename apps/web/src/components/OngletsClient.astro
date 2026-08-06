@@ -7,11 +7,12 @@
  * clients, et le mauvais quand on en regarde **un** : chaque question obligeait
  * à changer de rubrique et à refiltrer sur son nom.
  *
- * Six onglets, six questions, dans l'ordre où elles se posent :
+ * Sept onglets, sept questions, dans l'ordre où elles se posent :
  *
  *   fiche          qui est-il, qui le suit
  *   charte         de quelles couleurs s'habillent ses applications
  *   modules        qu'a-t-il acheté
+ *   contrats       où en est le papier, et sa signature
  *   applications   qu'est-ce qui tourne, et sur quelles API
  *   journal        que s'est-il passé chez lui
  *   facturation    qu'est-ce qui lui est facturé
@@ -31,6 +32,7 @@ const ONGLETS = [
   { cle: 'fiche', libelle: 'Fiche', href: `/admin/prospects/${prospect}` },
   { cle: 'charte', libelle: 'Charte graphique', href: `/admin/charte/${prospect}` },
   { cle: 'modules', libelle: 'Modules', href: `/admin/prospects/${prospect}/modules` },
+  { cle: 'contrats', libelle: 'Contrats', href: `/admin/prospects/${prospect}/contrats` },
   { cle: 'applications', libelle: 'Applications', href: `/admin/prospects/${prospect}/applications` },
   { cle: 'journal', libelle: 'Journal technique', href: `/admin/prospects/${prospect}/journal` },
   { cle: 'facturation', libelle: 'Facturation', href: `/admin/prospects/${prospect}/facturation` },
