@@ -203,6 +203,32 @@ export async function commissionsParCommercial() {
       return { contrat: c, montants, resultat };
     });
 
+    // Regroupé par client, et non à plat.
+    //
+    // Une liste de références de contrats ne se lit pas : « CTR-2026-014 » ne
+    // dit pas de qui il s'agit, et un commercial qui suit huit clients en a
+    // vingt. Ce qu'on cherche sur cet écran, c'est « combien me rapporte
+    // Belleville », pas « combien rapporte le contrat quatorze ».
+    //
+    // Le client d'abord, ses contrats dessous, son sous-total à sa hauteur.
+    const parClient = new Map();
+    for (const l of lignes) {
+      const cle = l.contrat.raison_sociale || `Client ${l.contrat.prospect_id ?? '?'}`;
+      if (!parClient.has(cle)) parClient.set(cle, { nom: cle, contrats: [], total_cents: null });
+      const groupe = parClient.get(cle);
+      groupe.contrats.push(l);
+      if (l.resultat.raison === 'ok') {
+        groupe.total_cents = (groupe.total_cents || 0) + l.resultat.total_cents;
+      }
+    }
+    // Les clients qui rapportent en premier ; ceux dont rien ne se calcule
+    // ensuite, par ordre alphabétique — ils ne se perdent pas dans la liste,
+    // et ils ne la commandent pas non plus.
+    const clients = [...parClient.values()].sort((a, b) => {
+      if ((b.total_cents || 0) !== (a.total_cents || 0)) return (b.total_cents || 0) - (a.total_cents || 0);
+      return a.nom.localeCompare(b.nom);
+    });
+
     return {
       id: u.id,
       nom: u.nom || u.identifiant,
@@ -210,6 +236,7 @@ export async function commissionsParCommercial() {
       role: u.role,
       actif: Boolean(u.actif),
       plan,
+      clients,
       lignes,
       contrats: siens.length,
       signes: siens.filter((c) => c.statut === 'signe').length,

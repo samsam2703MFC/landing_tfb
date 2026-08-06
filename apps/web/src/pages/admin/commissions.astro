@@ -249,49 +249,48 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
         </div>
       </div>
 
-      {g.lignes.length === 0 ? (
-        <p class="champ__aide" style="padding:0 20px 16px">Aucun contrat à son nom.</p>
+      {g.clients.length === 0 ? (
+        <p class="champ__aide" style="padding:0 20px 16px">Aucun client à son nom.</p>
       ) : (
-        <div class="roule">
-          <table>
-            <thead>
-              <tr>
-                <th>Contrat</th>
-                <th style="inline-size:11rem">Récurrent</th>
-                <th style="inline-size:9rem">Durée</th>
-                <th style="inline-size:11rem">Taux</th>
-                <th style="inline-size:11rem">Projeté</th>
-              </tr>
-            </thead>
-            <tbody>
-              {g.lignes.map(({ contrat, montants, resultat }) => {
+        <div class="clients">
+          {g.clients.map((cl) => (
+            <div class="client">
+              <div class="client__tete">
+                <strong class="client__nom">{cl.nom}</strong>
+                <span class="client__nb">{cl.contrats.length} contrat(s)</span>
+                <span class="client__total">
+                  {cl.total_cents === null ? '—' : formater(cl.total_cents)}
+                </span>
+              </div>
+              {cl.contrats.map(({ contrat, montants, resultat }) => {
                 const taux = [...new Set(resultat.lignes.map((l) => l.taux_bp).filter((t) => t !== null))];
                 return (
-                  <tr>
-                    <td>
-                      <strong>{contrat.raison_sociale || '—'}</strong>
+                  <div class="contrat">
+                    <div class="contrat__quoi">
                       <code class="slug">{contrat.reference}</code>
-                      {resultat.raison !== 'ok' && (
-                        <span class="raison">{RAISONS[resultat.raison]}</span>
-                      )}
-                    </td>
-                    <td class="num">{montants ? formater(montants.mensuel_cents) : '—'}</td>
-                    <td class="num">{contrat.duree_mois ? `${contrat.duree_mois} mois` : '—'}</td>
-                    <td>
-                      {taux.length === 0
-                        ? <span class="champ__aide">—</span>
-                        : taux.map((t) => <span class="taux">{afficherTaux(t)}</span>)}
-                    </td>
-                    <td class="num">
-                      {resultat.total_cents === null
-                        ? <span class="champ__aide">—</span>
-                        : <strong>{formater(resultat.total_cents)}</strong>}
-                    </td>
-                  </tr>
+                      <span class="contrat__etat">
+                        {contrat.statut === 'signe' ? 'signé' : contrat.statut}
+                        {contrat.duree_mois ? ` · ${contrat.duree_mois} mois` : ''}
+                      </span>
+                      {resultat.raison !== 'ok' && <span class="raison">{RAISONS[resultat.raison]}</span>}
+                    </div>
+                    <span class="contrat__base">
+                      {montants && montants.mensuel_cents > 0 ? `${formater(montants.mensuel_cents)} / mois` : ''}
+                      {montants && montants.unique_cents > 0
+                        ? `${montants.mensuel_cents > 0 ? ' + ' : ''}${formater(montants.unique_cents)} une fois`
+                        : ''}
+                    </span>
+                    <span class="contrat__taux">
+                      {taux.map((t) => <span class="taux">{afficherTaux(t)}</span>)}
+                    </span>
+                    <span class="contrat__total">
+                      {resultat.total_cents === null ? '—' : formater(resultat.total_cents)}
+                    </span>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          ))}
         </div>
       )}
     </section>
@@ -336,6 +335,36 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
     font: 600 var(--text-xs) / 1 var(--font-mono);
     padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
     background: var(--brand-subtle); color: var(--brand-press);
+  }
+  /* Deux niveaux : le client, puis ses contrats.
+     À plat, l'écran listait « CTR-2026-014 » sans dire de qui il s'agit — et un
+     commercial qui suit huit clients en a vingt. Ce qu'on cherche ici, c'est
+     « combien me rapporte Belleville », pas « combien rapporte le quatorze ». */
+  .clients { display: flex; flex-direction: column; }
+  .client { border-block-start: 1px solid var(--slate-200); }
+  .client:first-child { border-block-start: 0; }
+  .client__tete {
+    display: flex; align-items: baseline; gap: 12px;
+    padding: 12px 20px 8px; background: var(--slate-50);
+  }
+  .client__nom { font: 600 var(--text-base) / 1.3 var(--font-sans); }
+  .client__nb { font: var(--text-xs) / 1 var(--font-sans); color: var(--slate-500); }
+  .client__total {
+    margin-inline-start: auto;
+    font: 600 var(--text-base) / 1 var(--font-mono);
+  }
+  .contrat {
+    display: grid; grid-template-columns: 1fr auto auto 8rem;
+    gap: 12px; align-items: baseline;
+    padding: 8px 20px 8px 36px;
+    border-block-start: 1px solid var(--slate-100, #f1f3f6);
+  }
+  .contrat__quoi { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .contrat__etat { font: var(--text-xs) / 1.3 var(--font-sans); color: var(--slate-500); }
+  .contrat__base, .contrat__total { font: var(--text-sm) / 1 var(--font-mono); }
+  .contrat__total { text-align: end; }
+  @media (max-width: 900px) {
+    .contrat { grid-template-columns: 1fr auto; }
   }
   .rattache { display: flex; gap: 8px; align-items: center; }
   .bloc__actions { display: flex; gap: 14px; align-items: center; margin-inline-start: auto; }
