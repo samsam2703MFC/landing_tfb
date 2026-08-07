@@ -134,72 +134,76 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
     ) : inventaire.bases.length === 0 ? (
       <p class="rien">Aucune base en dehors des schémas système.</p>
     ) : (
-      <table>
-        <thead>
-          <tr><th>Base</th><th>Tables</th><th>Lignes (estimation)</th><th>Utilisée par</th></tr>
-        </thead>
-        <tbody>
-          {inventaire.bases.map((b) => (
-            <tr>
-              <td class="mono">{b.nom}</td>
-              <td class="chiffre">{b.tables}</td>
-              <td class="chiffre">{b.lignes.toLocaleString('fr-FR')}</td>
-              <td>
-                {b.console
-                  ? <span class="etat etat--console">la console — jamais un client</span>
-                  : b.prisePar
-                    ? <span class="etat etat--ok">{b.prisePar}</span>
-                    : <span class="rien">libre</span>}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th>Base</th><th>Tables</th><th>Lignes (estimation)</th><th>Utilisée par</th></tr>
+          </thead>
+          <tbody>
+            {inventaire.bases.map((b) => (
+              <tr>
+                <td class="mono">{b.nom}</td>
+                <td class="chiffre">{b.tables}</td>
+                <td class="chiffre">{b.lignes.toLocaleString('fr-FR')}</td>
+                <td>
+                  {b.console
+                    ? <span class="etat">la console — jamais un client</span>
+                    : b.prisePar
+                      ? <span class="etat etat--on">{b.prisePar}</span>
+                      : <span class="rien">libre</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )}
   </details>
 
   <div class="bloc">
-    <table>
-      <thead>
-        <tr><th>Client</th><th>Base</th><th>État</th><th>Dernier test</th><th></th></tr>
-      </thead>
-      <tbody>
-        {prospects.map((p) => {
-          const b = parProspect.get(Number(p.id));
-          return (
-            <tr>
-              <td>{p.raison_sociale}</td>
-              <td class="mono">
-                {b ? `${b.hote}:${b.port}/${b.base}` : <span class="rien">aucune base déclarée</span>}
-                {b?.motDePasseMasque && <span class="masque"> · {b.motDePasseMasque}</span>}
-              </td>
-              <td>
-                {!b ? <span class="etat">—</span>
-                  : b.statut === 'active' ? <span class="etat etat--ok">active</span>
-                  : b.statut === 'erreur' ? <span class="etat etat--ko">erreur</span>
-                  : <span class="etat">non testée</span>}
-              </td>
-              <td class="mono petit">
-                {b?.dernierTestLe ? String(b.dernierTestLe).replace('T', ' ').slice(0, 16) : '—'}
-                {b?.dernierTest?.dit && <div class="dit">{b.dernierTest.dit}</div>}
-              </td>
-              <td class="fin">
-                {b && (
-                  <form method="post" class="enligne">
-                    <input type="hidden" name="action" value="tester" />
-                    <input type="hidden" name="prospect_id" value={p.id} />
-                    <button class="bouton bouton--sobre bouton--sm" type="submit">Tester</button>
-                  </form>
-                )}
-                <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/bases?client=${p.id}`)}>
-                  {b ? 'Modifier' : 'Déclarer'}
-                </a>
-              </td>
-            </tr>
-          );
-        })}
-      </tbody>
-    </table>
+    <div class="roule">
+      <table>
+        <thead>
+          <tr><th>Client</th><th>Base</th><th>État</th><th>Dernier test</th><th></th></tr>
+        </thead>
+        <tbody>
+          {prospects.map((p) => {
+            const b = parProspect.get(Number(p.id));
+            return (
+              <tr>
+                <td>{p.raison_sociale}</td>
+                <td class="mono">
+                  {b ? `${b.hote}:${b.port}/${b.base}` : <span class="rien">aucune base déclarée</span>}
+                  {b?.motDePasseMasque && <span class="masque"> · {b.motDePasseMasque}</span>}
+                </td>
+                <td>
+                  {!b ? <span class="etat">—</span>
+                    : b.statut === 'active' ? <span class="etat etat--on">active</span>
+                    : b.statut === 'erreur' ? <span class="etat etat--casse">erreur</span>
+                    : <span class="etat">non testée</span>}
+                </td>
+                <td class="mono petit">
+                  {b?.dernierTestLe ? String(b.dernierTestLe).replace('T', ' ').slice(0, 16) : '—'}
+                  {b?.dernierTest?.dit && <div class="dit">{b.dernierTest.dit}</div>}
+                </td>
+                <td class="fin">
+                  {b && (
+                    <form method="post" class="enligne">
+                      <input type="hidden" name="action" value="tester" />
+                      <input type="hidden" name="prospect_id" value={p.id} />
+                      <button class="bouton bouton--sobre bouton--sm" type="submit">Tester</button>
+                    </form>
+                  )}
+                  <a class="bouton bouton--sobre bouton--sm" href={lien(`/admin/bases?client=${p.id}`)}>
+                    {b ? 'Modifier' : 'Déclarer'}
+                  </a>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   </div>
 
   {ouvert > 0 && (
@@ -312,10 +316,6 @@ const conflits = ouvert > 0 && courant('hote') && courant('base')
   .dit { color: var(--red-700, #931f35); margin-block-start: 3px; max-inline-size: 34ch; }
   .fin { text-align: end; white-space: nowrap; }
   .enligne { display: inline; }
-  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px;
-          background: var(--slate-100); color: var(--slate-600); }
-  .etat--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
-  .etat--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
   .edition { padding: 16px; margin-block-start: var(--space-4); }
   .edition h3 { margin: 0 0 var(--space-3); }
   .grille { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--space-4); }

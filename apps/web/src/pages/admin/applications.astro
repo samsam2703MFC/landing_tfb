@@ -63,32 +63,34 @@ const [chiffres, applications] = await Promise.all([
     <p class="vide">Aucune application déclarée.</p>
   ) : (
     <div class="bloc">
-      <table>
-        <thead>
-          <tr><th>Clé</th><th>Nom</th><th>Rôle</th><th>Endpoints</th><th></th></tr>
-        </thead>
-        <tbody>
-          {applications.map((a) => (
-            <tr>
-              <td class="mono">{a.cle}</td>
-              <td>{a.nom}</td>
-              <td class="role">{a.description || <span class="rien">—</span>}</td>
-              <td class="chiffre">
-                {a.endpoints > 0
-                  ? <a href={lien(`/admin/endpoints?app=${a.id}`)}>{a.endpoints}</a>
-                  : <span class="rien">0</span>}
-              </td>
-              <td class="fin">
-                <form method="post" class="enligne">
-                  <input type="hidden" name="action" value="supprimer" />
-                  <input type="hidden" name="id" value={a.id} />
-                  <button class="reinit" type="submit">Retirer</button>
-                </form>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th>Clé</th><th>Nom</th><th>Rôle</th><th>Endpoints</th><th></th></tr>
+          </thead>
+          <tbody>
+            {applications.map((a) => (
+              <tr>
+                <td class="mono">{a.cle}</td>
+                <td>{a.nom}</td>
+                <td class="role">{a.description || <span class="rien">—</span>}</td>
+                <td class="chiffre">
+                  {a.endpoints > 0
+                    ? <a href={lien(`/admin/endpoints?app=${a.id}`)}>{a.endpoints}</a>
+                    : <span class="rien">0</span>}
+                </td>
+                <td class="fin">
+                  <form method="post" class="enligne">
+                    <input type="hidden" name="action" value="supprimer" />
+                    <input type="hidden" name="id" value={a.id} />
+                    <button class="reinit" type="submit">Retirer</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
   )}
 

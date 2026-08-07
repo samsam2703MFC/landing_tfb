@@ -115,44 +115,46 @@ const exemple = `curl -H "Authorization: Bearer tfb_…" \\\n  "https://votre-se
     <p class="vide">Aucun jeton.</p>
   ) : (
     <div class="bloc">
-      <table>
-        <thead>
-          <tr>
-            <th>Jeton</th><th>Application</th><th>Client</th><th>Appels</th>
-            <th>Dernier appel</th><th>État</th><th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {jetons.map((j) => {
-            const expire = j.expireLe && new Date(j.expireLe).getTime() < Date.now();
-            return (
-              <tr class:list={[!j.actif && 'morte']}>
-                <td>
-                  <span class="mono">{j.masque}</span>
-                  {j.libelle && <div class="libelle">{j.libelle}</div>}
-                </td>
-                <td>{j.application}</td>
-                <td>{j.client}</td>
-                <td class="chiffre">{j.appels.toLocaleString('fr-FR')}</td>
-                <td class="mono petit">{j.vuLe ? String(j.vuLe).replace('T', ' ').slice(0, 16) : '—'}</td>
-                <td>
-                  {!j.actif ? <span class="etat">révoqué</span>
-                    : expire ? <span class="etat etat--ko">expiré</span>
-                    : <span class="etat etat--ok">actif</span>}
-                  {j.expireLe && !expire && <div class="petit">jusqu'au {j.expireLe.slice(0, 10)}</div>}
-                </td>
-                <td class="fin">
-                  <form method="post" class="enligne">
-                    <input type="hidden" name="action" value={j.actif ? 'revoquer' : 'supprimer'} />
-                    <input type="hidden" name="id" value={j.id} />
-                    <button class="reinit" type="submit">{j.actif ? 'Révoquer' : 'Supprimer'}</button>
-                  </form>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table>
+          <thead>
+            <tr>
+              <th>Jeton</th><th>Application</th><th>Client</th><th>Appels</th>
+              <th>Dernier appel</th><th>État</th><th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {jetons.map((j) => {
+              const expire = j.expireLe && new Date(j.expireLe).getTime() < Date.now();
+              return (
+                <tr class:list={[!j.actif && 'morte']}>
+                  <td>
+                    <span class="mono">{j.masque}</span>
+                    {j.libelle && <div class="libelle">{j.libelle}</div>}
+                  </td>
+                  <td>{j.application}</td>
+                  <td>{j.client}</td>
+                  <td class="chiffre">{j.appels.toLocaleString('fr-FR')}</td>
+                  <td class="mono petit">{j.vuLe ? String(j.vuLe).replace('T', ' ').slice(0, 16) : '—'}</td>
+                  <td>
+                    {!j.actif ? <span class="etat">révoqué</span>
+                      : expire ? <span class="etat etat--casse">expiré</span>
+                      : <span class="etat etat--on">actif</span>}
+                    {j.expireLe && !expire && <div class="petit">jusqu'au {j.expireLe.slice(0, 10)}</div>}
+                  </td>
+                  <td class="fin">
+                    <form method="post" class="enligne">
+                      <input type="hidden" name="action" value={j.actif ? 'revoquer' : 'supprimer'} />
+                      <input type="hidden" name="id" value={j.id} />
+                      <button class="reinit" type="submit">{j.actif ? 'Révoquer' : 'Supprimer'}</button>
+                    </form>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   )}
 
@@ -198,10 +200,6 @@ const exemple = `curl -H "Authorization: Bearer tfb_…" \\\n  "https://votre-se
   .chiffre { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
   .fin { text-align: end; }
   .enligne { display: inline; }
-  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px;
-          background: var(--slate-100); color: var(--slate-600); }
-  .etat--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
-  .etat--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
   .reinit { background: none; border: 0; padding: 0; cursor: pointer; font-size: var(--text-xs);
             color: var(--slate-600); text-decoration: underline; text-underline-offset: 2px; }
   .appel { padding: 16px; }
