@@ -356,13 +356,6 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
   .tranche { display: flex; align-items: center; gap: 6px; margin-block-end: 4px; }
   .tranche input { inline-size: 5.5rem; }
   .tranche__mot { font: var(--text-xs) / 1 var(--font-sans); color: var(--slate-500); white-space: nowrap; }
-
-  /* Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
-     sans sa raison se lit comme un bug ; avec, c'est une information. */
-  .raison {
-    display: block; margin-block-start: 4px;
-    font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
-  }
   /* Deux niveaux : le client, puis ses contrats.
      À plat, l'écran listait « CTR-2026-014 » sans dire de qui il s'agit — et un
      commercial qui suit huit clients en a vingt. Ce qu'on cherche ici, c'est
@@ -394,6 +387,5 @@ const contratsSignes = concernes.reduce((n, g) => n + g.signes, 0);
     .contrat { grid-template-columns: 1fr auto; }
   }
   .rattache { display: flex; gap: 8px; align-items: center; }
-  .bloc__actions { display: flex; gap: 14px; align-items: center; margin-inline-start: auto; }
   .total { font: 600 var(--text-lg) / 1 var(--font-mono); }
 </style>

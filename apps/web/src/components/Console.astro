@@ -252,8 +252,8 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
       @media (max-width: 1080px) { .cartouches { grid-template-columns: repeat(2, 1fr); } }
       @media (max-width: 560px) { .cartouches { grid-template-columns: 1fr; } }
       .cartouche {
-        background: var(--blanc); border: 1px solid var(--slate-200);
-        border-radius: var(--rayon-carte, 14px);
+        background: var(--surface-card); border: 1px solid var(--border-default);
+        border-radius: var(--radius-card);
         padding: 16px 18px; display: flex; flex-direction: column; gap: 2px;
       }
       .cartouche__k {
@@ -261,7 +261,7 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
         letter-spacing: 0.06em; color: var(--slate-500);
       }
       .cartouche__v {
-        font: 600 var(--text-3xl) / 1.1 var(--font-titre, var(--font-sans));
+        font: 600 var(--text-3xl) / 1.1 var(--font-display);
         margin-block-start: 6px;
       }
       .cartouche__d { font: var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-500); }
@@ -277,8 +277,8 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
       }
       .avertit svg { flex: none; margin-block-start: 2px; color: var(--slate-500); }
       .avertit--attention {
-        background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c);
-        border-color: var(--amber-200, #f0d9a8);
+        background: var(--amber-100); color: var(--text-warning);
+        border-color: var(--amber-500);
       }
       .avertit--attention svg { color: var(--text-warning); }
 
@@ -288,7 +288,7 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
       .taux {
         display: inline-block; margin-inline-end: 4px;
         font: 600 var(--text-xs) / 1 var(--font-mono);
-        padding: 4px 8px; border-radius: var(--rayon-pilule, 999px);
+        padding: 4px 8px; border-radius: var(--radius-pill);
         background: var(--brand-subtle); color: var(--brand-press);
       }
 
@@ -330,10 +330,24 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
         white-space: nowrap;
       }
       .etat::before { content: ''; inline-size: 6px; block-size: 6px; border-radius: 50%; background: var(--status-neutral); }
+      /* Deux pastilles côte à côte se touchaient : `gap` espace l'intérieur
+         d'une pastille, pas deux pastilles entre elles. */
+      .etat + .etat { margin-inline-start: 6px; }
       .etat--on { background: var(--green-100); color: var(--green-700); }
       .etat--on::before { background: var(--status-success); }
       .etat--manque { background: var(--amber-100); color: var(--text-warning); }
       .etat--manque::before { background: var(--status-warning); }
+      /*
+       * Trois états, et pas un de plus.
+       *
+       * Sans un rouge ici, cinq écrans s'en sont fabriqué un chacun : `--ko`
+       * dans les jetons et les bases, `--rouge` chez Stripe — celui-là sur
+       * `--rouge-50` et `--rouge-700`, deux variables qui n'existent nulle
+       * part, donc sur ses valeurs de repli. Trois noms, trois rouges, et
+       * chacun redéfinissait la pastille au passage : plus de point coloré.
+       */
+      .etat--casse { background: var(--red-100); color: var(--text-danger); }
+      .etat--casse::before { background: var(--status-danger); }
 
       /* ── Boutons ───────────────────────────────────────────────────────── */
       /* Trois choses à tenir ensemble, et chacune se voyait :
@@ -470,10 +484,43 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
       .champ { display: grid; gap: 5px; align-content: start; }
       .champ > label, .legende { font: var(--type-label); color: var(--slate-600); }
       .champ__aide { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-400); }
+      /*
+       * Dans une cellule, une aide est une SECONDE LIGNE, pas une incise.
+       *
+       * Inline par défaut, elle se collait au texte qui la précède :
+       * « Asima Spółka Z Ograniczoną OdpowiedzialnościąWrocław »,
+       * « L'Atelier byFranchiseur », « Sam Verheydend'après ses offres ».
+       * Trois mots soudés en un, dans la liste la plus lue de la console.
+       *
+       * C'est exactement le traitement que `.slug` reçoit six lignes plus
+       * haut, et pour la même raison : ces deux classes servent au même
+       * endroit, sous un nom. Elles auraient dû se ressembler dès le départ.
+       *
+       * En cellule seulement : dans une phrase ou une barre en `flex`, l'aide
+       * reste dans le fil — un bloc y couperait le texte en trois.
+       */
+      td > .champ__aide,
+      td > * > .champ__aide { display: block; }
+      /* Deux aides qui se suivent s'empilent sans se toucher. */
+      td .champ__aide + .champ__aide { margin-block-start: 1px; }
+      /* Une aide sous une pastille ou un lien a besoin de respirer. */
+      td .etat + .champ__aide, td a + .champ__aide, td strong + .champ__aide { margin-block-start: 3px; }
       /* Quand l'aide vit dans l'étiquette, elle doit passer à la ligne :
          « Mention en cas d'exonérationImprimée sur l'offre… » se lisait comme
          un seul mot. */
       label > .champ__aide { display: block; margin-block-start: 2px; }
+      /*
+       * Pourquoi une ligne ne vaut rien, à côté de la ligne. Un montant absent
+       * sans sa raison se lit comme un bug ; avec, c'est une information.
+       *
+       * Trois écrans en avaient chacun leur copie — commissions, gabarits,
+       * facturation — dont une sans le retrait du haut, si bien que la même
+       * phrase se collait à la ligne ici et respirait là.
+       */
+      .raison {
+        display: block; margin-block-start: 4px;
+        font: var(--text-xs) / 1.4 var(--font-sans); color: var(--text-warning);
+      }
       /* L'astérisque des champs obligatoires. Le navigateur les refuse déjà,
          mais il ne le dit qu'au moment de valider : l'œil doit savoir avant. */
       .champ__requis { color: var(--brand-hover); }
@@ -675,9 +722,30 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
          rate. On ne grossit la cible que sur écran tactile : au clavier et à
          la souris, la ligne de texte reste telle qu'elle est dessinée. */
       @media (pointer: coarse) {
-        .roule td a, .bloc__tete a, .bloc__pied a {
+        /* `:not(.bouton)` n'est pas une précaution : sans lui, cette règle-ci
+           gagne sur `.bouton` — un sélecteur de plus — et rabotait à 24 px les
+           boutons posés dans un en-tête ou un pied de bloc, c'est-à-dire la
+           quasi-totalité des actions de la console. */
+        .roule td a:not(.bouton), .bloc__tete a:not(.bouton), .bloc__pied a:not(.bouton) {
           display: inline-flex; align-items: center; min-block-size: 24px;
         }
+        /*
+         * Quarante-quatre pixels : la hauteur d'une pulpe de doigt.
+         *
+         * Les boutons de la console en faisaient trente-six et les champs
+         * trente-neuf partout — sauf sur l'écran des offres, où la règle avait
+         * été posée à la main parce que c'est celui qu'on manipule debout, en
+         * clientèle. Elle valait pour toute la console : le rattrapage d'une
+         * caisse et la relance d'un contrat se font du même téléphone.
+         *
+         * Les liens en cellule gardent leurs vingt-quatre : une table de
+         * quarante lignes à quarante-quatre pixels ne tient plus sur un écran,
+         * et la cible y est la ligne entière, pas le mot souligné.
+         */
+        .bouton { min-block-size: 44px; }
+        .bouton--sm { min-block-size: 36px; }
+        input:not([type='checkbox']):not([type='radio']):not([type='hidden']),
+        textarea, select { min-block-size: 44px; }
       }
       textarea { resize: vertical; line-height: var(--leading-normal); }
       textarea.code { font-family: var(--font-mono); font-size: var(--text-sm); }

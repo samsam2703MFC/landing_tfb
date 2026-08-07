@@ -210,24 +210,26 @@ const urlEtape = (p) => {
       {sourcesVues.length === 0 ? (
         <p class="rien">Aucune source ne correspond.</p>
       ) : (
-      <table>
-        <thead><tr><th>Source</th><th>Type</th><th>Lignes</th><th>Colonnes</th><th></th></tr></thead>
-        <tbody>
-          {sourcesVues.map((s) => (
-            <tr>
-              <td class="mono">{s.nom}</td>
-              <td>{s.genre === 'vue'
-                ? <span class="jeton jeton--vue">vue</span>
-                : <span class="jeton">table</span>}</td>
-              <td class="chiffre">{s.lignes.toLocaleString('fr-FR')}</td>
-              <td class="chiffre">{s.colonnes}</td>
-              <td class="fin">
-                <a class="bouton bouton--sobre bouton--sm" href={urlEtape({ source: s.nom })}>Choisir</a>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table>
+          <thead><tr><th>Source</th><th>Type</th><th>Lignes</th><th>Colonnes</th><th></th></tr></thead>
+          <tbody>
+            {sourcesVues.map((s) => (
+              <tr>
+                <td class="mono">{s.nom}</td>
+                <td>{s.genre === 'vue'
+                  ? <span class="jeton jeton--vue">vue</span>
+                  : <span class="jeton">table</span>}</td>
+                <td class="chiffre">{s.lignes.toLocaleString('fr-FR')}</td>
+                <td class="chiffre">{s.colonnes}</td>
+                <td class="fin">
+                  <a class="bouton bouton--sobre bouton--sm" href={urlEtape({ source: s.nom })}>Choisir</a>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
       )}
     </div>
   )}

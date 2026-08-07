@@ -379,21 +379,23 @@ const liens = [...module.liens, { slug: '', sens: 'envoie', quoi: '' }];
       <a class="bouton bouton--sobre bouton--sm" href={lien('/admin/captures')}>Les gérer</a>
     </div>
     {module.captures.length > 0 && (
-      <table>
-        <thead>
-          <tr><th>Ordre</th><th>Fichier</th><th>Titre</th><th>Fonction</th></tr>
-        </thead>
-        <tbody>
-          {module.captures.map((c) => (
-            <tr>
-              <td class="num">{c.ordre}</td>
-              <td><span class="jeton">{c.fichier}</span></td>
-              <td>{c.titre || '—'}</td>
-              <td>{c.fonction_cle ? <span class="jeton">{c.fonction_cle}</span> : '—'}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table>
+          <thead>
+            <tr><th>Ordre</th><th>Fichier</th><th>Titre</th><th>Fonction</th></tr>
+          </thead>
+          <tbody>
+            {module.captures.map((c) => (
+              <tr>
+                <td class="num">{c.ordre}</td>
+                <td><span class="jeton">{c.fichier}</span></td>
+                <td>{c.titre || '—'}</td>
+                <td>{c.fonction_cle ? <span class="jeton">{c.fonction_cle}</span> : '—'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )}
   </section>
 </Console>

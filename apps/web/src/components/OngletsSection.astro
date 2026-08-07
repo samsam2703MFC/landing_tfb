@@ -56,7 +56,7 @@ const section = ongletsSection(actif, role);
        `border-bottom` sur le lien décalerait le texte d'un pixel au survol, et
        le bandeau entier tremblerait. */
     box-shadow: inset 0 -2px 0 transparent;
-    transition: color var(--duree-courte, 120ms) ease, box-shadow var(--duree-courte, 120ms) ease;
+    transition: color var(--duration-fast) ease, box-shadow var(--duration-fast) ease;
   }
   .onglets-section__lien:hover { color: var(--slate-900); text-decoration: none; }
   .onglets-section__lien[aria-current='page'] {

@@ -434,25 +434,27 @@ const feuilleProduite = [
     </p>
 
     {polices.length > 0 && (
-      <table class="polices">
-        <tbody>
-          {polices.map((p) => (
-            <tr>
-              <td><b>{p.famille}</b></td>
-              <td class="mono">{p.graisse} · {p.style === 'italic' ? 'italique' : 'normal'} · {p.format}</td>
-              <td>{ROLES.find((r) => r.valeur === p.role)?.libelle || p.role}</td>
-              <td class="mono">{Math.round(p.octets / 1024)} ko</td>
-              <td class="fin">
-                <form method="post" class="enligne">
-                  <input type="hidden" name="action" value="police-suppression" />
-                  <input type="hidden" name="police_id" value={p.id} />
-                  <button class="reinit" type="submit">Retirer</button>
-                </form>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div class="roule">
+        <table class="polices">
+          <tbody>
+            {polices.map((p) => (
+              <tr>
+                <td><b>{p.famille}</b></td>
+                <td class="mono">{p.graisse} · {p.style === 'italic' ? 'italique' : 'normal'} · {p.format}</td>
+                <td>{ROLES.find((r) => r.valeur === p.role)?.libelle || p.role}</td>
+                <td class="mono">{Math.round(p.octets / 1024)} ko</td>
+                <td class="fin">
+                  <form method="post" class="enligne">
+                    <input type="hidden" name="action" value="police-suppression" />
+                    <input type="hidden" name="police_id" value={p.id} />
+                    <button class="reinit" type="submit">Retirer</button>
+                  </form>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     )}
 
     <form method="post" enctype="multipart/form-data" class="ajout">

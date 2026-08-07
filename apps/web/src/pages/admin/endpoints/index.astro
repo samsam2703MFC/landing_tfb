@@ -173,9 +173,12 @@ const lienFiltre = (params) => {
   .jeton--app:hover { text-decoration: none; background: color-mix(in srgb, var(--plum-500, #7b4488) 22%, transparent); }
   .jeton--orphelin { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
   .jeton--ko { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
-  .etat { font: 600 var(--text-xs) / 1.5 var(--font-sans); padding: 2px 9px; border-radius: 999px;
-          background: var(--slate-100); color: var(--slate-600); }
-  .etat--actif { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
-  .etat--brouillon { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  /* Le nom vient du statut en base — `etat--{statut}` —, pas du registre de
+     la console : ces deux-là lui restent propres, mais empruntent ses
+     couleurs et sa pastille plutôt que d'en inventer. */
+  .etat--actif { background: var(--green-100); color: var(--green-700); }
+  .etat--actif::before { background: var(--status-success); }
+  .etat--brouillon { background: var(--amber-100); color: var(--text-warning); }
+  .etat--brouillon::before { background: var(--status-warning); }
   .mono { font-family: var(--font-mono); }
 </style>

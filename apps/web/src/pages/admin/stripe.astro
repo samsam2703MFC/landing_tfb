@@ -218,9 +218,9 @@ const invendables = packs.filter((p) => packNonSouscriptible(p));
                 </td>
                 <td class="num">{formater(p.prix_cents)}</td>
                 <td>
-                  {orphelin && <span class="etat etat--rouge">introuvable chez Stripe</span>}
-                  {!orphelin && bloque && <span class="etat etat--orange">{bloque}</span>}
-                  {!orphelin && !bloque && lu && <span class="etat etat--vert">rapproché</span>}
+                  {orphelin && <span class="etat etat--casse">introuvable chez Stripe</span>}
+                  {!orphelin && bloque && <span class="etat etat--manque">{bloque}</span>}
+                  {!orphelin && !bloque && lu && <span class="etat etat--on">rapproché</span>}
                   {!orphelin && !bloque && !lu && <span class="champ__aide">non vérifié</span>}
                 </td>
               </tr>
@@ -275,12 +275,3 @@ const invendables = packs.filter((p) => packNonSouscriptible(p));
   </p>
 </Console>
 
-<style is:global>
-  .etat {
-    display: inline-block; font: 500 var(--text-xs) / 1.4 var(--font-sans);
-    padding: 4px 9px; border-radius: var(--rayon-pilule, 999px);
-  }
-  .etat--vert { background: var(--teal-50, #e7f6ec); color: var(--teal-700, #1d6b38); }
-  .etat--orange { background: var(--amber-50, #fdf3e2); color: var(--amber-800, #7a4f0c); }
-  .etat--rouge { background: var(--rouge-50, #fdecec); color: var(--rouge-700, #a12727); }
-</style>

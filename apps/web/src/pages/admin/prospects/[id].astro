@@ -629,6 +629,6 @@ const message = Astro.url.searchParams.get('ok');
   /* Le bloc de suppression se voit sans crier : un filet rouge et rien
      d'autre. Un encadré alarmant en bas de chaque fiche finit par ne plus se
      voir du tout, et c'est le jour où il compte qu'on ne le lit pas. */
-  .bloc.danger { border-color: var(--red-200, #f3c6cd); }
+  .bloc.danger { border-color: color-mix(in srgb, var(--red-500) 30%, var(--slate-0)); }
   .bloc.danger .bloc__tete h2 { color: var(--red-700); }
 </style>
