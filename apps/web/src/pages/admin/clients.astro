@@ -176,6 +176,13 @@ const jour = (v) => (v ? new Date(v).toLocaleDateString('fr-BE') : null);
                           value="logo_retire"
                         >Retirer le logo</button>
                       )}
+                      {/* La charte de l'enseigne : c'est elle que portent
+                          tous ses clients, et c'est donc ici qu'on la règle,
+                          pas trente fois sur trente fiches. */}
+                      <a class="bouton bouton--sobre bouton--sm"
+                         href={lien(`/admin/charte/${c.id}?portee=marque`)}>
+                        Sa charte{c.clients > 0 ? ` · ${c.clients} client(s)` : ''}
+                      </a>
                       <button
                         class="bouton bouton--danger bouton--sm"
                         type="submit"

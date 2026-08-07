@@ -1313,6 +1313,17 @@ function modele(pg) {
       nom: table('charte'),
       colonnes: [
         ['id', t.id],
+        // À QUOI cette charte appartient — et `prospect_id` porte l'identifiant
+        // de la cible, quelle qu'elle soit.
+        //
+        //   client · un prospect ; 0 est la maison, les défauts de tout le monde
+        //   marque · une enseigne de `landing_clients`
+        //
+        // Une marque habille tous ses clients : un réseau de franchise a une
+        // identité, pas trente. La colonne s'appelle encore `prospect_id`
+        // parce que la renommer casserait les lignes existantes pour un
+        // bénéfice de lecture — `portee` dit dans quel espace lire son nombre.
+        ['portee', `${t.chaine(10)} DEFAULT 'client'`],
         ['prospect_id', 'INT NOT NULL'],
         ['etat', `${t.chaine(12)} NOT NULL`],
         ['donnees', t.objet],
@@ -1330,6 +1341,10 @@ function modele(pg) {
       nom: table('charte_journal'),
       colonnes: [
         ['id', t.id],
+        // Même couple que sur `charte` : la portée dit dans quel espace lire
+        // l'identifiant. Sans elle, l'historique d'une marque et celui du
+        // client qui porte le même numéro se mélangeraient.
+        ['portee', `${t.chaine(10)} DEFAULT 'client'`],
         ['prospect_id', 'INT NOT NULL'],
         ['version', 'INT NOT NULL'],
         ['publie_le', t.chaine(40)],
