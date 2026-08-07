@@ -116,6 +116,23 @@ if (Astro.request.method === 'POST') {
   } else if (action === 'reinitialiser') {
     await modifierBrouillon(cible, { [String(form.get('cle'))]: null }, qui);
     message = 'Surcharge retirée — la valeur est de nouveau héritée.';
+  } else if (action === 'rendre') {
+    // Rendre TOUT à ce qu'il y a dessous, d'un geste.
+    //
+    // Un client déjà charté ne voit rien changer quand on le rattache à une
+    // enseigne : ses vingt-cinq surcharges l'emportent, une par une. Les
+    // retirer à la main demandait vingt-cinq clics, et on en oubliait une —
+    // celle-là restant la seule à ne pas suivre l'enseigne, sans que rien ne
+    // le dise.
+    //
+    // Le brouillon seulement : rien ne change pour le client tant qu'on n'a
+    // pas publié, et le geste se relit avant de valider. C'est la règle de
+    // tout cet écran, et ce n'est pas le moment de la casser — c'est
+    // justement l'action la plus destructrice qu'il porte.
+    await modifierBrouillon(cible, Object.fromEntries(REGISTRE.map((r) => [r.cle, null])), qui);
+    message = estMarque
+      ? 'Toutes les surcharges retirées — cette marque sert la charte maison. Publiez pour l’appliquer.'
+      : 'Toutes les surcharges retirées — ce client sert la charte de son enseigne. Publiez pour l’appliquer.';
   } else {
     const cle = String(form.get('cle') || '');
     const brute = form.get('valeur');
@@ -213,6 +230,24 @@ const feuilleProduite = [
       vient d'elle, ou de la charte maison si elle ne l'a pas fixé —
       <a href={lien(`/admin/charte/${sonEnseigne.id}?portee=marque`)}> ouvrir sa charte</a>.
       Ce qu'on surcharge ici ne vaut que pour ce client.
+    </p>
+  )}
+
+  {/* Le retour à l'héritage, d'un geste.
+      Il ne s'affiche que s'il y a quelque chose à rendre : un bouton qui ne
+      ferait rien apprend à ne pas lire les boutons. */}
+  {!estMaison && surcharges > 0 && (
+    <p class="bandeau bandeau--attente">
+      <strong>{surcharges} valeur(s) surchargée(s)</strong> ici — elles l'emportent sur
+      {estMarque ? ' la charte maison' : (sonEnseigne ? ` la charte de ${sonEnseigne.nom}` : ' la charte maison')},
+      y compris sur ce qu'elle changera demain.
+      <form method="post" class="rendre"
+        onsubmit={`return confirm('Retirer les ${surcharges} surcharges ? Le brouillon repartira de ce qui est hérité — rien ne change pour le client tant que vous n\'avez pas publié.')`}>
+        <input type="hidden" name="action" value="rendre" />
+        <button class="bouton bouton--sobre bouton--sm" type="submit">
+          {estMarque ? 'Rendre à la charte maison' : sonEnseigne ? `Rendre à ${sonEnseigne.nom}` : 'Rendre à la charte maison'}
+        </button>
+      </form>
     </p>
   )}
   {erreur && <p class="bandeau bandeau--erreur">{erreur}</p>}
@@ -471,6 +506,10 @@ const feuilleProduite = [
   .bandeau { display: flex; gap: 10px; align-items: flex-start; padding: 11px 15px;
              border-radius: var(--radius-card, 12px); margin-block-end: var(--space-4); }
   .bandeau--attente { background: var(--amber-100, #fceed6); color: var(--amber-700, #8a5900); }
+  /* Le bouton du bandeau se pose au bout de la phrase, pas en dessous : c'est
+     une conséquence de ce qui vient d'être lu, pas une action à part. */
+  .rendre { display: inline; margin-inline-start: 8px; }
+  .rendre button { vertical-align: baseline; }
   .bandeau--erreur { background: var(--red-100, #fbe0e4); color: var(--red-700, #931f35); }
   .bandeau--ok { background: var(--green-100, #dbf1e6); color: var(--green-700, #0e5c41); }
   .entete { display: flex; align-items: center; gap: var(--space-4); flex-wrap: wrap; margin-block-end: var(--space-4); }
