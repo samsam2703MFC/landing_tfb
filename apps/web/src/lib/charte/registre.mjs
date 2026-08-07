@@ -199,6 +199,10 @@ export function resoudreTout(client = {}, maison = {}) {
 }
 
 /** Le jeu complet, aplati — ce que consomme le générateur de CSS. */
-export function valeursResolues(client = {}, maison = {}) {
-  return { ...defauts(), ...maison, ...client };
+export function valeursResolues(client = {}, maison = {}, marque = {}) {
+  // Du plus général au plus précis : les défauts du registre, la maison,
+  // l'enseigne, puis le client. Une marque habille tous ses clients — un
+  // réseau de franchise a une identité, pas trente — et un franchisé qui
+  // surcharge une couleur ne surcharge que celle-là.
+  return { ...defauts(), ...maison, ...marque, ...client };
 }

@@ -28,8 +28,7 @@
  * maison, puis surcharges du client. Un client sans surcharge sert exactement la
  * charte maison, ce qui est le cas sain et non une réponse vide.
  */
-import { MAISON, charteMaison, chartePubliee } from '../../lib/admin/charte.mjs';
-import { valeursResolues } from '../../lib/charte/registre.mjs';
+import { charteServie } from '../../lib/admin/charte.mjs';
 import { cssCharte, facesCharte, logoCharte } from '../../lib/charte/theme.mjs';
 import { listerPolices } from '../../lib/charte/polices.mjs';
 import { reconnaitreJeton, noterUsage } from '../../lib/donnees/jetons.mjs';
@@ -109,13 +108,16 @@ export async function GET({ request, url }) {
     return json({ erreur: 'Ce jeton n’est rattaché à aucun client.' }, 403);
   }
 
-  const [publie, maison, polices] = await Promise.all([
-    chartePubliee(jeton.prospectId),
-    charteMaison(),
+  // `charteServie` empile les trois niveaux — maison, marque, client — et rend
+  // une version qui bouge dès que l'un d'eux bouge. Une refonte d'enseigne
+  // atteint ainsi les trente franchisés qui la portent : avec la seule version
+  // du client, elle serait restée invisible chez eux.
+  const [servie, polices] = await Promise.all([
+    charteServie(jeton.prospectId),
     listerPolices(jeton.prospectId).catch(() => []),
   ]);
 
-  const valeurs = valeursResolues(publie.donnees, maison.donnees);
+  const valeurs = servie.valeurs;
 
   // L'usage est noté comme sur les données : un jeton qui n'a jamais servi et
   // un jeton qu'on a oublié de révoquer se ressemblent, et seule la date les
@@ -125,8 +127,10 @@ export async function GET({ request, url }) {
 
   return json({
     client: jeton.prospectId,
-    version: publie.version ?? 0,
-    publie_le: publie.majLe ?? null,
+    version: servie.version ?? 0,
+    publie_le: servie.publieLe ?? null,
+    // De quelle enseigne ces couleurs viennent, quand elles en viennent.
+    marque: servie.marque_id,
     variables: valeurs,
     logo: logoCharte(valeurs),
     // Les @font-face d'abord : une police déclarée après son usage se charge

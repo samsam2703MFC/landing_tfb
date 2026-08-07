@@ -14,12 +14,14 @@ import OngletsClient from '../../../components/OngletsClient.astro';
 import Console from '../../../components/Console.astro';
 import Icone from '../../../components/Icone.astro';
 import { lien } from '../../../lib/lien.mjs';
-import { chargerProspect, compteurs } from '../../../lib/admin/donnees.mjs';
+import { chargerMarque, chargerProspect, compteurs } from '../../../lib/admin/donnees.mjs';
 import {
   MAISON,
   charteBrouillon,
   charteMaison,
   chartePubliee,
+  charteHeritee,
+  marque,
   journalCharte,
   modifierBrouillon,
   publierCharte,
@@ -34,7 +36,21 @@ import {
 } from '../../../lib/charte/polices.mjs';
 
 const id = Number(Astro.params.prospect);
-const estMaison = id === MAISON;
+/**
+ * Trois portées sur un seul écran.
+ *
+ * `?portee=marque` édite la charte d'une enseigne — celle que **tous ses
+ * clients** portent. Sans le paramètre, on édite un client ; l'identifiant 0
+ * reste la maison.
+ *
+ * Un seul écran plutôt que trois : il fait six cents lignes, il porte
+ * l'éditeur, l'aperçu, l'import CSS et les polices, et les recopier deux fois
+ * garantirait que deux des trois copies prennent du retard.
+ */
+const estMarque = Astro.url.searchParams.get('portee') === 'marque';
+const cible = estMarque ? marque(id) : id;
+const suffixe = estMarque ? '?portee=marque' : '';
+const estMaison = !estMarque && id === MAISON;
 
 let erreur = null;
 let message = null;
@@ -74,7 +90,7 @@ if (Astro.request.method === 'POST') {
         erreur = 'Aucune variable reconnue dans cette feuille. Les valeurs attendues sont des propriétés personnalisées (--brand, --primary, …).';
         rapport = { ...lu, taille: tailleFeuille(texte) };
       } else {
-        const r = await modifierBrouillon(id, lu.valeurs, qui);
+        const r = await modifierBrouillon(cible, lu.valeurs, qui);
         if (r.ok) {
           message = `${lu.repris.length} valeur(s) reprises dans le brouillon. Rien de la feuille n’est servi — elle a été lue, pas installée.`;
           rapport = { ...lu, taille: tailleFeuille(texte) };
@@ -94,11 +110,11 @@ if (Astro.request.method === 'POST') {
     await supprimerPolice(Number(form.get('police_id')));
     message = 'Police retirée.';
   } else if (action === 'publier') {
-    const r = await publierCharte(id, qui);
+    const r = await publierCharte(cible, qui);
     if (r.ok) message = `Publiée en v${r.version}.`;
     else erreur = Object.values(r.erreurs)[0] || 'Publication refusée.';
   } else if (action === 'reinitialiser') {
-    await modifierBrouillon(id, { [String(form.get('cle'))]: null }, qui);
+    await modifierBrouillon(cible, { [String(form.get('cle'))]: null }, qui);
     message = 'Surcharge retirée — la valeur est de nouveau héritée.';
   } else {
     const cle = String(form.get('cle') || '');
@@ -107,51 +123,98 @@ if (Astro.request.method === 'POST') {
     // vide » : sans ça, effacer une couleur écrirait la chaîne vide en base et
     // le défaut maison ne reprendrait jamais la main.
     const valeur = brute === null || String(brute).trim() === '' ? null : String(brute).trim();
-    const r = await modifierBrouillon(id, { [cle]: valeur }, qui);
+    const r = await modifierBrouillon(cible, { [cle]: valeur }, qui);
     if (r.ok) message = valeur === null ? 'Surcharge retirée — la valeur est de nouveau héritée.' : 'Enregistré dans le brouillon.';
     else erreur = Object.values(r.erreurs)[0] || 'Valeur refusée.';
   }
 }
 
-const [prospect, brouillon, publie, maison, journal, chiffres, polices] = await Promise.all([
-  estMaison ? Promise.resolve(null) : chargerProspect(id),
-  charteBrouillon(id),
-  chartePubliee(id),
-  estMaison ? Promise.resolve({ donnees: {} }) : charteMaison(),
-  journalCharte(id),
+const [prospect, marqueFiche, brouillon, publie, dessous, journal, chiffres, polices] = await Promise.all([
+  estMaison || estMarque ? Promise.resolve(null) : chargerProspect(id),
+  estMarque ? chargerMarque(id) : Promise.resolve(null),
+  charteBrouillon(cible),
+  chartePubliee(cible),
+  // Ce qui est SOUS ce qu'on édite. Pour un client, c'est la maison plus sa
+  // marque : sans ce second niveau, l'écran dirait « hérité de la charte
+  // maison » sur une couleur qui vient en réalité de son enseigne.
+  estMaison ? Promise.resolve({}) : estMarque ? charteMaison().then((m) => m.donnees) : charteHeritee(id),
+  journalCharte(cible),
   compteurs(),
-  listerPolices(id).catch(() => []),
+  estMarque ? Promise.resolve([]) : listerPolices(id).catch(() => []),
 ]);
 
-const resolutions = resoudreTout(brouillon.donnees, maison.donnees);
-const erreursCouple = controlerCharte(valeursResolues(brouillon.donnees, maison.donnees));
+const resolutions = resoudreTout(brouillon.donnees, dessous);
+const erreursCouple = controlerCharte({ ...dessous, ...brouillon.donnees });
 const surcharges = resolutions.filter((r) => r.depuis === 'client').length;
 const enAttente = brouillon.majLe !== null;
-const nom = estMaison ? 'Charte maison' : (prospect?.raison_sociale || `Prospect ${id}`);
+const nom = estMaison
+  ? 'Charte maison'
+  : estMarque
+    ? `Charte — ${marqueFiche?.nom || `Marque ${id}`}`
+    : (prospect?.raison_sociale || `Prospect ${id}`);
+
+// Combien de clients porteront ce qu'on publie ici. Modifier une enseigne
+// n'est pas modifier un client : le dire avant, pas après.
+const portes = estMarque ? (marqueFiche?.clients || 0) : 0;
+
+// La marque de ce client, si elle en a une : c'est d'elle que viennent les
+// valeurs que l'écran dit « héritées », et il doit pouvoir y mener.
+const sonEnseigne = !estMaison && !estMarque && prospect?.marque_id
+  ? { id: Number(prospect.marque_id), nom: prospect.marque_nom }
+  : null;
 
 // Le lien remis au client : signé, donc non devinable, et stable d'une
 // publication à l'autre — il n'aurait aucun intérêt s'il fallait le renvoyer à
 // chaque changement de couleur.
-const lienClient = estMaison ? null : lien(`/charte/${id}?cle=${cleCharte(id)}`);
+const lienClient = estMaison || estMarque ? null : lien(`/charte/${id}?cle=${cleCharte(id)}`);
 
-const COUCHES = { client: 'ce client', maison: 'charte maison', registre: 'registre' };
+const COUCHES = {
+  client: estMarque ? 'cette marque' : 'ce client',
+  // « hérité » recouvre la maison ET la marque : les distinguer clé par clé
+  // demanderait de résoudre deux fois, et l'écran de l'enseigne est à un clic.
+  maison: estMarque ? 'charte maison' : (sonEnseigne ? 'maison ou enseigne' : 'charte maison'),
+  registre: 'registre',
+};
 
 // La charte du brouillon telle qu'elle sortira, pour qui veut la relire ou la
 // reprendre ailleurs. C'est le pendant du collage : on entre du CSS, on en
 // ressort — sans quoi la charte serait un aller sans retour.
 const feuilleProduite = [
   facesCharte(polices),
-  `:root {\n  ${cssCharte(valeursResolues(brouillon.donnees, maison.donnees), polices)}\n}`,
+  `:root {\n  ${cssCharte({ ...valeursResolues({}, dessous), ...brouillon.donnees }, polices)}\n}`,
 ].filter(Boolean).join('\n');
 ---
 
 {/* La charte d'un client appartient au groupe Clients du rail, et porte déjà
     son bandeau à sept onglets : `fiche-client` le surligne sans en empiler un
     second. La charte maison, elle, EST un onglet du groupe. */}
-<Console titre={nom} actif={estMaison ? 'charte-maison' : 'fiche-client'} compteurs={chiffres}>
+<Console
+  titre={nom}
+  actif={estMaison ? 'charte-maison' : estMarque ? 'clients' : 'fiche-client'}
+  compteurs={chiffres}
+>
   {/* La charte maison n'appartient à personne : elle n'a pas de fiche client,
       et un onglet « Fiche » y mènerait à un prospect qui n'existe pas. */}
-  {!estMaison && <OngletsClient prospect={id} actif="charte" />}
+  {!estMaison && !estMarque && <OngletsClient prospect={id} actif="charte" />}
+
+  {/* Une charte d'enseigne habille tout son réseau. Le dire avant de publier,
+      pas après : « j'ai changé une couleur » et « j'ai rhabillé trente
+      franchisés » sont le même geste ici. */}
+  {estMarque && (
+    <p class="bandeau bandeau--attente">
+      Cette charte habille <strong>{portes} client(s)</strong> rattaché(s) à cette marque.
+      Chacun peut encore surcharger une valeur sur sa propre fiche ; tout le reste vient d'ici.
+    </p>
+  )}
+
+  {sonEnseigne && (
+    <p class="bandeau bandeau--attente">
+      Ce client porte l'enseigne <strong>{sonEnseigne.nom}</strong>. Ce qui est marqué « hérité »
+      vient d'elle, ou de la charte maison si elle ne l'a pas fixé —
+      <a href={lien(`/admin/charte/${sonEnseigne.id}?portee=marque`)}> ouvrir sa charte</a>.
+      Ce qu'on surcharge ici ne vaut que pour ce client.
+    </p>
+  )}
   {erreur && <p class="bandeau bandeau--erreur">{erreur}</p>}
   {message && <p class="bandeau bandeau--ok">{message}</p>}
 

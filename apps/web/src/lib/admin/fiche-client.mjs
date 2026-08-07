@@ -60,7 +60,8 @@ export async function journalTechnique(prospectId, { limite = 150 } = {}) {
     ),
     db.requete(
       `SELECT version, publie_le, publie_par, modifiees
-         FROM ${table('charte_journal')} WHERE prospect_id = ?
+         FROM ${table('charte_journal')}
+        WHERE prospect_id = ? AND (portee = 'client' OR portee IS NULL)
         ORDER BY version DESC`,
       [id],
     ),

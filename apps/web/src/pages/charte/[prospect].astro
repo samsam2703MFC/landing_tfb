@@ -24,7 +24,7 @@
 import '../../design-system/styles.css';
 import Icone from '../../components/Icone.astro';
 import { chargerProspect } from '../../lib/admin/donnees.mjs';
-import { MAISON, charteMaison, chartePubliee } from '../../lib/admin/charte.mjs';
+import { MAISON, charteServie } from '../../lib/admin/charte.mjs';
 import { cleCharteValide } from '../../lib/admin/session.mjs';
 import { REGISTRE, resoudreTout, valeursResolues } from '../../lib/charte/registre.mjs';
 import { cssCharte, facesCharte, logoCharte } from '../../lib/charte/theme.mjs';
@@ -40,22 +40,24 @@ if (!Number.isInteger(id) || id === MAISON || !cleCharteValide(id, Astro.url.sea
   return introuvable();
 }
 
-const [prospect, publie, maison, polices] = await Promise.all([
+const [prospect, servie, polices] = await Promise.all([
   chargerProspect(id),
-  chartePubliee(id),
-  charteMaison(),
+  // Les trois niveaux d'un coup — maison, marque, client. Une page publique
+  // qui n'en servirait que deux montrerait au client autre chose que ce que
+  // son application affiche, et c'est l'écran qu'il ouvre pour vérifier.
+  charteServie(id),
   listerPolices(id).catch(() => []),
 ]);
 if (!prospect) return introuvable();
 
 const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
-const valeurs = valeursResolues(publie.donnees, maison.donnees);
+const valeurs = servie.valeurs;
 const css = cssCharte(valeurs, polices);
 // Les @font-face avant le bloc :root — une police déclarée après son usage se
 // charge quand même, mais l'ordre rend la feuille lisible pour qui l'inspecte.
 const faces = facesCharte(polices, BASE);
 const logo = logoCharte(valeurs);
-const resolutions = resoudreTout(publie.donnees, maison.donnees);
+const resolutions = resoudreTout(servie.niveaux.client, { ...servie.niveaux.maison, ...servie.niveaux.marque });
 const propres = resolutions.filter((r) => r.depuis === 'client');
 
 const nomApp = valeurs['app.nom'];
@@ -111,7 +113,7 @@ const ESPACES = [
           <p class="tete__sur">Charte graphique · {nomApp}</p>
           <h1>{prospect.raison_sociale}</h1>
         </div>
-        <span class="jeton">Version {publie.version || 0}</span>
+        <span class="jeton">Version {servie.version || 0}</span>
       </div>
     </header>
 
@@ -304,8 +306,8 @@ const ESPACES = [
 
     <footer class="pied">
       <p>
-        Charte publiée en version {publie.version || 0}
-        {publie.majLe && ` le ${String(publie.majLe).slice(0, 10).split('-').reverse().join('/')}`}.
+        Charte publiée en version {servie.version || 0}
+        {servie.publieLe && ` le ${String(servie.publieLe).slice(0, 10).split('-').reverse().join('/')}`}.
         Une question : <a href={`mailto:${support}`}>{support}</a>.
       </p>
     </footer>

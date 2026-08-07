@@ -515,6 +515,17 @@ export async function listerClients() {
   }));
 }
 
+/** Une marque, avec le nombre de clients qui la portent. */
+export async function chargerMarque(id) {
+  const db = await connexion();
+  const [l] = await db.requete(
+    `SELECT c.*, (SELECT COUNT(*) FROM ${table('prospects')} p WHERE p.marque_id = c.id) AS clients
+       FROM ${table('clients')} c WHERE c.id = ? LIMIT 1`,
+    [Number(id)],
+  );
+  return l ? { ...l, actif: Boolean(l.actif), clients: Number(l.clients) || 0 } : null;
+}
+
 /** Le logo d'un réseau, décodé — pour le seul point qui le sert. */
 export async function chargerLogoClient(id) {
   const db = await connexion();
@@ -1790,7 +1801,12 @@ export async function listerFichesClients() {
         ORDER BY o.cree_le DESC, o.id DESC`,
     ),
     db.requete(`SELECT prospect_id, statut FROM ${table('contrats')}`),
-    db.requete(`SELECT prospect_id, donnees, version FROM ${table('charte')} WHERE etat = 'publie'`),
+    // La portée, sinon la charte de la marque 3 compterait pour le client 3 :
+    // les deux espaces d'identifiants sont indépendants.
+    db.requete(
+      `SELECT prospect_id, donnees, version FROM ${table('charte')}
+        WHERE etat = 'publie' AND (portee = 'client' OR portee IS NULL)`,
+    ),
   ]);
 
   const charteDe = new Map(chartes.map((c) => [Number(c.prospect_id), c]));

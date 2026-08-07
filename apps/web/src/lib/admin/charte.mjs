@@ -20,6 +20,36 @@ const PUBLIE = 'publie';
 /** Le prospect « 0 » porte les défauts maison, au-dessus de ceux du registre. */
 export const MAISON = 0;
 
+/**
+ * Une charte appartient à un client, ou à une marque.
+ *
+ * Une marque habille **tous ses clients** : un réseau de franchise a une
+ * identité, pas trente. C'est la façon dont ces gens travaillent — l'enseigne
+ * décide des couleurs, les sociétés qui l'exploitent les portent.
+ *
+ * Trois niveaux se superposent donc, du plus général au plus précis :
+ *
+ *   maison → marque → client
+ *
+ * Le plus précis l'emporte, clé par clé. Un franchisé qui n'a rien surchargé
+ * sert exactement la charte de son enseigne ; s'il surcharge une couleur, il
+ * ne surcharge que celle-là.
+ *
+ * `cible` accepte un nombre — un client, par commodité, parce que c'est le cas
+ * de tous les appels d'origine — ou `{ portee, id }`.
+ */
+export function cibleCharte(cible) {
+  if (cible && typeof cible === 'object') {
+    return { portee: cible.portee === 'marque' ? 'marque' : 'client', id: Number(cible.id) || 0 };
+  }
+  return { portee: 'client', id: Number(cible) || 0 };
+}
+
+/** La charte d'une marque, désignée sans ambiguïté. */
+export function marque(id) {
+  return { portee: 'marque', id: Number(id) || 0 };
+}
+
 function vide() {
   return { donnees: {}, version: 0, majLe: null, majPar: null };
 }
@@ -35,11 +65,14 @@ function ligneVersCharte(ligne) {
   };
 }
 
-async function lireEtat(prospectId, etat) {
+async function lireEtat(cible, etat) {
+  const { portee, id } = cibleCharte(cible);
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT donnees, version, maj_le, maj_par FROM ${table('charte')} WHERE prospect_id = ? AND etat = ? LIMIT 1`,
-    [Number(prospectId), etat],
+    `SELECT donnees, version, maj_le, maj_par FROM ${table('charte')}
+      WHERE prospect_id = ? AND etat = ? AND (portee = ? OR (portee IS NULL AND ? = 'client'))
+      LIMIT 1`,
+    [id, etat, portee, portee],
   );
   return ligneVersCharte(lignes[0]);
 }
@@ -51,12 +84,15 @@ async function lireEtat(prospectId, etat) {
  * attente juste après une publication, et le bouton « Publier » actif pour
  * republier à l'identique.
  */
-async function ecrireEtat(prospectId, etat, { donnees, version, majPar, majLe = new Date().toISOString() }) {
+async function ecrireEtat(cible, etat, { donnees, version, majPar, majLe = new Date().toISOString() }) {
+  const { portee, id: cibleId } = cibleCharte(cible);
   const db = await connexion();
   const json = JSON.stringify(donnees || {});
   const existant = await db.requete(
-    `SELECT id FROM ${table('charte')} WHERE prospect_id = ? AND etat = ? LIMIT 1`,
-    [Number(prospectId), etat],
+    `SELECT id FROM ${table('charte')}
+      WHERE prospect_id = ? AND etat = ? AND (portee = ? OR (portee IS NULL AND ? = 'client'))
+      LIMIT 1`,
+    [cibleId, etat, portee, portee],
   );
   if (existant[0]) {
     await db.executer(
@@ -65,28 +101,91 @@ async function ecrireEtat(prospectId, etat, { donnees, version, majPar, majLe = 
     );
   } else {
     await db.executer(
-      `INSERT INTO ${table('charte')} (prospect_id, etat, donnees, version, maj_le, maj_par) VALUES (?, ?, ?, ?, ?, ?)`,
-      [Number(prospectId), etat, json, Number(version || 0), majLe, majPar || null],
+      `INSERT INTO ${table('charte')} (portee, prospect_id, etat, donnees, version, maj_le, maj_par)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [portee, cibleId, etat, json, Number(version || 0), majLe, majPar || null],
     );
   }
   viderCache();
 }
 
-export function chartePubliee(prospectId) {
-  return lireEtat(prospectId, PUBLIE);
+export function chartePubliee(cible) {
+  return lireEtat(cible, PUBLIE);
 }
 
 /** Le brouillon part du publié la première fois qu'on ouvre la fiche. */
-export async function charteBrouillon(prospectId) {
-  const brouillon = await lireEtat(prospectId, BROUILLON);
+export async function charteBrouillon(cible) {
+  const brouillon = await lireEtat(cible, BROUILLON);
   if (brouillon.majLe || Object.keys(brouillon.donnees).length > 0) return brouillon;
-  const publie = await lireEtat(prospectId, PUBLIE);
+  const publie = await lireEtat(cible, PUBLIE);
   return { ...publie, majLe: null };
 }
 
 /** Les défauts maison, appliqués à tous les clients sans surcharge. */
 export function charteMaison() {
   return lireEtat(MAISON, PUBLIE);
+}
+
+/**
+ * La marque d'un client, ou rien.
+ *
+ * Une requête directe plutôt qu'un passage par `chargerProspect` : ce chemin
+ * est emprunté par l'API de charte à chaque appel d'une application cliente,
+ * et il n'a besoin que d'un entier.
+ */
+export async function marqueDuClient(prospectId) {
+  const db = await connexion();
+  const [l] = await db.requete(
+    `SELECT marque_id FROM ${table('prospects')} WHERE id = ? LIMIT 1`, [Number(prospectId)],
+  );
+  return Number(l?.marque_id) || null;
+}
+
+/**
+ * Ce dont un client hérite : la maison, puis sa marque par-dessus.
+ *
+ * Rendu à part de ses propres surcharges, parce que c'est ce qui permet à
+ * l'écran de dire d'où vient chaque valeur — et à un franchisé de comprendre
+ * qu'une couleur qu'il n'a pas choisie vient de son enseigne, pas de nulle part.
+ */
+export async function charteHeritee(prospectId) {
+  const marqueId = await marqueDuClient(prospectId);
+  const [maison, deLaMarque] = await Promise.all([
+    charteMaison(),
+    marqueId ? chartePubliee(marque(marqueId)) : Promise.resolve(vide()),
+  ]);
+  return { ...maison.donnees, ...deLaMarque.donnees };
+}
+
+/**
+ * Tout ce qu'il faut pour servir la charte d'un client : les valeurs, et un
+ * numéro de version qui bouge dès que **n'importe lequel** des trois niveaux
+ * bouge.
+ *
+ * La version est la somme des trois. Une publication en incrémente exactement
+ * une, donc la somme croît strictement : un cache en aval sait que sa copie a
+ * vieilli, même si c'est la marque qui a changé et pas le client. Renvoyer la
+ * seule version du client laisserait une refonte d'enseigne invisible chez ses
+ * trente franchisés.
+ */
+export async function charteServie(prospectId) {
+  const marqueId = await marqueDuClient(prospectId);
+  const [maison, deLaMarque, client] = await Promise.all([
+    charteMaison(),
+    marqueId ? chartePubliee(marque(marqueId)) : Promise.resolve(vide()),
+    chartePubliee(prospectId),
+  ]);
+  return {
+    valeurs: valeursResolues(client.donnees, maison.donnees, deLaMarque.donnees),
+    version: maison.version + deLaMarque.version + client.version,
+    publieLe: client.majLe || deLaMarque.majLe || maison.majLe || null,
+    marque_id: marqueId,
+    niveaux: {
+      maison: maison.donnees,
+      marque: deLaMarque.donnees,
+      client: client.donnees,
+    },
+  };
 }
 
 /**
@@ -97,7 +196,7 @@ export function charteMaison() {
  * Les contrôles de couple (contraste) sont volontairement absents : indicatifs
  * pendant l'édition, ils bloquent à la publication.
  */
-export async function modifierBrouillon(prospectId, valeurs, majPar = null) {
+export async function modifierBrouillon(cible, valeurs, majPar = null) {
   const erreurs = {};
   for (const [cle, valeur] of Object.entries(valeurs || {})) {
     if (valeur === null) continue;
@@ -106,14 +205,14 @@ export async function modifierBrouillon(prospectId, valeurs, majPar = null) {
   }
   if (Object.keys(erreurs).length > 0) return { ok: false, erreurs };
 
-  const courant = await charteBrouillon(prospectId);
+  const courant = await charteBrouillon(cible);
   const donnees = { ...courant.donnees };
   for (const [cle, valeur] of Object.entries(valeurs || {})) {
     if (valeur === null) delete donnees[cle];
     else donnees[cle] = valeur;
   }
 
-  await ecrireEtat(prospectId, BROUILLON, { donnees, version: courant.version, majPar });
+  await ecrireEtat(cible, BROUILLON, { donnees, version: courant.version, majPar });
   return { ok: true, erreurs: {}, donnees };
 }
 
@@ -122,33 +221,39 @@ export async function modifierBrouillon(prospectId, valeurs, majPar = null) {
  * peut pousser une charte illisible chez un client payant est précisément ce que
  * cette couche existe pour empêcher.
  */
-export async function publierCharte(prospectId, majPar = null) {
-  const [brouillon, maison] = await Promise.all([charteBrouillon(prospectId), charteMaison()]);
+export async function publierCharte(cible, majPar = null) {
+  const { portee, id } = cibleCharte(cible);
+  // Le contrôle de contraste se fait sur ce qui sera RÉELLEMENT servi : une
+  // couleur de texte héritée de la marque et un fond surchargé par le client
+  // ne se lisent illisibles qu'une fois superposés.
+  const dessous = portee === 'client' ? await charteHeritee(id) : await charteMaison();
+  const brouillon = await charteBrouillon(cible);
 
   const erreurs = {};
   for (const [cle, valeur] of Object.entries(brouillon.donnees)) {
     const message = controler(cle, valeur);
     if (message) erreurs[cle] = message;
   }
-  const resolu = valeursResolues(brouillon.donnees, maison.donnees);
+  const resolu = { ...dessous, ...brouillon.donnees };
   for (const [cle, message] of Object.entries(controlerCharte(resolu))) {
     if (!erreurs[cle]) erreurs[cle] = message;
   }
   if (Object.keys(erreurs).length > 0) return { ok: false, erreurs };
 
-  const publie = await lireEtat(prospectId, PUBLIE);
+  const publie = await lireEtat(cible, PUBLIE);
   const version = publie.version + 1;
   const modifiees = clesModifiees(publie.donnees, brouillon.donnees);
 
-  await ecrireEtat(prospectId, PUBLIE, { donnees: brouillon.donnees, version, majPar });
-  await ecrireEtat(prospectId, BROUILLON, { donnees: brouillon.donnees, version, majPar: null, majLe: null });
+  await ecrireEtat(cible, PUBLIE, { donnees: brouillon.donnees, version, majPar });
+  await ecrireEtat(cible, BROUILLON, { donnees: brouillon.donnees, version, majPar: null, majLe: null });
 
   // Le journal s'écrit avec la publication, pas après : une ligne qui peut
   // manquer rendrait l'historique trompeur.
   const db = await connexion();
   await db.executer(
-    `INSERT INTO ${table('charte_journal')} (prospect_id, version, publie_le, publie_par, modifiees) VALUES (?, ?, ?, ?, ?)`,
-    [Number(prospectId), version, new Date().toISOString(), majPar || null, JSON.stringify(modifiees)],
+    `INSERT INTO ${table('charte_journal')} (portee, prospect_id, version, publie_le, publie_par, modifiees)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [portee, id, version, new Date().toISOString(), majPar || null, JSON.stringify(modifiees)],
   );
 
   return { ok: true, erreurs: {}, version, modifiees };
@@ -163,12 +268,14 @@ export function clesModifiees(avant, apres) {
 }
 
 /** Les vingt dernières publications, la plus récente en tête. */
-export async function journalCharte(prospectId, limite = 20) {
+export async function journalCharte(cible, limite = 20) {
+  const { portee, id } = cibleCharte(cible);
   const db = await connexion();
   const lignes = await db.requete(
     `SELECT version, publie_le, publie_par, modifiees FROM ${table('charte_journal')}
-      WHERE prospect_id = ? ORDER BY version DESC LIMIT ${Number(limite) || 20}`,
-    [Number(prospectId)],
+      WHERE prospect_id = ? AND (portee = ? OR (portee IS NULL AND ? = 'client'))
+      ORDER BY version DESC LIMIT ${Number(limite) || 20}`,
+    [id, portee, portee],
   );
   return lignes.map((l) => ({
     version: Number(l.version),
@@ -182,7 +289,11 @@ export async function journalCharte(prospectId, limite = 20) {
 export async function compteursCharte() {
   const db = await connexion();
   const lignes = await db.requete(
-    `SELECT prospect_id, etat, donnees, version, maj_le FROM ${table('charte')} WHERE prospect_id <> ?`,
+    // La portée est indispensable ici : sans elle, la charte de la marque 3
+    // serait comptée comme celle du client 3. Les deux espaces d'identifiants
+    // sont indépendants, et rien ne les empêche de se croiser.
+    `SELECT prospect_id, etat, donnees, version, maj_le FROM ${table('charte')}
+      WHERE prospect_id <> ? AND (portee = 'client' OR portee IS NULL)`,
     [MAISON],
   );
   const par = new Map();
