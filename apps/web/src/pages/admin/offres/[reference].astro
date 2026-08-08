@@ -141,34 +141,43 @@ async function lireConfig(f, catalogues, soucis) {
 
   // Les modules de l'ERP retenus, avec leur prix et leur argumentaire du
   // jour : une fiche réécrite plus tard ne doit pas changer une offre partie.
-  //
-  // La remise se lit par identifiant de module et non par rang : le
-  // formulaire n'envoie que les cases cochées, donc deux listes parallèles se
-  // décaleraient dès qu'un module du milieu est décoché — et la remise du
-  // sixième irait au cinquième sans que rien ne le dise.
+  /**
+   * La remise consentie sur un pack.
+   *
+   * Lue par **identifiant** et non par rang : le formulaire n'envoie que les
+   * cases cochées, donc deux listes parallèles se décaleraient dès qu'un
+   * élément du milieu est décoché, et la remise du sixième irait au cinquième
+   * sans que rien ne le dise.
+   *
+   * Rend `null` et non `{valeur: 0}` quand il n'y en a pas : une offre sans
+   * remise ne doit pas porter d'objet vide dans son instantané, qu'on relirait
+   * comme un geste accordé puis annulé.
+   */
+  const remiseLue = (quoi, id, nom) => {
+    const type = String(f.get(`remise_${quoi}_type_${id}`) || 'pourcent') === 'fixe' ? 'fixe' : 'pourcent';
+    const brut = String(f.get(`remise_${quoi}_${id}`) || '').trim() || '0';
+    const champ = `Remise sur « ${nom} »`;
+    const valeur = type === 'fixe'
+      ? lire(enCents, brut, champ, `remise_${quoi}_${id}`)
+      : lire(enPoints, brut, champ, `remise_${quoi}_${id}`);
+    return valeur > 0 ? { type, valeur } : null;
+  };
+
   const cochés = new Set(f.getAll('module').map(String));
   const modulesRetenus = catalogues.modules
     .filter((m) => cochés.has(String(m.id)))
-    .map((m) => {
-      const type = String(f.get(`remise_module_type_${m.id}`) || 'pourcent') === 'fixe' ? 'fixe' : 'pourcent';
-      const brut = String(f.get(`remise_module_${m.id}`) || '').trim() || '0';
-      const champ = `Remise sur « ${m.nom} »`;
-      const valeur = type === 'fixe'
-        ? lire(enCents, brut, champ, `remise_module_${m.id}`)
-        : lire(enPoints, brut, champ, `remise_module_${m.id}`);
-      return {
-        slug: m.slug, nom: m.nom, prix_cents: m.prix_cents,
-        pourquoi: m.pourquoi, apporte: m.apporte,
-        // `null` et non `{valeur: 0}` : une offre sans remise ne doit pas
-        // porter d'objet vide dans son instantané, qu'on relirait comme un
-        // geste accordé puis annulé.
-        remise: valeur > 0 ? { type, valeur } : null,
-      };
-    });
+    .map((m) => ({
+      slug: m.slug, nom: m.nom, prix_cents: m.prix_cents,
+      pourquoi: m.pourquoi, apporte: m.apporte,
+    }));
 
-  // Les packs retenus, recopiés avec leur prix et leur unité du jour.
+  // Les packs retenus, recopiés avec leur prix et leur unité du jour, chacun
+  // avec la remise qu'on lui a consentie. Même règle que les modules : la
+  // saisie se lit par clé de pack, jamais par rang.
   const packsCoches = new Set(f.getAll('pack').map(String));
-  const packsRetenus = instantanePacks(catalogues.packs.filter((p) => packsCoches.has(p.cle)));
+  const packsRetenus = instantanePacks(
+    catalogues.packs.filter((p) => packsCoches.has(p.cle)).map((p) => ({ ...p, remise: remiseLue('pack', p.cle, p.nom) })),
+  );
 
   const nombres = f.getAll('vue_nombre');
   const notes = f.getAll('vue_note');
@@ -459,11 +468,19 @@ const libresFautives = new Set(incompletes.filter((m) => m.ou === 'libre').map((
 const message = Astro.url.searchParams.get('ok');
 const choisies = new Set((offre?.prestations || []).filter((p) => !p.libre).map((p) => p.cle));
 const modulesRetenus = new Set((offre?.modules || []).map((m) => m.slug));
-// La remise déjà accordée à chaque module, indexée par slug : c'est ce qui
+// La remise déjà accordée à chaque pack, indexée par clé : c'est ce qui
 // remplit les deux champs quand on rouvre l'offre.
-const remisesModules = new Map(
-  (offre?.modules || []).filter((m) => m.remise?.valeur > 0).map((m) => [m.slug, m.remise]),
+const remisesPacks = new Map(
+  (offre?.packs || []).filter((p) => p.remise?.valeur > 0).map((p) => [p.cle, p.remise]),
 );
+/** Ce qui remplit les deux champs de remise d'une ligne quand on rouvre l'offre. */
+function remiseSaisie(remise) {
+  const type = remise?.type === 'fixe' ? 'fixe' : 'pourcent';
+  return {
+    type,
+    valeur: !remise ? '' : type === 'fixe' ? depuisCents(remise.valeur) : depuisPoints(remise.valeur),
+  };
+}
 // Les packs de l'offre, et la question qu'ils posent : faut-il demander un
 // nombre de points de vente ? Seulement si l'un d'eux s'y facture.
 const retenus = new Set((offre?.packs || []).map((p) => p.cle));
@@ -653,23 +670,55 @@ const ETAT_STATUT = {
             ) : (
               <>
                 <div class="socles">
-                  {packs.map((p) => (
-                    <label class="case case--seule">
-                      <input type="checkbox" name="pack" value={p.cle} checked={retenus.has(p.cle)} />
-                      <span>
-                        <span class="case__tete">
-                          <strong>{p.nom}</strong>
-                          <span class="fb-num case__prix">
-                            {formater(p.prix_cents)}{p.unite === 'poste_mois' ? '/mois par point de vente' : '/mois'}
+                  {packs.map((p) => {
+                    const { type, valeur } = remiseSaisie(remisesPacks.get(p.cle));
+                    const auPoste = p.unite === 'poste_mois';
+                    return (
+                      <div class="case case--seule case--remisable">
+                        <label class="case__choix">
+                          <input type="checkbox" name="pack" value={p.cle} checked={retenus.has(p.cle)} />
+                          <span>
+                            <span class="case__tete">
+                              <strong>{p.nom}</strong>
+                              <span class="fb-num case__prix">
+                                {formater(p.prix_cents)}{auPoste ? '/mois par point de vente' : '/mois'}
+                              </span>
+                            </span>
+                            <span class="champ__aide">
+                              {p.modules.map((m) => m.nom).join(' · ') || 'Aucun module rattaché.'}
+                            </span>
+                            {p.base && <span class="case__apporte">→ Modèle de base</span>}
                           </span>
-                        </span>
-                        <span class="champ__aide">
-                          {p.modules.map((m) => m.nom).join(' · ') || 'Aucun module rattaché.'}
-                        </span>
-                        {p.base && <span class="case__apporte">→ Modèle de base</span>}
-                      </span>
-                    </label>
-                  ))}
+                        </label>
+
+                        <div class="case__remise">
+                          <label class="legende" for={`rp-${p.cle}`}>Remise sur ce pack</label>
+                          <div class="tarif__saisie">
+                            <input
+                              id={`rp-${p.cle}`}
+                              type="text"
+                              inputmode="decimal"
+                              name={`remise_pack_${p.cle}`}
+                              value={valeur}
+                              placeholder="0"
+                              aria-label={`Remise sur ${p.nom}`}
+                            />
+                            <select name={`remise_pack_type_${p.cle}`} aria-label={`Unité de la remise sur ${p.nom}`}>
+                              <option value="pourcent" selected={type === 'pourcent'}>%</option>
+                              <option value="fixe" selected={type === 'fixe'}>€/mois</option>
+                            </select>
+                          </div>
+                          {auPoste && (
+                            <span class="champ__aide">
+                              Un montant fixe porte sur la ligne entière, pas sur chaque point de
+                              vente : « 50 € » font cinquante euros de moins par mois pour tout le
+                              réseau. En pourcentage, la question ne se pose pas.
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {packCaisse && (
@@ -732,50 +781,19 @@ const ETAT_STATUT = {
               </div>
             ) : (
               <div class="cases">
-                {modules.map((m) => {
-                  const remise = remisesModules.get(m.slug) || null;
-                  const type = remise?.type === 'fixe' ? 'fixe' : 'pourcent';
-                  const valeur = !remise
-                    ? ''
-                    : type === 'fixe' ? depuisCents(remise.valeur) : depuisPoints(remise.valeur);
-                  return (
-                    <div class="case case--module case--remisable">
-                      {/* La case et son texte forment le `label` ; la remise
-                          vit à côté. Dans le label, cliquer le champ de saisie
-                          décocherait le module qu'on est en train de remiser. */}
-                      <label class="case__choix">
-                        <input type="checkbox" name="module" value={m.id} checked={modulesRetenus.has(m.slug)} />
-                        <span>
-                          <span class="case__tete">
-                            <strong>{m.nom}</strong>
-                            <span class="fb-num case__prix">{formater(m.prix_cents)}/mois</span>
-                          </span>
-                          {m.pourquoi && <span class="champ__aide">{m.pourquoi}</span>}
-                          {m.apporte && <span class="case__apporte">→ {m.apporte}</span>}
-                        </span>
-                      </label>
-
-                      <div class="case__remise">
-                        <label class="legende" for={`rm-${m.id}`}>Remise sur ce module</label>
-                        <div class="tarif__saisie">
-                          <input
-                            id={`rm-${m.id}`}
-                            type="text"
-                            inputmode="decimal"
-                            name={`remise_module_${m.id}`}
-                            value={valeur}
-                            placeholder="0"
-                            aria-label={`Remise sur ${m.nom}`}
-                          />
-                          <select name={`remise_module_type_${m.id}`} aria-label={`Unité de la remise sur ${m.nom}`}>
-                            <option value="pourcent" selected={type === 'pourcent'}>%</option>
-                            <option value="fixe" selected={type === 'fixe'}>€/mois</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+                {modules.map((m) => (
+                  <label class="case case--module">
+                    <input type="checkbox" name="module" value={m.id} checked={modulesRetenus.has(m.slug)} />
+                    <span>
+                      <span class="case__tete">
+                        <strong>{m.nom}</strong>
+                        <span class="fb-num case__prix">{formater(m.prix_cents)}/mois</span>
+                      </span>
+                      {m.pourquoi && <span class="champ__aide">{m.pourquoi}</span>}
+                      {m.apporte && <span class="case__apporte">→ {m.apporte}</span>}
+                    </span>
+                  </label>
+                ))}
               </div>
             )}
           </section>

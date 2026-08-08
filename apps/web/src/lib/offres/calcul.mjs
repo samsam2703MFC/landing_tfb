@@ -130,6 +130,18 @@ export function lignesDe(offre) {
       quantite,
       prix_unitaire_cents: entier(p.prix_cents),
       recurrence: 'mensuel',
+      // La seule ligne qui porte sa propre remise, parce que c'est la seule
+      // qu'on négocie vraiment : le pack est ce qui se vend d'un bloc, et le
+      // geste consenti à la signature porte sur ce bloc-là. Un module
+      // optionnel, lui, se retire de l'offre plutôt que de se brader ; une
+      // prestation d'onboarding aussi.
+      //
+      // Une question que les autres lignes ne posent pas : un pack au point
+      // de vente a une quantité. La remise porte sur **la ligne entière**,
+      // pas sur chaque point de vente — trente magasins et « 50 € de
+      // remise » font cinquante euros de moins par mois, pas mille cinq
+      // cents. C'est la lecture prudente, et l'écran le dit sous le champ.
+      remise: p.remise || null,
     });
   }
 
@@ -145,12 +157,10 @@ export function lignesDe(offre) {
       quantite: 1,
       prix_unitaire_cents: prix,
       recurrence: 'mensuel',
-      // La seule ligne qui porte sa propre remise. On ne négocie pas un pack
-      // à la découpe — son prix EST la négociation — ni une prestation
-      // d'onboarding, qui se retire de l'offre quand elle ne se vend pas. Un
-      // module, si : c'est le geste qu'on fait pour en faire passer un
-      // sixième, sans toucher au prix des cinq autres ni au catalogue.
-      remise: m.remise || null,
+      // Pas de remise ici, et c'est délibéré : elle se négocie sur le pack.
+      // Un module optionnel se vend ou ne se vend pas — le retirer de l'offre
+      // dit la même chose qu'une remise de cent pour cent, en plus clair sur
+      // le devis. Voir la ligne « pack » plus haut.
     });
   }
 
@@ -311,10 +321,10 @@ export function lignesIncompletes(offre) {
  *
  * DEUX ÉTAGES DE REMISE, et ils ne se confondent pas.
  *
- * En bas, la remise d'un **module** : elle appartient à la ligne, elle est
- * déjà déduite de son `total_cents`, et elle s'imprime en face du module
- * qu'elle concerne. C'est le geste qu'on fait pour placer un module de plus
- * sans brader les autres ni retoucher le catalogue.
+ * En bas, la remise d'un **pack** : elle appartient à la ligne, elle est déjà
+ * déduite de son `total_cents`, et elle s'imprime en face du pack qu'elle
+ * concerne. C'est le geste consenti à la signature sur ce qui se vend d'un
+ * bloc — et le seul poste qui se négocie ainsi.
  *
  * Au-dessus, la remise de **l'offre**, qui porte sur ce qui reste une fois
  * les lignes remisées. Deux règles, et elles ne sont pas symétriques :
