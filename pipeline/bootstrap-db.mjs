@@ -554,6 +554,11 @@ function modele(pg) {
         ['note', t.texte],
         ['quantite', 'INT DEFAULT 1'],
         ['prix_unitaire_cents', 'INT DEFAULT 0'],
+        // Ce que la ligne perd de son prix affiché. Aujourd'hui seuls les
+        // modules en portent une — voir `offres/calcul.mjs`. Stockée en plus
+        // du total et non à sa place : le document doit montrer le geste
+        // (« 240,00 € − 48,00 € »), pas seulement son résultat.
+        ['remise_cents', 'INT DEFAULT 0'],
         // unique · mensuel · annuel
         ['recurrence', `${t.chaine(10)} DEFAULT 'unique'`],
         ['ordre', 'INT DEFAULT 100'],

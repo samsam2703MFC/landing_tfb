@@ -209,7 +209,10 @@ export function recapTexte(offre, resultat, formater) {
     lignes.push(`${mots[cle].toUpperCase()}`);
     for (const l of seau.lignes) {
       const quantite = l.quantite > 1 ? ` × ${l.quantite}` : '';
-      lignes.push(`  ${libelleLigne(l, offre.langue)}${quantite}   ${formater(l.total_cents)}`);
+      // Le geste, quand il y en a un. Pas de texte barré en clair : on écrit
+      // ce qu'on retire, en toutes lettres, là où le courriel HTML barre.
+      const avant = l.remise_cents > 0 ? `${formater(l.brut_cents)} − ${formater(l.remise_cents)} = ` : '';
+      lignes.push(`  ${libelleLigne(l, offre.langue)}${quantite}   ${avant}${formater(l.total_cents)}`);
       // Ce que la ligne précise — la caisse retenue pour le socle, ce
       // qu'apporte un module. Décalé, pour se lire sans brouiller la colonne
       // des montants.
@@ -269,7 +272,7 @@ export function recapHtml(offre, resultat, formater) {
             ${l.note ? `<br><span class="tfb-note" style="font-size:12px">${html(l.note)}</span>` : ''}
           </td>
           <td class="tfb-montant" style="padding:7px 0;border-bottom:1px solid #edeef3;text-align:right;white-space:nowrap">
-            ${html(formater(l.total_cents))}
+            ${l.remise_cents > 0 ? `<s style="color:#8a90a4;font-weight:400">${html(formater(l.brut_cents))}</s><br>` : ''}${html(formater(l.total_cents))}
           </td>
         </tr>`).join('');
 

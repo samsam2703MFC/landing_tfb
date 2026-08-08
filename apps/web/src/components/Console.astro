@@ -546,7 +546,17 @@ const surCettePage = (chemin) => Astro.url.pathname.replace(/\/+$/, '') === lien
         cursor: pointer; transition: var(--transition-control);
       }
       .case:hover, .formule:hover { border-color: var(--plum-300); background: var(--slate-50); }
-      .case:has(:checked), .formule:has(:checked) { border-color: var(--brand); background: var(--brand-subtle); }
+      /*
+       * `input:checked`, et surtout pas `:checked` tout court.
+       *
+       * `:checked` matche aussi l'`<option>` retenue d'un `<select>`, et tout
+       * `<select>` en a une. Le jour où une vignette a porté une liste
+       * déroulante — l'unité d'une remise — toutes les vignettes de la grille
+       * se sont allumées comme si elles étaient cochées. Le sélecteur disait
+       * « contient quelque chose de coché » là où on voulait dire « sa case
+       * est cochée ».
+       */
+      .case:has(input:checked), .formule:has(input:checked) { border-color: var(--brand); background: var(--brand-subtle); }
       .case > span, .formule > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
       /* Quand la case porte sa coche à côté du texte, le texte descend d'un
          cran — il vit dans un `span` imbriqué, que la règle du dessus ne
@@ -568,6 +578,27 @@ const surCettePage = (chemin) => Astro.url.pathname.replace(/\/+$/, '') === lien
       .case__apporte { font: 500 var(--text-xs) / 1.4 var(--font-sans); color: var(--text-success); }
       .case--module { align-items: start; }
       .case--seule { inline-size: 100%; }
+
+      /*
+       * Une vignette qui porte une remise a deux étages : le choix en haut, le
+       * geste en dessous.
+       *
+       * La coche et son texte restent dans un `label` — c'est lui qui rend
+       * tout le bloc cliquable — mais le champ de saisie doit en sortir : dans
+       * un label, cliquer dans un champ actionne le contrôle du label, et on
+       * décocherait le module qu'on est en train de remiser.
+       *
+       * Le champ ne se montre que sur un module retenu. Une grille de vingt
+       * options afficherait sinon vingt saisies de remise pour trois modules
+       * vendus, et on ne verrait plus les modules.
+       */
+      .case--remisable { flex-direction: column; gap: 0; cursor: default; }
+      .case__choix { display: flex; align-items: start; gap: 10px; cursor: pointer; }
+      .case__choix > span { display: flex; flex-direction: column; gap: 2px; min-inline-size: 0; }
+      .case__remise { display: none; margin-block-start: 12px; padding-block-start: 12px; border-block-start: 1px solid var(--border-default); }
+      .case--remisable:has(input:checked) .case__remise { display: block; }
+      .case__remise .tarif__saisie { margin-block-start: 4px; }
+      .case__remise select { inline-size: auto; flex: none; }
 
       /* La version nue : une case à cocher et son mot, sans encadré. Dans une
          cellule de table ou une liste dense, la vignette est trop grande. */

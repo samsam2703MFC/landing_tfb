@@ -32,6 +32,25 @@ function entier(valeur) {
 }
 
 /**
+ * Ce qu'une remise retire à un montant, en centimes.
+ *
+ * Plafonnée à ce qu'elle réduit, toujours : une remise ne fabrique pas
+ * d'avoir. Sur une ligne, la règle est plus simple que sur les totaux — un
+ * module est une ligne mensuelle et rien d'autre, donc le montant fixe y
+ * signifie sans ambiguïté « tant de moins par mois sur celui-là ». C'est aux
+ * totaux, où les trois rythmes cohabitent, que la question se pose.
+ *
+ * @param {number} brutCents
+ * @param {{type?: string, valeur?: number}|null|undefined} remise
+ */
+function retirer(brutCents, remise) {
+  const valeur = entier(remise?.valeur);
+  if (valeur === 0) return 0;
+  const demandee = remise.type === 'fixe' ? valeur : part(brutCents, valeur);
+  return Math.min(demandee, brutCents);
+}
+
+/**
  * Les lignes du devis, dans l'ordre du document.
  *
  * @param {object} offre
@@ -126,6 +145,12 @@ export function lignesDe(offre) {
       quantite: 1,
       prix_unitaire_cents: prix,
       recurrence: 'mensuel',
+      // La seule ligne qui porte sa propre remise. On ne négocie pas un pack
+      // à la découpe — son prix EST la négociation — ni une prestation
+      // d'onboarding, qui se retire de l'offre quand elle ne se vend pas. Un
+      // module, si : c'est le geste qu'on fait pour en faire passer un
+      // sixième, sans toucher au prix des cinq autres ni au catalogue.
+      remise: m.remise || null,
     });
   }
 
@@ -221,11 +246,21 @@ export function lignesDe(offre) {
     }
   }
 
-  return lignes.map((l, i) => ({
-    ...l,
-    ordre: (i + 1) * 10,
-    total_cents: l.quantite * l.prix_unitaire_cents,
-  }));
+  return lignes.map(({ remise, ...ligne }, i) => {
+    const brut = ligne.quantite * ligne.prix_unitaire_cents;
+    const remiseCents = retirer(brut, remise);
+    return {
+      ...ligne,
+      ordre: (i + 1) * 10,
+      // Les trois sont gardés séparément parce que le document les montre
+      // séparément : « 240,00 € − 48,00 € = 192,00 € ». Ne stocker que le net
+      // reviendrait à cacher au client la remise qu'on vient de lui accorder,
+      // ce qui est exactement l'inverse du but.
+      brut_cents: brut,
+      remise_cents: remiseCents,
+      total_cents: brut - remiseCents,
+    };
+  });
 }
 
 /**
@@ -274,7 +309,15 @@ export function lignesIncompletes(offre) {
 /**
  * Le chiffrage complet.
  *
- * Deux règles de remise, et elles ne sont pas symétriques :
+ * DEUX ÉTAGES DE REMISE, et ils ne se confondent pas.
+ *
+ * En bas, la remise d'un **module** : elle appartient à la ligne, elle est
+ * déjà déduite de son `total_cents`, et elle s'imprime en face du module
+ * qu'elle concerne. C'est le geste qu'on fait pour placer un module de plus
+ * sans brader les autres ni retoucher le catalogue.
+ *
+ * Au-dessus, la remise de **l'offre**, qui porte sur ce qui reste une fois
+ * les lignes remisées. Deux règles, et elles ne sont pas symétriques :
  *
  *   · en pourcentage, elle s'applique aux trois rythmes — c'est ce qu'un
  *     client comprend par « 10 % de remise » ;
@@ -298,7 +341,12 @@ export function calculerOffre(offre) {
 
   for (const recurrence of RECURRENCES) {
     const dedans = lignes.filter((l) => l.recurrence === recurrence);
+    // `total_cents` est déjà net des remises de ligne : le sous-total part
+    // donc de ce qui reste après elles, et la remise générale s'applique
+    // par-dessus. L'ordre inverse ferait payer la remise générale sur un
+    // montant qu'on ne facture pas.
     const sousTotal = dedans.reduce((n, l) => n + l.total_cents, 0);
+    const remisesLignes = dedans.reduce((n, l) => n + (l.remise_cents || 0), 0);
 
     let montantRemise = 0;
     if (remise.type === 'pourcent') {
@@ -314,6 +362,9 @@ export function calculerOffre(offre) {
     seaux[recurrence] = {
       lignes: dedans,
       sousTotal,
+      // Ce qui a été retiré ligne à ligne, pour que le récapitulatif puisse le
+      // dire d'un mot. Ce n'est pas déduit du sous-total : ça l'a déjà été.
+      remisesLignes,
       remise: montantRemise,
       ht,
       tva: montantTva,

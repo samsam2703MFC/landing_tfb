@@ -534,3 +534,121 @@ describe('les packs', () => {
     assert.equal(lignes[1].total_cents, 99_900);
   });
 });
+
+/**
+ * La remise accordée sur un module précis.
+ *
+ * Le geste qu'on fait pour placer un sixième module sans brader les cinq
+ * autres ni retoucher le catalogue. Elle vit sur la ligne, pas sur l'offre —
+ * ce qui veut dire qu'elle est déjà déduite quand la remise générale
+ * s'applique, et qu'elle doit rester visible sur le document.
+ */
+describe('la remise par module', () => {
+  const offreAvec = (modules, reste = {}) => calculerOffre({
+    modules,
+    tarifs: TARIFS,
+    tva: { taux: 2100 },
+    ...reste,
+  });
+
+  const moduleDit = (r, nom) => r.lignes.find((l) => l.libelle === nom);
+
+  it('retire un pourcentage du prix du module, et de lui seul', () => {
+    const r = offreAvec([
+      { slug: 'a', nom: 'A', prix_cents: 20_000 },
+      { slug: 'b', nom: 'B', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 2500 } },
+    ]);
+    assert.equal(moduleDit(r, 'A').total_cents, 20_000);
+    assert.equal(moduleDit(r, 'A').remise_cents, 0);
+    assert.equal(moduleDit(r, 'B').brut_cents, 20_000);
+    assert.equal(moduleDit(r, 'B').remise_cents, 5_000);
+    assert.equal(moduleDit(r, 'B').total_cents, 15_000);
+  });
+
+  it('retire un montant fixe, qui sur une ligne mensuelle vaut « par mois »', () => {
+    const r = offreAvec([{ slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'fixe', valeur: 3_000 } }]);
+    assert.equal(moduleDit(r, 'A').total_cents, 17_000);
+    assert.equal(r.seaux.mensuel.ht, 17_000);
+  });
+
+  it('ne descend jamais sous zéro : une remise ne fabrique pas d’avoir', () => {
+    const r = offreAvec([{ slug: 'a', nom: 'A', prix_cents: 10_000, remise: { type: 'fixe', valeur: 99_999 } }]);
+    assert.equal(moduleDit(r, 'A').remise_cents, 10_000);
+    assert.equal(moduleDit(r, 'A').total_cents, 0);
+  });
+
+  it('garde le prix d’avant : sans lui, le client voit un prix, pas un geste', () => {
+    const r = offreAvec([{ slug: 'a', nom: 'A', prix_cents: 24_000, remise: { type: 'pourcent', valeur: 2000 } }]);
+    const l = moduleDit(r, 'A');
+    assert.equal(l.brut_cents, 24_000);
+    assert.equal(l.total_cents, 19_200);
+    assert.equal(l.brut_cents - l.remise_cents, l.total_cents);
+  });
+
+  it('additionne les remises de lignes dans son seau, sans les déduire deux fois', () => {
+    const r = offreAvec([
+      { slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 2500 } },
+      { slug: 'b', nom: 'B', prix_cents: 10_000, remise: { type: 'fixe', valeur: 1_000 } },
+      { slug: 'c', nom: 'C', prix_cents: 10_000 },
+    ]);
+    const m = r.seaux.mensuel;
+    assert.equal(m.remisesLignes, 6_000);
+    // 40 000 de catalogue − 6 000 de remises = 34 000, et pas 28 000.
+    assert.equal(m.sousTotal, 34_000);
+    assert.equal(m.ht, 34_000);
+  });
+
+  it('applique la remise générale APRÈS celles des modules', () => {
+    // L'ordre inverse ferait porter les 10 % sur un montant qu'on ne facture
+    // pas — le client paierait moins que la somme de ses lignes.
+    const r = offreAvec(
+      [{ slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 5000 } }],
+      { remise: { type: 'pourcent', valeur: 1000 } },
+    );
+    const m = r.seaux.mensuel;
+    assert.equal(m.sousTotal, 10_000);
+    assert.equal(m.remise, 1_000);
+    assert.equal(m.ht, 9_000);
+  });
+
+  it('n’a pas d’effet quand elle vaut zéro, ni quand elle est absente', () => {
+    for (const remise of [null, undefined, { type: 'pourcent', valeur: 0 }, { type: 'fixe', valeur: 0 }]) {
+      const r = offreAvec([{ slug: 'a', nom: 'A', prix_cents: 20_000, remise }]);
+      assert.equal(moduleDit(r, 'A').total_cents, 20_000, JSON.stringify(remise));
+      assert.equal(moduleDit(r, 'A').remise_cents, 0);
+      assert.equal(r.seaux.mensuel.remisesLignes, 0);
+    }
+  });
+
+  it('laisse les autres lignes intactes — seul un module se remise', () => {
+    // Un pack ne se négocie pas à la découpe : son prix EST la négociation.
+    const r = offreAvec(
+      [{ slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 5000 } }],
+      {
+        nombre_postes: 3,
+        packs: [{ cle: 'socle', nom: 'Socle', prix_cents: 10_000, unite: 'poste_mois' }],
+        jours_formation: 2,
+      },
+    );
+    for (const l of r.lignes.filter((x) => x.type !== 'module')) {
+      assert.equal(l.remise_cents, 0, l.libelle);
+      assert.equal(l.total_cents, l.brut_cents, l.libelle);
+    }
+    assert.equal(r.lignes.find((l) => l.type === 'pack').total_cents, 30_000);
+  });
+
+  it('la TVA porte sur le montant remisé, pas sur le prix catalogue', () => {
+    const r = offreAvec([{ slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 5000 } }]);
+    assert.equal(r.seaux.mensuel.ht, 10_000);
+    assert.equal(r.seaux.mensuel.tva, 2_100);
+    assert.equal(r.seaux.mensuel.ttc, 12_100);
+  });
+
+  it('les mois offerts se comptent sur le mensuel remisé', () => {
+    const r = offreAvec(
+      [{ slug: 'a', nom: 'A', prix_cents: 20_000, remise: { type: 'pourcent', valeur: 5000 } }],
+      { mois_offerts: 3 },
+    );
+    assert.equal(r.offert.ht, 30_000);
+  });
+});

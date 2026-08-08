@@ -2500,9 +2500,10 @@ export async function enregistrerOffre(id, config) {
   for (const l of lignes) {
     await db.executer(
       `INSERT INTO ${table('offre_lignes')}
-       (offre_id, type, libelle, note, quantite, prix_unitaire_cents, recurrence, ordre)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [Number(id), l.type, l.libelle, l.note, l.quantite, l.prix_unitaire_cents, l.recurrence, l.ordre],
+       (offre_id, type, libelle, note, quantite, prix_unitaire_cents, remise_cents, recurrence, ordre)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [Number(id), l.type, l.libelle, l.note, l.quantite, l.prix_unitaire_cents,
+       l.remise_cents || 0, l.recurrence, l.ordre],
     );
   }
   viderCache();
