@@ -388,11 +388,18 @@ jobs:
           # Le domaine l'emporte sur l'adresse IP dès qu'il est renseigné :
           # c'est par lui que le client arrive, et c'est lui qui porte le
           # certificat. Celui du gabarit ne compte pas.
+          # `example.com` et ses voisins sont réservés par la RFC 2606
+          # précisément pour servir d'exemple : un `.env` qui en porte un n'a
+          # pas de domaine, il a gardé son gabarit. Sonder `example.com`
+          # rendrait un 404 qui ne dit rien du serveur.
           hote="$SSH_HOST"
           schema=http
-          if [ -n "$DOMAINE" ] && ! printf '%s' "$DOMAINE" | grep -qi 'votredomaine'; then
+          gabarit='votredomaine|(^|\.)example\.(com|org|net)$|(^|\.)localhost$'
+          if [ -n "$DOMAINE" ] && ! printf '%s' "$DOMAINE" | grep -qiE "$gabarit"; then
             hote="$DOMAINE"
             schema=https
+          elif [ -n "$DOMAINE" ]; then
+            echo "::warning::SITE_DOMAIN vaut « $DOMAINE » sur le serveur, c'est-à-dire un domaine d'exemple. Il sert aussi aux URL canoniques du site et à la racine des liens d'annexe envoyés aux clients — à corriger dans infra/.env. La vérification se rabat sur l'adresse du serveur."
           fi
 
           suffixe=''
