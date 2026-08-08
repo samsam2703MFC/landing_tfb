@@ -85,7 +85,7 @@ const r = reglages();
               </td>
               <td style="color:var(--slate-600)">
                 {s.nom === 'ADMIN_PASSWORD' && 'Ouvre cette console. Sans elle, /admin répond 503.'}
-                {s.nom === 'ADMIN_SECRET' && 'Signe le cookie de session. Absente, elle est dérivée du mot de passe — ce qui suffit.'}
+                {s.nom === 'ADMIN_SECRET' && 'Signe les cookies de session ET les liens d’annexe et de charte remis aux clients. Absente, elle est dérivée d’ADMIN_PASSWORD : changer le mot de passe casse alors tous les liens déjà envoyés. La renseigner découple les deux.'}
                 {s.nom === 'GH_INGEST_TOKEN' && 'Lecture des dépôts privés. Inutile tant qu’ils sont publics ; une valeur de gabarit est ignorée.'}
                 {s.nom === 'ANTHROPIC_API_KEY' && 'Génération du contenu par l’IA. Absente, les fiches du dépôt landing servent telles quelles.'}
               </td>
