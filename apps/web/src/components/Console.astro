@@ -42,6 +42,13 @@ const session = Astro.locals.session || { role: 'commercial', secours: false };
  * est dans le middleware, en amont de chaque page.
  */
 const RUBRIQUES = railPour(session.role, actif, compteurs);
+
+/**
+ * Les liens du bas ne passent pas par le registre — ce ne sont pas des
+ * rubriques, mais les deux ou trois gestes qui concernent la personne
+ * connectée. Leur état courant se lit donc dans l'URL, et non dans `actif`.
+ */
+const surCettePage = (chemin) => Astro.url.pathname.replace(/\/+$/, '') === lien(chemin);
 ---
 
 <html lang="fr" dir="ltr">
@@ -911,6 +918,21 @@ const RUBRIQUES = railPour(session.role, actif, compteurs);
               <><b>{session.nom || session.identifiant || 'Compte'}</b><span>{(ROLES_DITS[session.role] || ROLES_DITS.commercial).nom.toLowerCase()}</span></>
             )}
           </div>
+          {/* Changer son code se range ici et non dans le rail : c'est un
+              geste qui concerne la personne connectée, pas le travail en
+              cours. La clé de secours n'a pas de compte derrière, donc pas de
+              code à changer — l'entrée disparaît plutôt que de mener à une
+              page qui dirait non. */}
+          {!session.secours && (
+            <a
+              class="rail__lien"
+              href={lien('/admin/motdepasse')}
+              aria-current={surCettePage('/admin/motdepasse') ? 'page' : undefined}
+            >
+              <Icone nom="lock" taille={18} />
+              Mon code
+            </a>
+          )}
           <a class="rail__lien" href={lien('/')} target="_blank">
             <Icone nom="external-link" taille={18} />
             Voir la landing

@@ -310,13 +310,20 @@ const OUVERT_AU_TECHNIQUE = [
   { chemin: '/admin/onboarding', arbre: true },
   { chemin: '/admin/connexions', arbre: true },
   { chemin: '/admin/connecteurs', arbre: true },
-  { chemin: '/admin/boutiques', arbre: true },
   // La fiche d'un client, pour lire ses coordonnées et ses boutiques. Les
   // offres et les contrats vivent ailleurs et lui restent fermés.
   { chemin: '/admin/prospects', arbre: true },
 ];
 
-const PAR_ROLE = { commercial: OUVERT_AU_COMMERCIAL, technique: OUVERT_AU_TECHNIQUE };
+/**
+ * Exportée pour être tenue contre le disque : un chemin permis qui ne mène
+ * nulle part est un trou silencieux. `/admin/motdepasse` y a figuré des mois
+ * sans page derrière — tous les rôles avaient le droit d'ouvrir un écran qui
+ * n'existait pas, et personne ne pouvait changer son propre code.
+ */
+export const CHEMINS_PERMIS = { commercial: OUVERT_AU_COMMERCIAL, technique: OUVERT_AU_TECHNIQUE };
+
+const PAR_ROLE = CHEMINS_PERMIS;
 
 /** Le rôle a-t-il le droit d'ouvrir ce chemin ? */
 export function cheminAutorise(chemin, role) {
