@@ -1183,6 +1183,10 @@ export function instantanePacks(packs) {
     base: Boolean(p.base),
     avec_caisse: Boolean(p.avec_caisse),
     modules: (p.modules || []).map((m) => ({ slug: m.slug, nom: m.nom })),
+    // La remise consentie sur ce pack-là, quand il y en a une. Elle vient de
+    // l'offre et non du catalogue — d'où le `|| null` : les packs de base
+    // posés à la création n'en ont pas.
+    remise: p.remise || null,
   }));
 }
 

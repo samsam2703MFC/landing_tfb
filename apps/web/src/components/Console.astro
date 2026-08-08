@@ -599,6 +599,10 @@ const surCettePage = (chemin) => Astro.url.pathname.replace(/\/+$/, '') === lien
       .case--remisable:has(input:checked) .case__remise { display: block; }
       .case__remise .tarif__saisie { margin-block-start: 4px; }
       .case__remise select { inline-size: auto; flex: none; }
+      /* La vignette d'un pack occupe toute la largeur : une phrase d'aide y
+         courrait d'un bord à l'autre, et une ligne de 160 caractères ne se
+         lit pas — l'œil perd le début en revenant à la ligne. */
+      .case__remise .champ__aide { display: block; max-inline-size: 68ch; margin-block-start: 6px; }
 
       /* La version nue : une case à cocher et son mot, sans encadré. Dans une
          cellule de table ou une liste dense, la vignette est trop grande. */
