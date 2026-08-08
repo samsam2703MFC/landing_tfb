@@ -195,7 +195,7 @@ Copié depuis `.env.example`. C'est le seul endroit où vivent les identifiants.
 | `HTTP_PORT` | port d'écoute de la landing, `8090` par défaut |
 | `ACME_EMAIL` | adresse pour les alertes de certificat |
 | `ADMIN_PASSWORD` | ouvre la console `<BASE_PATH>/admin` — vide, elle reste fermée. Écrasé à chaque déploiement si le secret GitHub du même nom existe |
-| `ADMIN_SECRET` | *(facultatif)* clé de signature du cookie de session |
+| `ADMIN_SECRET` | *(facultatif, mais à poser avant toute rotation)* clé de signature des cookies de session **et** des liens d'annexe et de charte remis aux clients. Absente, elle vaut `console\|<ADMIN_PASSWORD>\|<DB_PASS>` : changer `ADMIN_PASSWORD` invalide alors tous les liens déjà envoyés |
 | `SECRETS_CLE_1` | clé du coffre — **posée par le déploiement, à ne pas écrire à la main** (voir plus bas) |
 | `SECRETS_VERSION` | version de chiffrement active, `1` par défaut |
 | `ANTHROPIC_API_KEY` | clé API, nécessaire seulement pour l'ingestion |
