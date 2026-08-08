@@ -975,6 +975,28 @@ export function codeAuHasard() {
   return null;
 }
 
+/**
+ * Ce code est-il bien celui de **ce** compte-là ?
+ *
+ * `utilisateurParCode` répondrait aussi, mais elle cherche *à qui* appartient
+ * un code : elle essaie donc un scrypt par compte de l'équipe, et note au
+ * passage une visite. Ici on sait déjà qui demande — c'est la session qui le
+ * dit —, il n'y a qu'une empreinte à comparer.
+ *
+ * Un compte sans code ne se confirme pas : la chaîne vide n'ouvre rien.
+ */
+export async function codeConfirme(id, code) {
+  if (!Number(id) || !estCode(code)) return false;
+  const db = await connexion();
+  const lignes = await db.requete(
+    `SELECT code FROM ${table('utilisateurs')} WHERE id = ? LIMIT 1`,
+    [Number(id)],
+  );
+  const empreinte = lignes[0]?.code;
+  if (!empreinte) return false;
+  return empreinteValide(code, empreinte);
+}
+
 export async function changerRole(id, role) {
   if (!ROLES.includes(role)) throw new Error(`Rôle inconnu : ${role}.`);
   const db = await connexion();

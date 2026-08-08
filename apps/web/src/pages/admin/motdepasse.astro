@@ -1,0 +1,218 @@
+---
+/**
+ * Changer son propre code de connexion.
+ *
+ * Cet écran manquait, et son absence ne se voyait pas : le chemin
+ * `/admin/motdepasse` figure depuis le début dans la liste blanche de
+ * `session.mjs`, ouvert à tous les rôles — mais aucune page ne répondait
+ * derrière. Un commercial qui voulait changer son code n'avait qu'une voie :
+ * demander à un administrateur de lui en attribuer un autre depuis l'écran des
+ * comptes, qui l'affiche alors en clair à l'écran, à charge pour lui de le
+ * transmettre. Un code qui transite par un message n'est plus un secret.
+ *
+ * TROIS CHAMPS, ET LE PREMIER COMPTE AUTANT QUE LES AUTRES. Redemander le code
+ * actuel n'est pas une formalité : une session ouverte sur un poste laissé
+ * sans surveillance suffirait sinon à se l'approprier — changer le code, et
+ * son propriétaire ne rentre plus.
+ *
+ * Le nouveau code est demandé deux fois. Six chiffres se tapent vite et se
+ * relisent mal ; une faute de frappe non détectée ferme la console à celui qui
+ * vient de la refermer sur lui-même.
+ *
+ * MÊME VERROU QUE LA PORTE D'ENTRÉE. La vérification du code actuel est une
+ * seconde occasion de deviner un code à six chiffres, et elle serait la plus
+ * commode de toutes : elle porte sur un compte connu. Elle passe donc par
+ * `verrou.mjs`, exactement comme la connexion.
+ *
+ * La clé de secours ne se change pas ici. Elle vit dans `infra/.env` sur le
+ * serveur, et c'est précisément ce qui fait d'elle un recours : une console qui
+ * pourrait réécrire sa propre clé pourrait aussi se la faire réécrire.
+ */
+import Console from '../../components/Console.astro';
+import Icone from '../../components/Icone.astro';
+import { changerCode, codeConfirme, compteurs } from '../../lib/admin/donnees.mjs';
+import { soucisDeForme } from '../../lib/admin/motdepasse.mjs';
+import { LONGUEUR_CODE } from '../../lib/admin/session.mjs';
+import { noterEchec, noterReussite, origine, peutEssayer } from '../../lib/admin/verrou.mjs';
+
+const BASE = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '');
+const session = Astro.locals.session;
+
+let erreur = null;
+let chiffres = {};
+try {
+  chiffres = await compteurs();
+} catch (err) {
+  erreur = `Base injoignable : ${err.message}`;
+}
+
+/** Ce qui a été refusé, pour le redire au-dessus du formulaire. */
+let refus = null;
+
+if (Astro.request.method === 'POST' && !session.secours) {
+  const f = await Astro.request.formData();
+  const actuel = String(f.get('actuel') || '').trim();
+  const nouveau = String(f.get('nouveau') || '').trim();
+  const encore = String(f.get('encore') || '').trim();
+
+  const qui = origine(Astro.request, Astro.clientAddress);
+  const porte = peutEssayer(qui);
+
+  if (!porte.permis) {
+    refus = `Trop d’essais. Réessayez dans ${porte.attendreS} seconde(s).`;
+  } else if (soucisDeForme({ actuel, nouveau, encore })) {
+    // Avant la vérification du code actuel, et sans consommer d'essai : voir
+    // `motdepasse.mjs`, une faute de frappe n'est pas une tentative.
+    refus = soucisDeForme({ actuel, nouveau, encore });
+  } else if (!(await codeConfirme(session.id, actuel))) {
+    noterEchec(qui);
+    const apres = peutEssayer(qui);
+    refus = apres.permis
+      ? `Code actuel refusé. ${apres.restants} essai(s) avant blocage.`
+      : `Code actuel refusé. Trop d’essais : attendez ${apres.attendreS} seconde(s).`;
+  } else {
+    noterReussite(qui);
+    const r = await changerCode(session.id, nouveau);
+    if (!r.ok) {
+      refus = r.erreur;
+    } else {
+      // Le code n'est pas repris dans le message : il vient d'être choisi par
+      // celui qui le lit, et une URL se relit dans un historique.
+      return Astro.redirect(
+        `${BASE}/admin/motdepasse?ok=${encodeURIComponent('Code changé. Il vaut dès maintenant, sur cette machine comme sur les autres.')}`,
+        303,
+      );
+    }
+  }
+}
+
+const dit = Astro.url.searchParams.get('ok');
+---
+
+<Console
+  titre="Mon code"
+  fil="TFB Admin · Mon code"
+  {/* Aucun `actif` : cet écran n'est pas une rubrique du rail. On y va par le
+      bloc du bas, avec « Se déconnecter » — ce sont les deux gestes qui
+      concernent la personne connectée et non le travail en cours. */}
+  message={dit}
+  erreur={erreur}
+  compteurs={chiffres}
+>
+  {session.secours ? (
+    <div class="bloc">
+      <div class="bloc__tete">
+        <div>
+          <h2>Vous êtes entré par la clé de secours</h2>
+          <p>Il n’y a pas de compte derrière, donc pas de code à changer.</p>
+        </div>
+      </div>
+      <p>
+        La clé de secours est <span class="jeton">ADMIN_PASSWORD</span>, dans
+        <span class="jeton">infra/.env</span> sur le serveur. Elle ne se change pas d’ici : une
+        console capable de réécrire sa propre clé pourrait aussi se la faire réécrire, et c’est
+        justement le recours qu’elle est censée offrir le jour où tout le reste est fermé.
+      </p>
+      <p class="champ__aide">
+        Changer <span class="jeton">ADMIN_PASSWORD</span> ferme toutes les sessions en cours :
+        la clé qui signe les cookies en est dérivée.
+      </p>
+    </div>
+  ) : (
+    <>
+      <div class="avertit">
+        <Icone nom="info" taille={18} />
+        <span>
+          Votre code vous identifie <em>et</em> vous authentifie : c’est lui qui met votre nom sur
+          les offres que vous faites. Il ne se partage donc pas — deux personnes sur un même code,
+          et l’une signe sous le nom de l’autre.
+        </span>
+      </div>
+
+      <div class="bloc">
+        <div class="bloc__tete">
+          <div>
+            <h2>Changer mon code</h2>
+            <p>
+              {session.nom || session.identifiant} — six chiffres, comme à l’entrée.
+            </p>
+          </div>
+        </div>
+
+        {refus && <p class="raison">{refus}</p>}
+
+        <form method="post" class="champs">
+          <div class="champ">
+            <label for="actuel">Code actuel <span class="champ__requis">*</span></label>
+            <input
+              id="actuel"
+              name="actuel"
+              type="password"
+              inputmode="numeric"
+              autocomplete="current-password"
+              minlength={LONGUEUR_CODE}
+              maxlength={LONGUEUR_CODE}
+              pattern="[0-9]{6}"
+              required
+              autofocus
+            />
+            <span class="champ__aide">
+              Redemandé pour qu’une session laissée ouverte ne suffise pas à vous prendre votre
+              compte.
+            </span>
+          </div>
+
+          <div class="champ">
+            <label for="nouveau">Nouveau code <span class="champ__requis">*</span></label>
+            <input
+              id="nouveau"
+              name="nouveau"
+              type="password"
+              inputmode="numeric"
+              autocomplete="new-password"
+              minlength={LONGUEUR_CODE}
+              maxlength={LONGUEUR_CODE}
+              pattern="[0-9]{6}"
+              required
+            />
+            <span class="champ__aide">
+              Ni une suite, ni six fois le même chiffre, ni une année : ce sont les premiers
+              essayés.
+            </span>
+          </div>
+
+          <div class="champ">
+            <label for="encore">Nouveau code, encore <span class="champ__requis">*</span></label>
+            <input
+              id="encore"
+              name="encore"
+              type="password"
+              inputmode="numeric"
+              autocomplete="new-password"
+              minlength={LONGUEUR_CODE}
+              maxlength={LONGUEUR_CODE}
+              pattern="[0-9]{6}"
+              required
+            />
+            <span class="champ__aide">
+              Une faute de frappe ici vous fermerait la console jusqu’à ce qu’un administrateur
+              vous rouvre.
+            </span>
+          </div>
+
+          <div class="bloc__pied">
+            <div class="bloc__actions">
+              <button class="bouton bouton--marque" type="submit">Changer mon code</button>
+            </div>
+          </div>
+        </form>
+      </div>
+
+      <p class="champ__aide">
+        Votre session reste ouverte après le changement : c’est la clé du serveur qui signe le
+        cookie, pas votre code. Les autres machines où vous êtes connecté le restent aussi —
+        déconnectez-vous d’elles si c’est ce que vous cherchiez.
+      </p>
+    </>
+  )}
+</Console>

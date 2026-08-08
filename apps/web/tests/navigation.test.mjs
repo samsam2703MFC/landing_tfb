@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
 import { SECTIONS, ongletsSection, railPour, rubriquesConsole, sectionDe } from '../src/lib/admin/navigation.mjs';
-import { cheminAutorise } from '../src/lib/admin/session.mjs';
+import { CHEMINS_PERMIS, cheminAutorise } from '../src/lib/admin/session.mjs';
 
 const ICI = dirname(fileURLToPath(import.meta.url));
 const PAGES = join(ICI, '..', 'src', 'pages');
@@ -59,8 +59,10 @@ function descendre(dossier, segments) {
 
   if (reste.length === 0) {
     return entrees.some((e) => {
-      if (e.isFile() && e.name.endsWith('.astro')) {
-        const nu = e.name.replace(/\.astro$/, '');
+      // `.js` autant que `.astro` : `/admin/deconnexion` est une route qui
+      // ne rend rien, et elle répond tout autant qu'une page.
+      if (e.isFile() && /\.(astro|js|ts)$/.test(e.name)) {
+        const nu = e.name.replace(/\.(astro|js|ts)$/, '');
         return nu === tete || dynamique(nu);
       }
       // Un dossier au nom du segment, avec son index.
@@ -293,5 +295,35 @@ describe('les écrans et le rail se répondent', () => {
     ]);
     const inconnues = [...actifsUtilises()].filter((a) => !declarees.has(a) && !ongletsDUnClient.has(a));
     assert.deepEqual(inconnues, [], `clés qui ne surlignent rien : ${inconnues.join(', ')}`);
+  });
+});
+
+/** Y a-t-il au moins une route servie sous ce chemin ? */
+function dossierPeuple(chemin) {
+  const dossier = join(PAGES, ...chemin.replace(/^\//, '').split('/').filter(Boolean));
+  try {
+    return readdirSync(dossier).some((n) => /\.(astro|js|ts)$/.test(n));
+  } catch {
+    return false;
+  }
+}
+
+describe('les chemins ouverts par les droits', () => {
+  it('mènent tous à quelque chose', () => {
+    // Le rail ne montre que ce qu'on a pensé à y mettre ; la liste blanche,
+    // elle, dit ce qui est *permis*. Un chemin permis sans page derrière ne
+    // rend pas un 403 — il rend un 404, et rien ne dit que l'écran manque
+    // plutôt que le droit.
+    // Un sous-arbre n'a pas forcément d'index : `/admin/pieces` ne se visite
+    // jamais, seul `/admin/pieces/<id>` répond. Ce qu'on exige d'une entrée
+    // `arbre`, c'est donc qu'il existe *quelque chose* dessous.
+    const morts = [];
+    for (const [role, chemins] of Object.entries(CHEMINS_PERMIS)) {
+      for (const { chemin, arbre } of chemins) {
+        const vivant = arbre ? pageExiste(chemin) || dossierPeuple(chemin) : pageExiste(chemin);
+        if (!vivant) morts.push(`${chemin} (${role})`);
+      }
+    }
+    assert.deepEqual([...new Set(morts)], [], `chemins permis sans page : ${morts.join(', ')}`);
   });
 });

@@ -173,7 +173,17 @@ if (Astro.request.method === 'POST') {
           type="password"
           class="porte__code"
           inputmode="numeric"
-          autocomplete="one-time-code"
+          {/*
+            `current-password` et non `one-time-code`.
+
+            Le champ y ressemble — six chiffres, un clavier numérique — mais
+            un code à usage unique arrive par SMS et vit deux minutes. Celui-ci
+            est une porte d'entrée permanente. L'annoncer comme jetable disait
+            au navigateur de le chercher dans les messages et de ne jamais le
+            retenir : le trousseau ne proposait pas de l'enregistrer, et il
+            fallait le retaper de mémoire à chaque session.
+          */}
+          autocomplete="current-password"
           autocapitalize="none"
           autocorrect="off"
           spellcheck="false"

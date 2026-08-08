@@ -165,8 +165,13 @@ describe('les empreintes', () => {
 
 describe('le profil technique', () => {
   it('ouvre l’onboarding, les connexions et les connecteurs', () => {
+    // Les boutiques d'un client se règlent en `/admin/onboarding/<id>/boutiques`
+    // et nulle part ailleurs. La liste blanche portait aussi un
+    // `/admin/boutiques` de premier niveau, sous lequel rien n'a jamais été
+    // servi : ce test l'exigeait ouvert, ce qui ne prouvait qu'une chose,
+    // qu'on avait le droit d'ouvrir un 404.
     for (const chemin of ['/admin/onboarding', '/admin/onboarding/12/mapping',
-      '/admin/connexions', '/admin/connecteurs', '/admin/boutiques']) {
+      '/admin/onboarding/12/boutiques', '/admin/connexions', '/admin/connecteurs']) {
       assert.equal(cheminAutorise(chemin, 'technique'), true, chemin);
     }
   });
