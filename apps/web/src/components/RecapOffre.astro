@@ -66,7 +66,14 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
                     {l.quantite > 1 && <span class="recap__ligne-qte fb-num">× {l.quantite}</span>}
                     {l.note && <span class="recap__ligne-note">{l.note}</span>}
                   </span>
-                  <span class="recap__ligne-montant fb-num">{montant(l.total_cents)}</span>
+                  <span class="recap__ligne-montant fb-num">
+                    {/* Le prix barré n'est pas décoratif : une ligne à
+                        192,00 € sans son 240,00 € d'origine ne montre pas le
+                        geste, elle montre un prix — et le client ne peut pas
+                        savoir qu'on lui a accordé quelque chose. */}
+                    {l.remise_cents > 0 && <s class="recap__ligne-avant">{montant(l.brut_cents)}</s>}
+                    {montant(l.total_cents)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -74,6 +81,12 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
 
           <dl class="recap__totaux">
             <div><dt>Sous-total</dt><dd class="fb-num">{montant(seau.sousTotal)}</dd></div>
+            {seau.remisesLignes > 0 && (
+              <div class="recap__remise">
+                <dt>Dont remises par module</dt>
+                <dd class="fb-num">− {montant(seau.remisesLignes)}</dd>
+              </div>
+            )}
             {seau.remise > 0 && (
               <div class="recap__remise"><dt>Remise</dt><dd class="fb-num">− {montant(seau.remise)}</dd></div>
             )}
@@ -162,6 +175,9 @@ const vide = (cle) => seaux[cle].lignes.length === 0;
   .recap__totaux dt { font: 400 var(--text-xs) / 1.4 var(--font-sans); color: var(--slate-600); }
   .recap__totaux dd { margin: 0; margin-inline-start: auto; font-size: var(--text-xs); white-space: nowrap; }
   .recap__remise dt, .recap__remise dd { color: var(--text-success); }
+  /* Le prix d'avant, barré, juste au-dessus du prix retenu : sur une colonne
+     étroite les deux ne tiennent pas côte à côte. */
+  .recap__ligne-avant { display: block; color: var(--text-tertiary); font-weight: 400; }
   .recap__ttc { padding-block-start: 6px; border-block-start: 1px solid var(--slate-100); }
   .recap__ttc dt { font-weight: 600; color: var(--navy-900); }
   .recap__ttc dd { font: 600 var(--text-md) / 1.2 var(--font-display); color: var(--navy-900); }

@@ -34,6 +34,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || '22' }}
 
       - name: Mettre à jour et relancer la pile
+        id: pile
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -62,6 +63,12 @@ jobs:
           MDP_B64=$(printf '%s' "${ADMIN_PASSWORD:-}" | base64 -w0)
           COFFRE_B64=$(printf '%s' "${SECRETS_CLE_1:-}" | base64 -w0)
 
+          # La sortie du script distant est conservée : elle porte, en fin de
+          # course, le montage et le domaine que l'étape suivante ira sonder.
+          # `pipefail` est déjà posé, donc un échec côté serveur reste un échec
+          # ici malgré le tube.
+          JOURNAL=$(mktemp)
+
           # Le script distant est passé par l'entrée standard : les valeurs du
           # runner sont fixées en tête, le reste s'exécute côté serveur (d'où
           # les \$ échappés).
@@ -69,7 +76,7 @@ jobs:
               -o StrictHostKeyChecking=yes \
               -o IdentitiesOnly=yes \
               -o BatchMode=yes \
-              "$SSH_USER@$SSH_HOST" bash -s <<EOF
+              "$SSH_USER@$SSH_HOST" bash -s <<EOF | tee "$JOURNAL"
           set -euo pipefail
           # Noms volontairement distincts de ceux d'un .env : le fichier de
           # configuration est sourcé plus bas et pourrait, sinon, écraser le
@@ -308,6 +315,7 @@ jobs:
             # Déposé en conf-available : la landing s'ajoute aux hôtes déjà
             # servis, y compris le catch-all sur l'IP, sans toucher à leurs
             # fichiers de configuration.
+            APACHE=0
             if command -v apache2ctl > /dev/null 2>&1 && [ -d /etc/apache2/conf-available ]; then
               sed -e "s#__BASE__#\$BASE#g" -e "s#__PORT__#\$PORT_WEB#g" \
                   deploy/apache-landing.conf > /etc/apache2/conf-available/landing-tfb.conf
@@ -322,11 +330,20 @@ jobs:
 
               if apache2ctl configtest > /dev/null 2>&1; then
                 systemctl reload apache2
+                APACHE=1
                 echo "Apache : landing montée sous \$BASE/"
               else
                 echo "::warning::apache2ctl configtest en échec — rechargement ignoré, la configuration d'Apache n'a pas été appliquée."
               fi
             fi
+
+            # Ce que le runner ne peut pas deviner, et qui décide de l'URL à
+            # sonder ensuite. Le serveur connaît son montage et son domaine ;
+            # le runner, lui, connaît l'hôte par lequel il vient d'entrer.
+            # Sans Apache devant, le seul point d'entrée reste le port de Node.
+            echo "MONTAGE=\$BASE"
+            echo "DOMAINE=\${SITE_DOMAIN:-}"
+            if [ "\$APACHE" = "1" ]; then echo "PORT_PUBLIC=80"; else echo "PORT_PUBLIC=\$PORT_WEB"; fi
             exit 0
           fi
 
@@ -336,20 +353,72 @@ jobs:
           exit 1
           EOF
 
-      # Le service a déjà été vérifié depuis le serveur lui-même. Ce contrôle
-      # dit seulement si le port est ouvert vers l'extérieur ; un pare-feu
-      # fermé n'est pas une erreur de déploiement.
+          lire() { sed -n "s/^$1=//p" "$JOURNAL" | tail -n 1 | tr -d '\r'; }
+          {
+            echo "montage=$(lire MONTAGE)"
+            echo "domaine=$(lire DOMAINE)"
+            echo "port=$(lire PORT_PUBLIC)"
+          } >> "$GITHUB_OUTPUT"
+          rm -f "$JOURNAL"
+
+      # Le contrôle précédent est fait depuis le serveur, sur la boucle locale :
+      # il dit que Node répond, rien de plus. Celui-ci part du runner et vise
+      # **l'URL que le client tape**, avec son montage et, s'il y en a un, son
+      # domaine — donc à travers Apache et le pare-feu.
+      #
+      # Il échoue le déploiement, et c'est le but. Il a longtemps sondé
+      # `<hôte>:8090/`, c'est-à-dire un port que le pare-feu ferme à raison et
+      # une racine où rien n'est monté : il avertissait à chaque passage, y
+      # compris quand tout allait bien. Un avertissement qu'on apprend à
+      # ignorer ne vérifie plus rien.
       - name: Vérifier l'accès depuis l'extérieur
-        continue-on-error: true
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
-          PORT_WEB: ${{ vars.HTTP_PORT || '8090' }}
+          MONTAGE: ${{ steps.pile.outputs.montage }}
+          DOMAINE: ${{ steps.pile.outputs.domaine }}
+          PORT_PUBLIC: ${{ steps.pile.outputs.port }}
         run: |
-          code=$(curl -s -m 15 -o /dev/null -w '%{http_code}' "http://$SSH_HOST:$PORT_WEB/" || echo 000)
+          set -euo pipefail
+
+          if [ -z "$MONTAGE" ]; then
+            echo "::error::Le serveur n'a pas annoncé son chemin de montage — impossible de savoir quoi sonder." >&2
+            exit 1
+          fi
+
+          # Le domaine l'emporte sur l'adresse IP dès qu'il est renseigné :
+          # c'est par lui que le client arrive, et c'est lui qui porte le
+          # certificat. Celui du gabarit ne compte pas.
+          hote="$SSH_HOST"
+          schema=http
+          if [ -n "$DOMAINE" ] && ! printf '%s' "$DOMAINE" | grep -qi 'votredomaine'; then
+            hote="$DOMAINE"
+            schema=https
+          fi
+
+          suffixe=''
+          if [ "$PORT_PUBLIC" != "80" ] && [ "$PORT_PUBLIC" != "443" ]; then
+            suffixe=":$PORT_PUBLIC"
+          fi
+          # Montée à la racine, `BASE` vaut « / » et la concaténation donnerait
+          # « // ». Apache l'accepte, mais l'URL affichée dans le journal doit
+          # être celle qu'on peut recopier dans un navigateur.
+          racine="${MONTAGE%/}"
+          URL="$schema://$hote$suffixe$racine/"
+
+          # Apache vient d'être rechargé : quelques secondes de battement
+          # valent mieux qu'un déploiement rouge pour une seconde de trop.
+          code=000
+          for essai in 1 2 3 4 5; do
+            code=$(curl -sS -m 15 -o /dev/null -w '%{http_code}' -L "$URL" || echo 000)
+            if [ "$code" = "200" ]; then break; fi
+            sleep 3
+          done
+
           if [ "$code" = "200" ]; then
-            echo "::notice::La landing répond depuis l'extérieur sur le port $PORT_WEB."
+            echo "::notice::$URL répond depuis l'extérieur."
           else
-            echo "::warning::Pas de réponse depuis l'extérieur (HTTP $code). Le service tourne, mais le port $PORT_WEB est probablement fermé par le pare-feu."
+            echo "::error::$URL ne répond pas depuis l'extérieur (HTTP $code). Le service tourne sur le serveur — c'est Apache, le pare-feu ou le DNS qu'il faut regarder." >&2
+            exit 1
           fi
 
       - name: Effacer la clé

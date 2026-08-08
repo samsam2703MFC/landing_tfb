@@ -139,6 +139,27 @@ describe('la feuille de style de la console', () => {
     assert.deepEqual(fautes, [], `pastilles employées et jamais définies :\n  ${fautes.join('\n  ')}`);
   });
 
+  it('ne demande jamais « contient quelque chose de coché » pour dire « sa case est cochée »', () => {
+    /*
+     * `:has(:checked)` matche aussi l'`<option>` retenue d'un `<select>`, et
+     * tout `<select>` en a une. Le jour où une vignette du choix de modules a
+     * porté une liste déroulante — l'unité d'une remise —, toute la grille
+     * s'est allumée comme si chaque module était retenu, et chaque vignette a
+     * déplié son champ de remise.
+     *
+     * `:has(input:checked)` dit ce qu'on veut dire : `input:checked` ne
+     * matche qu'une case ou un bouton radio, jamais une option.
+     */
+    const fautes = [];
+    for (const f of [join(SRC, 'components', 'Console.astro'), ...ECRANS, ...fichiers(join(SRC, 'components'), '.astro')]) {
+      const source = readFileSync(f, 'utf8');
+      for (const bloc of blocsStyle(source, false)) {
+        if (/:has\(\s*:checked/.test(sansCommentaires(bloc))) fautes.push(dit(f));
+      }
+    }
+    assert.deepEqual([...new Set(fautes)], [], `à écrire :has(input:checked) :\n  ${fautes.join('\n  ')}`);
+  });
+
   it('fait rouler toutes ses tables plutôt que de les écraser', () => {
     const fautes = [];
     for (const f of ECRANS) {
